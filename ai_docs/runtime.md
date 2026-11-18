@@ -19,7 +19,7 @@ Use `just --list` for the full recipe menu. `just ci` is the canonical local CI 
 | `just build` | Debug build |
 | `just test` | Full test suite |
 | `just validate` | Fast local check (build + test) |
-| `just ci` | Optional local PR-equivalent aggregate (the merge proof is the hosted `validate` check on the PR head; `CI_POLICY.md` § Merge Proof): docs + shipped skills + release validation without coverage/network tests + vulnerability audit |
+| `just ci` | Optional local PR-equivalent aggregate (the merge proof is the hosted `validate` check on the PR head; `CI_POLICY.md` § Merge Proof): docs + shipped skills + changed-file formatter gate + actionlint gate + unsharded release validation without coverage/network tests + vulnerability audit |
 | `just full` | Informational full lane: coverage + live network tests + publish/hash checks + docs/skills + vulnerability audit |
 | `just run` | Start the stdio host process |
 | `just reinstall` | Reinstall the global tool and Claude Code plugin from this repo |
@@ -39,9 +39,9 @@ See `justfile` for the full recipe list, including packaging, Docker, and securi
   - `dotnet build RoslynMcp.slnx --nologo`
   - `dotnet test RoslynMcp.slnx --nologo`
   - `dotnet run --project src/RoslynMcp.Host.Stdio`
-  - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardOnly -TestShardIndex 0 -TestShardCount 2` — reproduce one CI non-owner class shard without duplicate policy/publish work; use the complementary zero-based index for the other half. Omit `-TestShardOnly` for a standalone full release gate.
+  - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardOnly -TestShardIndex 0 -TestShardCount 6` — reproduce one CI Windows class shard without duplicate policy/publish work; use `-TestShardIndex <0-5>` for the other Windows shards, or `-TestShardCount 5` for the Linux layout (index 4 is the artifact owner and runs without `-TestShardOnly`). Omit `-TestShardOnly` for a standalone full release gate.
   - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -DocsTierConsumerTests` — reproduce the CI policy-docs leg: every release gate plus only the classes under `consumers` in `eng/docs-tier-test-consumers.json` (about 2 to 3 minutes locally). Not combinable with `-TestShardOnly` or a shard count above 1. Contract: `CI_POLICY.md` § Docs Route Test Selection.
-  - `pwsh ./eng/get-test-shard-plan.ps1 -TestAssemblyPath <RoslynMcp.Tests.dll> -TestShardCount 2 -TestShardIndex 0` — inspect the deterministic complete/disjoint class manifest as JSON. Discovery and integrity failures exit nonzero.
+  - `pwsh ./eng/get-test-shard-plan.ps1 -TestAssemblyPath <RoslynMcp.Tests.dll> -TestShardCount 6 -TestShardIndex 0` — inspect the deterministic complete/disjoint class manifest as JSON. Discovery and integrity failures exit nonzero.
 
 ## Package Identity
 

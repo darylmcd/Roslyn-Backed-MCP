@@ -1,40 +1,47 @@
 # CI Policy
 
-This document is the canonical validation and merge-gating contract.
+This document is the canonical validation and merge-gating contract: current rules only. History and measurements: `ai_docs/references/ci-topology-decision-log.md`. Workflow, planner, profile and cache maintenance: `ai_docs/references/ci-internals.md`.
 
 ## Trigger And Routing Contract
 
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
-| Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe and quality job skipped | Not applicable |
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths and Markdown inside a source root) | One hosted Linux leg, the artifact owner: every gate of the release verifier (every release policy gate plus publish/hash) and the docs-tier consumer test classes only (§ Docs Route Test Selection); exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; audit skipped |
+| Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; SDK-floor probe and quality job skipped | Not applicable |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths and Markdown inside a source root) | One hosted Linux leg, the artifact owner: every gate of the release verifier (every release policy gate plus publish/hash) and the docs-tier consumer test classes only (§ Docs Route Test Selection); SDK-floor probe and quality job skipped | Coverage and `Network` tests skipped; audit skipped |
 | Any code-bearing pull request | Six hosted Windows shards + five hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
 | Merge-queue group (`merge_group`) | Always the full code-bearing topology (no trusted changed-file set, so no docs-only/evidence-only route) | Coverage and `Network` tests skipped |
 | Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and live `Network` tests enabled |
+
+Jobs of `ci.yml`:
+
+| Job | Runs on | Cap (min) | Runs when |
+|---|---|---:|---|
+| `route` | `ubuntu-latest` | 3 | Always |
+| `validate-leg (<name>)` matrix | Per leg (`runs_on`) | Per leg (`timeout_minutes`): Windows 45; Linux code 45 (TEMPORARY, restore 30 via row `ci-restore-linux-leg-timeout-30-after-rebalance`); docs leg 30; dispatch/schedule leg 90 | Not on the evidence route |
+| `sdk-floor (10.0.400)` | `ubuntu-latest` | 15 | Dispatch, schedule, merge group, code PRs (not docs or evidence PRs) |
+| `quality` | `ubuntu-latest` | 30 | Dispatch, schedule, merge group, code PRs |
+| `evidence-lint` | `ubuntu-latest` | 5 | Evidence route only |
+| `validate-gate` | `ubuntu-latest` | 5 | Always (`if: always()`) |
 
 Rules:
 
 - Do not add a push-to-`main` trigger. Protected changes arrive through an already-validated pull request.
 - Cancel superseded pull-request runs. Never cancel dispatch or scheduled runs.
 - Route all public-repository pull-request code only to GitHub-hosted runners. A repository-level self-hosted runner is not protected by an in-workflow fork predicate because a fork can modify the workflow itself.
-- Keep the repository-level self-hosted runner inventory empty while this repository remains public under a personal account. Any future hybrid lane requires the infrastructure-enforced authorization and disposable-worker boundaries documented in `docs/self-hosted-runner.md` before registration.
+- Keep the repository-level self-hosted runner inventory empty while this repository remains public under a personal account. A future hybrid lane requires the infrastructure-enforced authorization and disposable-worker boundaries in `docs/self-hosted-runner.md` before registration.
 - Classify both `filename` and `previous_filename` from the pull-request files API. A source-to-doc rename is code-bearing because its removed source path still requires full validation.
-- Require the files API record count to equal `pull_request.changed_files` and remain below the endpoint's 3,000-file cap before selecting the docs-only route. A capped or incomplete enumeration is code-bearing and receives full validation.
-- Treat behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix.
-- Treat Markdown under `src/`, `analyzers/`, `samples/`, and `tests/` as code-bearing. It is a build, pack or fixture input, not documentation: the analyzer release-tracking files (`AnalyzerReleases.*.md`), the packed `src/RoslynMcp.Host.Stdio/README.md` (also the registry ownership marker), and sample or test fixtures.
-- Docs-tier files feed release gates: `CHANGELOG.md` (version drift, breaking-version bump), `THIRD-PARTY-NOTICES.md` (restored-license verification), allowlisted plugin files (package allowlist). The docs route's one leg is therefore the artifact owner and runs every gate of `verify-release.ps1`, never `-TestShardOnly`, so no release gate can be bypassed by a docs-tier change. `-DocsTierConsumerTests` narrows only the test set.
+- Require the files API record count to equal `pull_request.changed_files` and remain below the endpoint's 3,000-file cap before selecting the docs-only route. A capped or incomplete enumeration is code-bearing.
+- Treat behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing.
+- Treat Markdown under `src/`, `analyzers/`, `samples/`, and `tests/` as code-bearing: it is a build, pack or fixture input (analyzer release-tracking files `AnalyzerReleases.*.md`, the packed `src/RoslynMcp.Host.Stdio/README.md`, which is also the registry ownership marker, and sample or test fixtures).
+- Docs-tier files feed release gates: `CHANGELOG.md` (version drift, breaking-version bump), `THIRD-PARTY-NOTICES.md` (restored-license verification), allowlisted plugin files (package allowlist). The docs-route leg is therefore the artifact owner and runs every gate of `verify-release.ps1`, never `-TestShardOnly`. `-DocsTierConsumerTests` narrows only the test set.
 - A pull request takes the highest tier any of its paths (including rename origins) needs: code > docs > evidence.
 - The evidence tier is limited to paths no test or `eng/` script reads. Files inside evidence roots that CI does read stay docs tier through `$evidenceExclusions` in `eng/resolve-ci-topology.ps1` (currently `ai_docs/items/backlog-d-fragment-schema.md` and `audit-reports/_latest-promotion-scorecard.json`). `CiEvidenceTierConsumerContractTests` fails on any new reference to an evidence root until it is classified.
-- Never use workflow-level `paths`/`paths-ignore` to skip validation. The required `validate` check would never report and the pull request would stay blocked; skips must happen inside the workflow with `validate-gate` still reporting.
+- Never use workflow-level `paths`/`paths-ignore` to skip validation: the required `validate` check would never report. Skips happen inside the workflow with `validate-gate` still reporting.
 - On the evidence route `validate-gate` passes only when `evidence-lint` succeeded and the build/test matrix, SDK-floor probe, and quality job were skipped, never failed or cancelled.
-- Keep the pull-request `validate-gate` check named `validate`. Dispatch/schedule runs must emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
-- Merge-queue groups (`merge_group`) also report `validate`, so a merge queue can wait on that context if one is enabled. The current default-branch ruleset has no merge-queue rule (verified 2026-11-09 via `gh api repos/darylmcd/Roslyn-Backed-MCP/rulesets/14515474`); the trigger is dormant until one is. The changed-file format gate diffs against `github.event.merge_group.base_sha`.
+- Keep the pull-request `validate-gate` check named `validate`. Merge-queue groups (`merge_group`) also report `validate`. Dispatch/schedule runs emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
+- The default-branch ruleset (`Default Branch Ruleset`, id 14515474) has no merge-queue rule (verified 2026-11-17 via `gh api repos/darylmcd/Roslyn-Backed-MCP/rulesets/14515474`), so the `merge_group` trigger is dormant until one is added. The changed-file format gate diffs against `github.event.merge_group.base_sha`.
 
-The routing decision itself -- leg construction, docs-only classification, and the fail-closed
-count-mismatch/cap guard -- is a pure function in `eng/resolve-ci-topology.ps1`. The `route` job's
-step performs the `gh api` pull-request file listing (the only GitHub API access in the decision
-path) and hands the result to that script; it does not reimplement the decision inline. This keeps
-the decision runnable and table-tested (`CiTopologyDecisionContractTests`) outside GitHub Actions.
+The routing decision (leg construction, docs-only classification, fail-closed count-mismatch/cap guard) is a pure function in `eng/resolve-ci-topology.ps1`, table-tested by `CiTopologyDecisionContractTests`. The `route` job only performs the `gh api` file listing and passes it in; it never reimplements the decision inline.
 
 The router emits typed leg fields. Keep their concerns separate:
 
@@ -44,33 +51,32 @@ The router emits typed leg fields. Keep their concerns separate:
 | `artifact_owner` | Sole policy/release-artifact owner |
 | `timeout_minutes` | Explicit per-leg job cap |
 | `test_shard_index`, `test_shard_count` | Complete class partition passed to `verify-release.ps1` |
-| `test_scope` | `full` = this leg's shard of the whole suite; `docs-consumers` = only the classes in `eng/docs-tier-test-consumers.json` (policy-docs leg). The workflow fails a leg with any other value |
+| `test_scope` | `full` = this leg's shard of the whole suite; `docs-consumers` = only the classes in `eng/docs-tier-test-consumers.json`. The workflow fails a leg with any other value |
 
 ## Pull-Request Test Partition
 
-- Code pull requests and merge-queue groups run six concurrent Windows class shards and five concurrent Linux class shards (see § Linux Shard Count Decision).
-- All eleven code pull-request shards run on separate GitHub-hosted runners.
-- Policy-only documentation PRs run one Linux leg whose tests are the docs-tier consumer classes, not a partition of the suite (§ Docs Route Test Selection; operator decision 2026-11-17, which supersedes the earlier rule that the docs route run the complete class partition). Do not restore a zero-test docs route: repository tests consume Markdown contracts, and `DocsTierTestConsumerContractTests` is what keeps a new consumer covered. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
-- `eng/get-test-shard-plan.ps1` reads compiled MSTest metadata. It must fail on an invalid index/count, missing assembly, unreadable metadata, unsafe class name, zero discovered classes, empty shard, overlap, or incomplete assignment.
+- Code pull requests and merge-queue groups run six concurrent Windows class shards and five concurrent Linux class shards, each on its own GitHub-hosted runner (§ Linux Shard Count Decision).
+- Policy-only documentation PRs run one Linux leg of docs-tier consumer classes, not a partition of the suite (§ Docs Route Test Selection). Do not restore a zero-test docs route: repository tests consume Markdown contracts, and `DocsTierTestConsumerContractTests` keeps a new consumer covered. The evidence route is the one zero-test route, safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
+- `eng/get-test-shard-plan.ps1` reads compiled MSTest metadata and must fail on an invalid index/count, missing assembly, unreadable metadata, unsafe class name, zero discovered classes, empty shard, overlap, or incomplete assignment.
 - Shards use exact MSTest `ClassName` predicates. Do not use `FullyQualifiedName~` prefix matching.
 - `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
 - Keep pull-request coverage disabled. Keep dispatch/schedule coverage unsharded until coverage merge semantics are explicitly implemented.
-- Keep matrix `fail-fast: false` so independent OS/shard failures remain visible in one run.
+- Keep matrix `fail-fast: false` so independent OS/shard failures stay visible in one run.
 - Keep the exact SDK-floor lane isolated from hosted-image SDKs and bounded to restore, Release build, a representative MSBuildWorkspace load, and the native fork admission late-child metadata/copy cases. The latest-`10.0.x` matrix owns the complete suite.
 
 ## Docs Route Test Selection
 
-Operator decision 2026-11-17. It supersedes the rule that a policy-only documentation pull request runs the complete class partition (four Linux shards). Code pull requests, merge-queue groups and dispatch/schedule runs are unchanged and run the whole suite.
+Operator decision 2026-11-17; evidence in the decision log. A policy-only documentation pull request runs every non-test gate and only the docs-tier consumer test classes. Code pull requests, merge-queue groups and dispatch/schedule runs run the whole suite.
 
 | Part | Contract |
 |---|---|
 | Topology | One leg, `docs-linux-1-of-1`: `ubuntu-latest`, artifact owner, 30-minute cap, `test_shard_count` 1, `test_scope` `docs-consumers` |
-| Non-test gates | Unchanged: `verify-ai-docs.ps1`, `verify-actionlint.ps1`, and every gate of `verify-release.ps1` (package family, version drift, shipped skills, package allowlist, changelog fragments, breaking version, registry readiness, restored licenses, Release build, publish/hash) |
-| Tests | Exactly the classes under `consumers` in `eng/docs-tier-test-consumers.json`, as an exact `ClassName=` filter, with the same category filter as every pull-request leg (`eng/verify-release.ps1 -DocsTierConsumerTests`) |
+| Non-test gates | `verify-ai-docs.ps1`, `verify-actionlint.ps1`, and every gate of `verify-release.ps1` (package family, version drift, shipped skills, package allowlist, changelog fragments, breaking version, registry readiness, restored licenses, Release build, publish/hash) |
+| Tests | Exactly the classes under `consumers` in `eng/docs-tier-test-consumers.json`, as an exact `ClassName=` filter with the same category filter as every pull-request leg (`eng/verify-release.ps1 -DocsTierConsumerTests`) |
 | Calibration | Skipped: the Linux build-calibration steps require `test_shard_count > 1` |
 | Required check | `validate-gate` still requires the validate matrix (this leg) to succeed |
 
-Fail-closed rules of the verifier. Each fails the leg; none can pass with fewer tests:
+Fail-closed rules of the verifier (each fails the leg; none can pass with fewer tests):
 
 - List file missing, empty, not JSON, without `consumers`, or with zero entries.
 - An entry without a plain class name (`[A-Za-z_][A-Za-z0-9_.]*`), or a class listed twice.
@@ -79,41 +85,13 @@ Fail-closed rules of the verifier. Each fails the leg; none can pass with fewer 
 - `-DocsTierConsumerTests` combined with `-TestShardOnly` or a shard count above 1.
 - A `test_scope` value the workflow does not know.
 
-`DocsTierTestConsumerContractTests` enforces one thing: every test class with a detectable signal is classified. It does not decide the classification. A `nonConsumers` entry is a person's judgment that the signal is not a read of a docs-tier file, and that judgment can be wrong (one was, and was corrected in review of this change). A test class is a candidate when one of these holds, and every candidate must be a `consumers` entry or a `nonConsumers` entry with a reason:
+Guard contract (`DocsTierTestConsumerContractTests`; its class summary lists the signals and blind spots):
 
-| Signal | Detection |
-|---|---|
-| Docs-tier path token in the class file | `.md`, `ai_docs`, the promotion scorecard name, `changelog.d`, or a `docs` path segment. Tokens, not joined paths, so `Path.Combine(root, "docs", "setup.md")` matches |
-| Docs-reading script named in the class file | A script outside `tests/` and `samples/` whose text carries a docs-tier token or walks a tree (`git ls-files`, `-Recurse`, `AllDirectories`), or that names such a script (followed transitively). Derived from the scripts on every run; no script list is maintained |
-| Repository tree walk in the class file | `ls-files`, or a recursive walk in a file that also names the repository root |
-| Inheritance | A concrete test class that derives, at any depth, from a type declared in a signal-carrying file. The base may be abstract and need not be a test class; it is resolved by reflection |
-| Shared helper or fixture script under `tests/` that no test class derives from | A docs-tier token fails outright (move the read into the test classes). Any other signal needs a `reviewedHelperFiles` entry |
-
-The guard also fails on a listed class that no longer exists or no longer carries a signal, on a consumer whose every case is in the `Benchmark` or `Network` category, and on a list that is unsorted or malformed. When in doubt, list a consumer: an extra class costs seconds, a missing one is an undetected break.
-
-What the guard cannot detect:
-
-- A path assembled at run time from parts that are not tokens (a name read from another file, an extension added by code).
-- A tree walk in a file that never names the repository root, or a wildcard listing of a mixed directory without a docs-tier token.
-- A docs-tier read made through reflection, by product code under `src/`, or by a script invoked under a computed name.
-- A wrong `nonConsumers` reason. Classification is a review judgment; the guard checks only that it was made.
-
-Exposure: a docs-tier change that breaks a class missing from the list is not caught on that docs pull request. The next code-bearing pull request or the Monday schedule catches it; both run the whole suite.
-
-Evidence (hosted, `pull_request` runs of `ci.yml`, 2026-10-20 to 2026-11-17):
-
-| Measurement | Value |
-|---|---|
-| Runs | 600, of which 170 docs-only (28%) |
-| Docs-only run before this decision | About 22 min wait (median leg 1244-1410 s), about 85 runner-minutes, all 6,677 cases |
-| Test failures caused by the docs change, in those 170 runs | 0 |
-| Docs-caused failures, all from gates this route keeps | 8: `eng/verify-ai-docs.ps1` 4, `eng/verify-changelog-fragments.ps1` 4 |
-| Red runs unrelated to the docs change | 6: five flaky tests in classes that read no docs (runs 43637525418, 43634218943, 43377558878, 42450892059, 40359428470), one build break on `main` (run 42266554397) |
-| Text scan when the decision was made | 45 test-class files with a docs-tier token |
-| List at this change | 16 consumer classes, 43 reviewed non-consumer classes, 4 reviewed helper files |
-| Local run of the route (Windows dev host, one run, not a hosted measurement) | 16 of 523 classes, 143 cases (142 passed, 1 platform skip); test phase 104 s; whole verifier 135 s. `FormatterBaselineContractTests` is about 90 s of the test phase when run alone |
-
-Evidence limit: 157 of the 170 docs-only runs changed `ai_docs/backlog.md`, and `README.md` never changed in the window, so the history barely exercised the documents that tests read. The guard test, not the history, is what makes the selection sound. No hosted run of the one-leg route existed when this was written; the first docs-only `validate` run after this change is its first measurement.
+- Every test class, helper or fixture script with a detectable docs-tier signal (path token, docs-reading script, repository tree walk, inheritance from a signal-carrying type) must be a `consumers` entry or a `nonConsumers` entry with a reason; a signal-carrying helper under `tests/` needs a `reviewedHelperFiles` entry.
+- The guard checks that a classification was made, not that it is right. A wrong `nonConsumers` reason is a review defect.
+- It also fails on a listed class that no longer exists or carries no signal, on a consumer whose every case is `Benchmark` or `Network`, and on an unsorted or malformed list.
+- When in doubt, list a consumer: an extra class costs seconds, a missing one is an undetected break.
+- Exposure: a docs-tier change that breaks a class missing from the list is not caught on that docs PR. The next code-bearing PR or the Monday schedule catches it; both run the whole suite.
 
 ## Required Checks And Artifacts
 
@@ -123,237 +101,38 @@ Evidence limit: 157 of the 170 docs-only runs changed `ai_docs/backlog.md`, and 
 | Changelog-fragment validation | Full release verifier on the artifact-owning leg of code and policy-doc routes; `evidence-lint` on the evidence route |
 | AI-doc and shipped-skill validation | Artifact-owning leg; includes policy-doc PRs |
 | Restore, Release build, test | Every pull-request/test leg |
-| Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load + native fork admission late-child metadata/copy cases |
+| Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, merge groups, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load + native fork admission late-child metadata/copy cases |
 | Publish/hash | Artifact-owning leg of code and policy-doc routes (uploaded from code routes only) |
-| Fail-closed NuGet vulnerability audit | Concurrent route-dependent Linux quality job on code PRs, merge groups, dispatch, and schedule; independent of test shards and SDK floor |
-| Changed-file formatter gate | Quality job on code PRs and merge groups, after audit restore and a checked Debug build of the repository analyzer; new FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE findings on touched files fail, tracked baseline debt is reported not suppressed |
+| Fail-closed NuGet vulnerability audit (`eng/verify-nuget-audit.ps1`: `NuGetAuditMode=all`, NU1900-NU1904 as errors; also `just vuln-audit`) | Concurrent Linux `quality` job on code PRs, merge groups, dispatch, and schedule; independent of test shards and SDK floor |
+| Changed-file formatter gate | `quality` job on code PRs and merge groups, after audit restore and a checked Debug build of the repository analyzer; new ENDOFLINE, FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE findings on touched files fail, tracked baseline debt is reported not suppressed |
 | `host-stdio-publish`, `release-manifests` | Artifact-owning non-doc leg; 14 days |
-| Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, generated/uploaded with `always()`; 14 days |
+| Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, uploaded with `always()`; 14 days |
 | Cobertura + HTML `code-coverage` | Dispatch/schedule artifact owner; 30 days |
 
-`eng/verify-release.ps1` remains a standalone release gate. It calls `eng/prepare-validation-dependencies.ps1` for checked main restore plus canonical all-sample preparation, verifies restored root-solution licenses on non-test-only legs, builds Release, runs tests in a private per-invocation `TEMP`/`TMP`/`TMPDIR`, disables reusable MSBuild and compiler servers within the invocation, removes the exact temp root, publishes the stdio host, and writes the hash manifest. The aggregate preparation script composes `eng/prepare-test-fixtures.ps1`, the sole sample-discovery owner also used by direct tests and `just test`. Restored-license verification retains the root solution and active package-root filters; sample assets do not replace root metadata. Preparation or license failure prevents build, tests, and publication. Test and cleanup failures are aggregated rather than hidden. CI passes `-TestShardOnly` only on non-owner legs, so platform-neutral policy and publish/hash work execute exactly once per code or policy-doc route, on the artifact owner; the default remains the complete standalone gate. `-DocsTierConsumerTests` (the policy-docs leg) keeps every one of those steps and replaces only the test filter (§ Docs Route Test Selection).
-
-The quality job has a 30-minute cap, full-history checkout, and latest-`10.0.x` SDK. It runs the mandatory audit first to restore its own solution assets. On an exact cache miss it also prepares all canonical samples and explicitly saves packages before remaining quality work. Code PRs and merge groups then build `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` in Debug with checked native exit before changed-file formatting with `-NoRestore`; restore alone does not produce the project analyzer binary. Dispatch/schedule retain the mandatory audit and conditional sample preparation/cache save. Policy-doc and evidence routes skip the job.
-
-## Linux PowerShell Startup Input Ownership
-
-- Linux `validate` legs and the NuGet `publish` job run `eng/initialize-pwsh-startup-cache.sh` before their first PowerShell step. One normal seed records a fresh job-private `StartupProfileData-NonInteractive`; subsequent ordinary writes to that file are denied (mode444). Its private cache directory stays writable (mode700) for module analysis, telemetry under existing configuration and other siblings.
-- The helper persists the unique native `RUNNER_TEMP` cache root through `GITHUB_ENV`; unchanged test launchers inherit it. Normal JIT and every functional test remain enabled. Post-seed optional startup recording is intentionally denied; this ownership boundary does not establish the cause or cure of any prior native crash. Runner teardown owns cleanup after descendants finish.
-- Sequential routing, quality, evidence, aggregate and SDK-floor jobs retain their existing lifetime. Local operator runs are separate from this hosted-job boundary.
-
-## NuGet Cache Lifecycle
-
-- Both cache sites use pinned restore-only and explicit save-only actions; no matrix reader registers post-test cache compression.
-- Restore/save share `NUGET_CACHE_PATH`, the existing OS-qualified dependency hash key and fallback prefix. Save uses the restore action's primary-key output, never a recomputed key.
-- Save only after successful population when `cache-hit != 'true'`; exact hits and readers never save. Prefix hits and cold misses retain population and persistence.
-- Linux code PRs, merge groups, dispatch and schedule: quality is the sole writer, after strict audited main restore plus canonical sample preparation and before analyzer/formatter work.
-- Windows code PRs and merge groups: shard index 0 is the sole writer. Policy-doc Linux: the artifact owner is the sole writer. Each calls the same main-plus-sample preparation as normal release verification and saves before either release step.
-- Every release leg still performs checked preparation, even on cache hits. Cache state never substitutes for restore, audit, build, tests or release gates. Evidence-only and SDK-floor routes retain their existing uncached behavior.
-- Preserve native immutable-cache races across separate runs. Readers may restore before the writer saves. Lookup remains OS/version and current/default/applicable-base-ref scoped; PR-created caches remain PR-ref scoped and are not promoted to main. Dispatch/schedule on main can populate the default-branch Linux cache.
-- Save work still consumes its writer's unchanged job budget. A warm hit proves no cold save; inspect actual key, matched key, ref, OS, explicit save and cleanup logs for cold-save qualification. Linux observations do not prove Windows persistence. Fresh five-complete-green-run timing calibration remains required before claiming a steady-state improvement.
-
-CI and `just vuln-audit` invoke `eng/verify-nuget-audit.ps1`. It forces restore with `NuGetAuditMode=all` and promotes NU1900-NU1904 to errors, covering advisory-source failure plus vulnerable direct/transitive packages.
-
-## Pre-Sharding Timing Evidence (historical)
-
-Superseded by the 2026-10-29 recheck under § Hosted Shard Weighting Decision. Every number in this section predates sharding and the suite growth since; none describes the current steady state.
-
-Measured from the five most recent successful PR legs before this refactor:
-
-| Metric | Repository-level Windows | Hosted Linux |
-|---|---:|---:|
-| Median job | 16m09s | 25m10s |
-| Median `verify-release` | 15m42s | 24m33s |
-| Median `dotnet test` | 15m23s | 23m40s |
-| Tests as release-step share | about 98% | about 97% |
-
-Fresh Windows TRX baseline: 2,536 cases (2,530 passed, 6 skipped) in 16m30s. MSTest spent about 6m13s in the parallelizable phase and 10m17s in the serialized `[DoNotParallelize]` tail. The same run proved that scripting watchdog tests left eight CPU-bound background threads alive for the remainder of the testhost. Treat this baseline as pre-refactor evidence; use uploaded per-leg TRX from the merged workflow for the new steady state.
-
-Wave 40 local Windows timing probe (2026-09-29): repeat the command below three times on each side of removing `WorkspaceValidationTimeoutTests`'s opt-out, changing only the TRX filename per run. All six two-class TRX files recorded 25 passed, 0 failed. Durations below are from TRX test start/end timestamps, not the `dotnet test` process wall time.
-
-```powershell
-$probeOutput = Join-Path ([IO.Path]::GetTempPath()) 'roslyn-wave40-evidence'
-New-Item -ItemType Directory -Force -Path $probeOutput | Out-Null
-dotnet test tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj --no-restore --settings eng/ci.runsettings --filter 'ClassName=RoslynMcp.Tests.WorkspaceToolsIntegrationTests|ClassName=RoslynMcp.Tests.WorkspaceValidationTimeoutTests' --results-directory $probeOutput --logger 'trx;LogFileName=wave40-before-1.trx'
-```
-
-| Local probe | Run 1 | Run 2 | Run 3 |
-|---|---:|---:|---:|
-| Before: both classes in serialized tail | 23.0 s | 20.2 s | 14.1 s |
-| After: retained `WorkspaceToolsIntegrationTests` serialized tail | 6.7 s | 6.7 s | 6.6 s |
-| After: parallel-eligible `WorkspaceValidationTimeoutTests` | 7.2 s | 6.9 s | 7.0 s |
-
-An additional three-class probe appended `|ClassName=RoslynMcp.Tests.StringLiteralReplaceServiceTests` to the filter after removal. Each of its three TRX files recorded 27 passed, 0 failed; the timeout class overlapped that parallel-enabled companion for 4.0 s, 4.5 s, and 4.2 s, respectively. The retained shared-workspace class ran alone in the serialized tail for 6.3 s, 8.2 s, and 6.1 s. These bounded local runs establish the class-level ownership change; they do not replace a full-suite or hosted-runner baseline.
-
-The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, with cumulative per-test TRX durations of 2,549s and 1,764s. Because that did not improve the prior 16m09s repository-level median, code pull requests use four hosted Windows shards.
-
-GitHub's public-repository `ubuntu-latest` and `windows-latest` standard runners currently provide 4 CPUs and 16 GB RAM. Do not retain the retired 2-vCPU assumption in repository documentation.
+`eng/verify-release.ps1` stays a standalone release gate with the complete default. CI passes `-TestShardOnly` only on non-owner legs so platform-neutral policy and publish/hash work runs once, on the artifact owner. Step detail: `ai_docs/references/ci-internals.md`.
 
 ## Hosted Shard Weighting Decision
 
-The four-shard calibration is closed. `eng/collect-hosted-shard-timings.ps1` measured five complete green `ci` runs (30 leg observations), modelling each hosted image independently and mixing in no local-machine timing:
+Standing decision (history: decision log). Hosted shard weighting is the per-image duration profile `eng/shard-duration-profile.json`, not static case counts.
 
-| Hosted image | Legs | Critical path | Balanced floor | Achievable gain | Single-leg noise band | Worst same-leg case-duration spread | Between-leg case-duration spread |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `windows-latest` | 4 | 720.4s | 647.1s | 73.4s (10.2%) | 82.9s | 1.87x | 1.50x |
-| `ubuntu-latest` | 2 | 743.2s | 662.6s | 80.6s (10.8%) | 140.3s | 2.21x | 1.18x |
-
-Superseded by the 2026-10-29 recheck below. Decision at that calibration: the deterministic discovered-case weights in `eng/get-test-shard-plan.ps1` remain the shard weighting on both hosted images. Do not add an OS-specific duration profile. A perfect duration partition recovers less than the single-leg wall-time noise band on either image, and summed TRX case duration is not a partition signal at all: its same-leg run-to-run swing exceeds the between-leg spread, so ranking legs by it reproduces runner noise rather than class cost. At that calibration, the residual `ubuntu-latest` gap was structural rather than class skew: the artifact-owner leg also ran docs validation, formatting, the NuGet audit, and publish upload. Formatting and audit now run in the independent quality job; docs validation and publish remain with the artifact owner. This movement triggers a fresh five-complete-green-run timing recheck; the historical measurements above do not establish the new steady state or a numerical improvement.
-
-### 2026-10-29 recheck (seven-leg topology)
-
-Trigger met: the Linux shard count changed (2 to 3) and non-test work moved to the quality job. `eng/collect-hosted-shard-timings.ps1` measured five complete green first-attempt `ci` pull-request runs (35 leg observations; 4 Windows + 3 Linux legs each), TRX downloaded inside the 14-day window, no local timing mixed in:
-
-| Run | Head | Created (UTC) |
-|---|---|---|
-| 40783926346 | b74f0546 | 2026-10-28 22:58 |
-| 40788319028 | e24d0063 | 2026-10-28 23:34 |
-| 40788434338 | a92e1033 | 2026-10-28 23:35 |
-| 40800095395 | a7cf6874 | 2026-10-29 01:23 |
-| 40803366211 | 35477746 | 2026-10-29 01:56 |
-
-Image evidence is the `windows-latest` / `ubuntu-latest` job label only; runner image build versions were not captured. The five heads are different pull requests (cases per Windows leg ranged 1358-1428), so the sample mixes suite revisions.
-
-| Hosted image | Legs | Critical path | Balanced floor | Achievable gain | Single-leg noise band | Worst same-leg case-duration spread | Between-leg case-duration spread |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `windows-latest` | 4 | 1827.2s | 1348.9s | 478.4s (26.2%) | 325.9s | 1.93x | 2.09x |
-| `ubuntu-latest` | 3 | 1322.8s | 1093.8s | 229.0s (17.3%) | 224.2s | 1.68x | 1.98x |
-
-Findings:
-
-- The collector reports material skew on both images: the achievable gain exceeds the single-leg noise band, and summed case duration ranks legs (between-leg spread above same-leg spread, narrowly on Windows). Under the re-check trigger above, the case-count weighting no longer stands. An image-specific duration profile is warranted for both images; implementation is tracked in `ci-shard-duration-profile-hosted`.
-- Static case counts misjudge cost. Mean TRX case seconds per run on `windows-latest`: `InterfaceBaseTypeInsertionIntegrationTests` 1013s (12 test methods in the file, so about 85s each), `ForkNativeAdmissionTests` 759s, `MovedDeclarationFileOwnershipIntegrationTests` 569s, `CrossProjectReceivingNamespaceIntegrationTests` 511s. The same four lead `ubuntu-latest`. MSTest runs a class's cases serially, so one such class floors its leg's wall time; a partition cannot beat the largest class. Cost reduction for these classes is tracked in `test-heavy-integration-class-cost` and its `test-heavy-class-cost-*` siblings.
-- The Windows critical path moved from 720.4s (earlier calibration, about 2,500 total cases) to 1827.2s with about 5,600 cases across the four legs: the growth is mostly suite size, not shard topology.
-- `windows-hosted-1-of-4` (1621.8s mean) and `windows-hosted-4-of-4` (1646.2s mean) bound the critical path; `windows-hosted-2-of-4` averages 860.6s.
-
-Evidence limits: five runs across five heads, one image version unknown, per-leg wall spread 1.4x-1.9x. Re-run the collector after the profile lands; do not tune a profile from fewer than five complete green runs.
+| Rule | Detail |
+|---|---|
+| Windows partition | Fixed by the profile |
+| Linux partition | The profile, additionally scaled per run by the calibration build of each Linux leg (`ai_docs/references/ci-internals.md` § Linux runner capacity) |
+| Local and unsharded runs | Static case weighting |
+| Profile source | Five complete green first-attempt hosted PR code runs; never a local measurement or a red/cancelled run |
+| Hand edits | Never. Regenerate by the refresh checklist (`ci-internals.md` § Duration-profile refresh) after material test-class or hosted-image changes |
+| Invalid profile | Missing image, malformed profile, fewer than five source runs, or no matching current classes fails closed; never reuse an invalid profile silently |
+| Re-check trigger | The shard count changes, non-test work moves between legs, or a hosted image's achievable gain exceeds its single-leg noise band across at least five complete green runs |
+| Fallback weighting | A class absent from the profile or with a changed static weight is weighted by static cases times the image's mean seconds per case, so it can mis-weight a leg until the next refresh (current gap: `ci-windows-six-shard-rebalance-remeasure`) |
 
 ### Linux runner capacity
 
-Each sharded hosted Linux matrix leg (`test_shard_count > 1`: the code route) times the same checked Release build with the release verifier's build-server settings. The single policy-docs leg is unsharded and skips the calibration steps. Read the successful build step durations from the current Actions run and order them by shard index. The planner minimizes projected completion time using each assigned class's measured cost and a relative speed multiplier from that shard's build duration. Faster runners receive more work. Every leg requires the complete vector and logs the partition hash. Partial reruns use the earliest successful build duration per index from the same run to preserve the partition already used by other jobs.
+Each sharded Linux leg times the same checked Release build; the planner gives faster runners more work. Every leg waits for all sibling calibration builds under a 3-minute resolver limit, so one late or failed sibling fails every Linux leg until rerun (`ci-linux-calibration-sibling-wait-coupling`). Mechanics: `ai_docs/references/ci-internals.md`.
 
-The ordinary release verifier still performs checked dependency preparation, policy, build and tests, followed by publish/hash on the artifact owner. Its build can reuse the calibration outputs. Windows, unsharded dispatch and scheduled validation use the existing plan; the policy-docs leg uses its consumer list and no plan. The Jobs API is read-only and scoped to the run.
+### Linux Shard Count Decision
 
-### Hosted duration profile
-
-`eng/shard-duration-profile.json` is generated by `eng/collect-hosted-shard-timings.ps1 -ProfileJson` from five complete green first-attempt PR runs, with one artifact per matrix leg. The October 29 profile used seven legs per run. The Ubuntu 26.04 refresh uses eight legs per run (four Ubuntu 26.04 and four Windows Server 2025 with Visual Studio 2026), from runs 43677876097, 43682352679, 43732196537, 43737385816, and 43762219005. The 2026-11-17 refresh (shard count changed to six Windows + five Linux, § Linux Shard Count Decision) is the committed profile: the same eight-leg shape from the five most recent qualifying code runs 43762219005, 43765191714, 43774416634, 44121901489, and 44128243501, with 512 classes per image. Before downloading, verify each hosted run's conclusion, attempt number, head, and every leg through GitHub; the offline generator cannot verify remote run status. It validates the manifest and TRX inputs, requires the same complete run IDs on both images, and includes a class only when its static case weight is unchanged and it has positive measured duration in every sampled run. Regenerate from fresh complete green hosted runs within artifact retention, using the collector's `-ResultsRoot` and `-LegManifest` inputs; write its JSON to a scratchpad path, inspect the run IDs and class counts, then replace the committed profile. Do not use local measurements or a red/cancelled run as profile input.
-
-The Ubuntu 26.04 profile also carries forward timings for tests split into smaller classes to reduce the time a single class runs after its shard's other workers finish. For the split, stage copies of the same artifacts. Map each native admission, interface parameter semantics and type extraction TRX definition to the class that now declares its test method. Map each interface header case by its route argument and keep the base writer cases in their original class. Use the compiled planner's static weights for the 13 resulting classes and replace each source class with its split classes in the copied shard plan. Verify case identities and retain their original durations. Run 43762219005 already has the native admission and header class identities and needs the 53 parameter and 57 constructor cases mapped. The other four runs need all 381 affected cases mapped per image. Run the same collector on the staged copies and verify that unrelated weights and each split family's total measured seconds agree with the unmodified replay, allowing for rounding. Use directly observed class identities on subsequent refreshes.
-
-The 2026-11-17 refresh used directly observed identities only, with no staged copies. Ten current classes therefore take the static fallback until five sampled runs carry them unchanged: `TypeExtractionTests`, `TypeExtractionConstructorDispatchTests`, the three `InterfaceParameterSemantics*RouteTests` classes, `CrossProjectInterfaceBindingIntegrationTests`, `TestShardPlanContractTests`, `WorkspaceCloseDrainTests`, `LinuxShardBuildTimesContractTests`, and the never-run `Benchmarks.WorkspaceReadConcurrencyBenchmark`.
-
-Known hole in the committed profile (2026-11-17). The fallback mis-weights five classes that the previous profile measured, in cumulative case seconds:
-
-| Class | Static cases | Previous `windows-latest` / `ubuntu-latest` | Fallback now `windows-latest` / `ubuntu-latest` |
-|---|---:|---:|---:|
-| `InterfaceParameterSemanticsDefaultsRouteTests` | 24 | 341.1 / 248.2 | 70.0 / 54.5 |
-| `InterfaceParameterSemanticsAttributesRouteTests` | 20 | 266.1 / 209.1 | 58.3 / 45.5 |
-| `InterfaceParameterSemanticsModifiersRouteTests` | 9 | 110.3 / 82.9 | 26.3 / 20.5 |
-| `CrossProjectInterfaceBindingIntegrationTests` | 19 (measured at 18) | 168.2 / 121.3 | 55.4 / 43.2 |
-| `WorkspaceCloseDrainTests` | 35 (measured at 33) | 0.7 / 0.8 | 102.1 / 79.5 |
-
-- Under-weighted: the first four classes hide about 676 s (`windows-latest`) and 498 s (`ubuntu-latest`) of previously measured cost from the planner. Over-weighted: `WorkspaceCloseDrainTests` by about 100 s and 79 s.
-- No qualifying input set closes the hole today. The three parameter-semantics classes have their current case counts in only four complete green first-attempt code runs (43765191714, 43774416634, 44121901489, 44128243501); `CrossProjectInterfaceBindingIntegrationTests` has its current count (changed by PR #2132) in one (44128243501); `WorkspaceCloseDrainTests` (changed by PR #2133) in two.
-- Do not hand-edit the profile. Close the hole by the documented refresh once five complete green first-attempt code runs carry these classes unchanged: `ci-windows-six-shard-rebalance-remeasure`.
-
-Hosted `verify-release.ps1` selects the profile by the matrix runner image. The planner uses per-class mean case seconds for a matching current class and static case weight. An absent class, or a class whose static case weight changed, falls back to static case weight scaled by the sampled image's mean seconds per static case. Local unsharded runs retain static weighting. A missing image, malformed profile, fewer than five source runs, or no matching current classes fails closed. Refresh after material test-class changes or hosted image changes; never silently reuse an invalid profile. After this change merges, measure five new complete green runs against the 2026-10-29 critical-path and achievable-gain baseline before closing `ci-shard-duration-profile-hosted`.
-
-Out-of-sample check: PR #1942 run `41474916090` is excluded from profile generation because its Linux shard 1 job was cancelled near the 30-minute cap after 1,971 tests passed. Its TRX class durations total 5,838 / 3,059 / 2,807 seconds under static assignment. Reassigning those same classes with the five-green-run profile yields 3,993 / 3,937 / 3,774 cumulative case seconds across the three Linux legs. These sums show partition balance; they do not predict wall time or turn the cancelled run green.
-The four Windows legs of that same run move from 5,051 / 3,007 / 6,320 / 3,738 to 4,176 / 4,881 / 4,202 / 4,857 cumulative case seconds under the profile, with the same wall-time limitation.
-
-## Linux Shard Count Decision
-
-This section records the shard count of every routed pull-request topology (Windows included), newest decision first.
-
-### 2026-11-17: six Windows + five Linux code shards
-
-Operator decision 2026-11-17 supersedes the four-Windows + four-Linux code topology recorded below. Code-bearing pull requests and merge-queue groups run six `windows-latest` and five `ubuntu-latest` class shards (`windows-hosted-N-of-6`, `linux-N-of-5`).
-
-| Unchanged by this decision | Value |
-|---|---|
-| Policy-doc route | Four `docs-linux-N-of-4` legs (replaced the same day by one `docs-linux-1-of-1` leg: § Docs Route Test Selection) |
-| Dispatch / schedule | One unsharded Linux leg |
-| Per-leg cap | 45 minutes (temporary; row `ci-restore-linux-leg-timeout-30-after-rebalance`) |
-| Artifact owner | The last Linux shard, sole owner |
-| Windows NuGet cache writer | Shard index 0 |
-| Detection | Same suite and filter, split across more legs |
-
-Basis (hosted measurements on the superseded 4 + 4 topology, supplied with the decision):
-
-| Measurement | Value |
-|---|---|
-| `pull_request` runs of `ci.yml`, 2026-10-20 to 2026-11-17 (28 days) | 600: 425 code, 170 docs-only |
-| Slowest Windows shard of a code PR, last 30 runs | Median 1657 s (27.6 min); Linux shards 1059-1239 s |
-| `dotnet test` share of the `Verify release build` step (job logs, runs 44128243501 and 44121901489) | 94-99% |
-| `Verify release build` step share of the whole job (same runs) | 89-91% Linux, 91-96% Windows |
-| Fixed cost before the first test | About 110 s (Linux) and 135 s (Windows) |
-| Run 44128243501 test phase per shard, Linux | 917 / 967 / 917 / 936 s (sum 3737, spread 50) |
-| Run 44128243501 test phase per shard, Windows | 1089 / 1218 / 1752 / 1388 s (sum 5447, spread 663) |
-| Hosted concurrency | Account plan allows 40 concurrent jobs; a code run uses 11 legs + quality + SDK floor = 13 |
-
-Pre-change estimate against the first measurement. Run 44176184128 (head a6ac242a, 2026-11-17, first attempt, green) is the only run of the 6 + 5 topology so far:
-
-| Quantity | Pre-change estimate | Run 44176184128 |
-|---|---|---|
-| Linux leg job seconds | 3737 / 5 + 110 = about 857 each | 861 / 845 / 682 / 843 / 826 |
-| Windows leg job seconds | 5447 / 6 + 135 = about 1043 each | 997 / 893 / 1413 / 1148 / 1227 / 1361 |
-| Windows `dotnet test` seconds, summed over legs | 5447 (unchanged from four shards) | 5940, spread 490 |
-| Run creation to `validate` | About 17-18 min | 24 min (21:05:48Z to 21:29:48Z) |
-
-- Linux met its estimate (slowest leg 861 s against 857 s).
-- Windows did not: the 1043 s figure was an estimate, and the slowest leg took 1413 s. Splitting into six shards did not keep total Windows test time constant, and the legs were not equal although the planner predicted equal shards.
-- The cause of the long `windows-hosted-3-of-6` and `windows-hosted-6-of-6` legs is not identified. No claim is made about whether a single class floors a Windows leg.
-- Against the prior 27.6-minute median for the slowest leg, the run is about 4 minutes faster. That is one run; the collector's single-leg noise band on Windows is about 205 s, so the size of the gain is not established.
-- Part of the Windows spread plausibly comes from the profile hole in § Hosted duration profile. Re-measurement and rebalancing are tracked in `ci-windows-six-shard-rebalance-remeasure`.
-
-The Windows partition is fixed by `eng/shard-duration-profile.json`; the Linux partition is additionally scaled per run by the calibration build (§ Linux runner capacity). Every Linux leg now waits for five calibration builds instead of four, under the same 3-minute resolver limit (longest wait in run 44176184128: 36 s); the coupling between sibling legs is tracked in `ci-linux-calibration-sibling-wait-coupling`.
-
-The shard-count change fired the re-check trigger below. `eng/collect-hosted-shard-timings.ps1` over the five most recent complete green first-attempt code runs (40 leg observations on the superseded 4 + 4 topology; TRX inside the 14-day window; no local timing):
-
-| Run | Head | Created (UTC) |
-|---|---|---|
-| 43762219005 | 8f75c255 | 2026-11-15 21:10 |
-| 43765191714 | 9932fd61 | 2026-11-15 21:42 |
-| 43774416634 | 6214b075 | 2026-11-15 23:22 |
-| 44121901489 | 12252b84 | 2026-11-17 16:06 |
-| 44128243501 | e0dcb786 | 2026-11-17 16:39 |
-
-| Hosted image | Legs | Critical path | Balanced floor | Achievable gain | Single-leg noise band | Worst same-leg case-duration spread | Between-leg case-duration spread |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `windows-latest` | 4 | 1808.4s | 1483.8s | 324.7s (18.0%) | 205.6s | 1.67x | 1.32x |
-| `ubuntu-latest` | 4 | 1308.2s | 1178.4s | 129.8s (9.9%) | 216.5s | 1.61x | 1.24x |
-
-The same five runs regenerated `eng/shard-duration-profile.json` (§ Hosted duration profile). Planner output for the current suite (522 classes) with the previous and the regenerated profile, in cumulative class case seconds per shard (the planner's balance weight; not wall time, since a leg runs classes in parallel):
-
-| Image, shards | Profile | Profiled / fallback classes | Predicted per shard | Same partition scored with the mean class seconds of runs 44121901489 and 44128243501 |
-|---|---|---:|---|---|
-| `windows-latest`, 6 | previous | 514 / 8 | 3103.2 each | 2676.8 / 3042.5 / 3607.0 / 3279.5 / 3071.4 / 3185.1 |
-| `windows-latest`, 6 | regenerated | 512 / 10 | 3117.5 each | 2936.2 / 2985.4 / 3362.8 / 3405.2 / 3108.0 / 3064.7 |
-| `ubuntu-latest`, 5 | previous | 514 / 8 | 2892.0 each | 2506.5 / 2860.3 / 2772.7 / 3211.3 / 2696.6 |
-| `ubuntu-latest`, 5 | regenerated | 512 / 10 | 2914.8 each | 2535.5 / 3059.9 / 2620.1 / 3044.9 / 2787.0 |
-
-Evidence limits: the two scoring runs are also two of the five profile inputs, so the regenerated rows are partly in-sample; the Linux rows omit the per-run build-time scaling; the table was computed before any run of the 6 + 5 topology existed, and run 44176184128 (above) did not show the equal Windows legs it predicts. Re-measure five complete green runs on the new topology before changing counts or caps again.
-
-### 2026-11-08: four Linux shards
-
-The 2026-11-08 recheck supersedes the three-Linux-shard topology below. PR #2032 run `42490458875` cancelled docs shard 2 at the 30-minute cap after its 2,297 tests passed in 28m18s; the release step could not finish. PR #2027 run `42487026249` completed code shard 2 in 29m25s, leaving only 35 seconds of margin. Code and policy-doc routes now partition the same complete class set over four Linux legs, retaining the 30-minute cap and one artifact owner. The exact matrix and disjoint-union contract are tested by `CiTopologyDecisionContractTests`. Re-measure the new hosted legs after the change lands; these two runs establish exhaustion of the old margin, not the achieved duration of the new topology.
-
-### 2026-10-26: three Linux shards
-
-Operator decision 2026-10-26 supersedes the two-Linux-shard topology for code and policy-only documentation PRs. Both routes now run three `ubuntu-latest` class shards; the last shard stays the sole artifact owner, and the 30-minute leg limit is unchanged.
-
-| Evidence (hosted, before this change) | Linux leg wall time |
-|---|---|
-| Code run 40401658309 | linux-1 27m45 / linux-2 22m |
-| Code run 40419476050 (#1855) | linux-1 27m51 / linux-2 17m |
-| Code run 40412863293 (#1854) | linux-1 cancelled at 30m after 2,660 passed, 0 failed (28m23 of tests) |
-| Docs runs for #1853 / #1848 | 22m–27m27 per leg |
-
-The complete Linux partition no longer fits two legs with margin: ordinary test growth reaches the deadline. A third shard keeps the static case-count weighting above (no duration profile), preserves the complete disjoint partition, fail-closed planning, deadlines and single-owner artifact/cache rules, and adds one hosted runner per Linux route. The shard-count change fired the re-check trigger below; the 2026-10-29 recheck under § Hosted Shard Weighting Decision measured it.
-
-### Re-check trigger
-
-Re-run `eng/collect-hosted-shard-timings.ps1` when the shard count changes, when non-test work moves between legs, or when a hosted image's achievable gain exceeds its own single-leg noise band across at least five complete green runs. Uploaded per-leg TRX expires after 14 days, so always re-derive from fresh in-window runs. Never calibrate from a single sample, and never feed a local Windows profile into the hosted `windows-latest` profile.
+Current: code route six Windows (`windows-hosted-N-of-6`) + five Linux (`linux-N-of-5`); the last Linux shard is the sole artifact owner and Windows shard index 0 writes the NuGet cache (operator decision 2026-11-17). Change a count only after re-measuring five complete green runs on the current topology.
 
 ## Test Execution Contract
 
@@ -389,13 +168,13 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 | One release shard | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardIndex <zero-based> -TestShardCount <count>` |
 | The policy-docs leg (every release gate, docs-tier consumer classes only) | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -DocsTierConsumerTests` |
 
-`just ci` composes docs, shipped skills, the changed-file formatter gate, the checksum-pinned actionlint gate, unsharded PR-equivalent release validation, and the vulnerability audit. The same actionlint script also runs on the hosted artifact-owner PR leg. Local validation remains unsharded so one command proves the complete suite.
+`just ci` composes `verify-docs`, the changed-file formatter gate, the checksum-pinned actionlint gate, unsharded PR-equivalent release validation (`verify-release-pr`, which owns the shipped-skill check) and the vulnerability audit. The same actionlint script runs on the hosted artifact-owner PR leg. Local validation stays unsharded so one command proves the complete suite.
 
 ## Merge Proof
 
 Required check: `validate`, the `validate-gate` job of `.github/workflows/ci.yml` on `pull_request` (ruleset `Default Branch Ruleset`, context `validate`). A green `validate` on the PR head commit is the merge proof: the ship helper accepts it with `--ci-proof=validate`; a local `just ci` run is optional.
 
-Basis: every `just ci` step runs inside `validate`, or cannot change outcome on that route. For the policy-doc route's tests that claim rests on a guard test, not on a proof: see the residual below.
+Basis: every `just ci` step runs inside `validate`, or cannot change outcome on that route. For the policy-doc route's tests that claim rests on a guard test, not on a proof.
 
 | `just ci` step | Code route | Policy-doc route | Evidence route |
 |---|---|---|---|
@@ -403,34 +182,36 @@ Basis: every `just ci` step runs inside `validate`, or cannot change outcome on 
 | `verify-changed-format` | `quality` | not run: the gate diffs `*.cs` only; a docs-tier PR changes none | not run: same |
 | `verify-actionlint` | artifact owner | artifact owner | not run: `.github/**` is code tier |
 | `verify-release-pr` release gates + publish/hash | artifact owner (full verifier) | artifact owner (full verifier) | `evidence-lint` runs the changelog contract; other gates read no evidence path |
-| `verify-release-pr` tests (`TestCategory!=Benchmark&TestCategory!=Network`, Release) | complete class partition, Windows x6 + Linux x5 | docs-tier consumer classes only, one Linux leg (`eng/docs-tier-test-consumers.json`); the other classes are not run. `DocsTierTestConsumerContractTests` finds no detectable docs-tier signal in most of them; in the reviewed non-consumers it does find a signal, and a person judged each one not to be a read of a docs-tier file (reason recorded in the list) | not run: no test reads an evidence path (`CiEvidenceTierConsumerContractTests`) |
+| `verify-release-pr` tests (`TestCategory!=Benchmark&TestCategory!=Network`, Release) | complete class partition, Windows x6 + Linux x5 | docs-tier consumer classes only, one Linux leg (`eng/docs-tier-test-consumers.json`); the other classes are not run | not run: no test reads an evidence path (`CiEvidenceTierConsumerContractTests`) |
 | `vuln-audit` (`eng/verify-nuget-audit.ps1`) | `quality` | not run: package inputs (`Directory.Packages.props`, `*.csproj`, `global.json`) are code tier | not run: same |
 | (extra, not in `just ci`) exact SDK floor | `sdk-floor` | skipped | skipped |
 
-Residual difference: a skipped step is change-independent, so it reports what it reported on the base. The weekly schedule and every code PR re-run the audit against fresh advisories. Re-classify any path a skipped step starts to read, or the merge-proof claim lapses.
-
-Policy-doc residual: a docs-tier change that breaks a test class missing from the consumer list is not caught on that docs pull request. It is caught by the next code-bearing pull request or the Monday schedule, both of which run the whole suite (§ Docs Route Test Selection lists what the guard cannot detect).
+- A skipped step is change-independent, so it reports what it reported on the base. The weekly schedule and every code PR re-run the audit against fresh advisories. Re-classify any path a skipped step starts to read, or the merge-proof claim lapses.
+- Policy-doc residual: see the exposure rule in § Docs Route Test Selection.
 
 ## Merge Gating Expectations
 
 - Do not declare merge-ready while any required validation leg is failing, cancelled, skipped, or pending.
 - `validate-gate` depends on `route`, the complete `validate` matrix, `sdk_floor`, `quality`, and `evidence_lint`; it reports `validate` only when routing and every job required by that route succeeded. Code routes require matrix, SDK floor, and quality success with evidence lint skipped. Policy-doc routes require matrix success with floor, quality, and evidence lint skipped. Evidence routes require evidence lint success with matrix, floor, and quality skipped. Missing or unexpected results fail closed.
-- Dispatch/schedule runs report `validate-informational`, never the required pull-request context.
-- The standalone `# ci-backstop: validation-only` declaration in `ci.yml` authorizes the shipping helper to dispatch the existing manual validation workflow on the merged base. That run adds unsharded Linux coverage, live-network canaries, and the SDK-floor probe after the reviewed PR gate; its `validate-informational` result cannot satisfy required `validate` or authorize release/package publication, deployment, or SDK generation.
+- Dispatch/schedule runs report `validate-informational`, never the required pull-request context. They add unsharded Linux coverage, live-network canaries and the SDK-floor probe, and cannot authorize release/package publication, deployment, or SDK generation.
 - Do not pin dynamic per-leg names in branch protection.
-- Preserve Linux pre-merge coverage because NuGet publication validates on Linux; this closes the prior Windows-pass/Linux-publish-fail gap.
+- Preserve Linux pre-merge coverage: NuGet publication validates on Linux, which closes the Windows-pass/Linux-publish-fail gap.
 - Synchronize the branch before merge when repository protection requires it.
 
-## Other Repository Evidence
+## Repository Settings
 
-- CodeQL uses GitHub default setup for C# and GitHub Actions (`Analyze (csharp)`, `Analyze (actions)`). Do not add a duplicate advanced workflow while default setup is active.
-- NuGet caching keys on `Directory.Packages.props`, `Directory.Build.props`, and `global.json`.
+- CodeQL uses GitHub default setup for C#, GitHub Actions and Python (verified 2026-11-17 via `gh api repos/darylmcd/Roslyn-Backed-MCP/code-scanning/default-setup`). Do not add a duplicate advanced workflow while default setup is active.
 
 ## Ownership
 
-- Workflow implementation: `.github/workflows/ci.yml`
-- Validation-topology decision (pure function, table-tested): `eng/resolve-ci-topology.ps1`
-- Policy-docs test selection: `eng/docs-tier-test-consumers.json`, guarded by `DocsTierTestConsumerContractTests`
-- Human self-hosted operations: `docs/self-hosted-runner.md`
-- Runtime and local commands: `ai_docs/runtime.md`
-- Branch/worktree/PR workflow: `ai_docs/workflow.md`
+| Concern | File | Guard |
+|---|---|---|
+| Workflow implementation | `.github/workflows/ci.yml` | `CiRunnerParityContractTests`, `ActionlintGateContractTests` |
+| Validation-topology decision (pure function) | `eng/resolve-ci-topology.ps1` | `CiTopologyDecisionContractTests`, `CiEvidenceTierConsumerContractTests` |
+| Policy-docs test selection | `eng/docs-tier-test-consumers.json` | `DocsTierTestConsumerContractTests` |
+| Shard plan and weighting | `eng/get-test-shard-plan.ps1`, `eng/shard-duration-profile.json` | `TestShardPlanContractTests` |
+| Maintenance detail | `ai_docs/references/ci-internals.md` | n/a |
+| Decision history | `ai_docs/references/ci-topology-decision-log.md` | n/a |
+| Human self-hosted operations | `docs/self-hosted-runner.md` | n/a |
+| Runtime and local commands | `ai_docs/runtime.md` | n/a |
+| Branch/worktree/PR workflow | `ai_docs/workflow.md` | n/a |

@@ -20,7 +20,7 @@ Pipeline (canonical; other procedure docs link here):
 3. **Deduplicate** semantically across files, not by literal text.
 4. **Verify** each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest remediation plan; drop items already shipped.
 5. **Fix anchors** — cite real service-class files (`src/RoslynMcp.Roslyn/Services/`) plus the tool registration (`src/RoslynMcp.Host.Stdio/Tools/`).
-6. **Split heroic rows** per `~/.claude/prompts/backlog-remediate-rules.md` (one code path, <=4 prod files, <=3 test files, one regression shape).
+6. **Split oversized rows** per the backlog sizing contract in doc-audit `STANDARD.md` (`~/.claude/skills/doc-audit/STANDARD.md`): size is an advisory target and an L row is split.
 7. **Rank** into the backlog tiers `Critical` / `High` / `Medium` / `Low` (never `Defer` from raw severity) using correctness-risk bands.
 8. **Write rows** through `node ~/.claude/scripts/backlog.mjs` (the only sanctioned backlog writer), then commit to a fresh branch off `main` (never pushed automatically).
 
@@ -55,6 +55,7 @@ Canonical: `eng/stage-review-inbox.ps1` `.DESCRIPTION`. Recognized shapes are li
 | `--skip-verify` | Skip the CHANGELOG / plan / code cross-check (faster, riskier). |
 | `--no-commit` | Write backlog rows but don't branch or commit. |
 | `--sibling-parent <path>` | Override sibling scan root (forwarded to the PS1). |
+| `--publish` | After finalizing the batch, file each accepted row as a public GitHub Issue via `gh issue create` (P0 and security rows print to stdout instead). Requires authenticated `gh`. |
 
 ## Manual overrides
 
@@ -66,4 +67,4 @@ Canonical: `eng/stage-review-inbox.ps1` `.DESCRIPTION`. Recognized shapes are li
 - [`deep-review-program.md`](deep-review-program.md) — program context (coverage matrix, client lanes, cadence).
 - [`deep-review-command-reference.md`](deep-review-command-reference.md) — concrete commands.
 - [`../../skills/mcp-server-surface-test/prompts/full.md`](../../skills/mcp-server-surface-test/prompts/full.md) — canonical audit prompt run by `/mcp-server-surface-test` (consumer) and `/mcp-server-stress` (maintainer alias for `--output-mode=fragments`).
-- `~/.claude/prompts/backlog-remediate.md` and `backlog-remediate-rules.md` (global) — workflow contract that consumes the backlog.
+- `~/.claude/prompts/remediate.md` (global) — workflow contract that consumes the backlog.

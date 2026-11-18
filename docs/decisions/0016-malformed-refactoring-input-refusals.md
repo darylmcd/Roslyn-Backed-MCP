@@ -1,6 +1,6 @@
 # ADR 0016: Refuse malformed refactoring input before dispatch
 
-Status: Accepted, 2026-10-06. Publish in the next major release.
+Status: Accepted, 2026-10-06. Shipped in 5.0.0 (2026-10-28).
 
 ## Context
 

@@ -3,7 +3,7 @@
 <!-- purpose: Run repeatable Roslyn MCP large-solution profiling against a 50+ project solution. -->
 <!-- scope: in-repo -->
 
-Use this prompt when the repo needs measured evidence for `workspace-process-pool-or-daemon` or any other large-solution performance decision. The preferred target is a local OrchardCore checkout; below, `<orchardcore>` is its root and `<roslyn-mcp>` is this repo's root:
+Use this prompt when the repo needs measured evidence for `workspace-process-pool-or-daemon` or any other large-solution performance decision. The local OrchardCore checkout was retired: either clone `https://github.com/OrchardCMS/OrchardCore` at commit `f852c64` (the baseline's pinned commit) into `D:/OrchardCore`, or use any other 50+ project solution. Below, `<orchardcore>` is its root and `<roslyn-mcp>` is this repo's root:
 
 ```text
 <orchardcore>\OrchardCore.slnx
