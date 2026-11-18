@@ -353,7 +353,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     {
         // undo-sequence-claim-exclusivity: two callers undo the SAME sequence at the claim point
         // (both parked on a barrier, then released together). Exactly one may claim and restore;
-        // the loser must refuse with unknown-sequence instead of restoring the same effects again.
+        // the loser must refuse with already-reverted (the winner consumed the sequence) instead of restoring the same effects again.
         // Limit: the seam forces both callers to the claim together (race-forcing) but cannot force
         // the old two-lock interleaving, because the fixed code has no window to hook between check
         // and claim; the old-code red was observed with the seam placed between the old two locks.
@@ -390,7 +390,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(1, results.Count(r => r.Reverted),
             $"Exactly one claimant may restore; got reasons [{string.Join(", ", results.Select(r => r.Reason ?? "reverted"))}].");
         var loser = results.Single(r => !r.Reverted);
-        Assert.AreEqual("unknown-sequence", loser.Reason);
+        Assert.AreEqual("already-reverted", loser.Reason);
         Assert.IsNull(loser.RevertedOperation);
         Assert.AreEqual(0, loser.AffectedFiles.Count);
         Assert.IsNull(loser.BlockingSequences);
@@ -433,7 +433,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(1, seamRuns);
         Assert.IsNotNull(concurrent);
         Assert.IsFalse(concurrent.Reverted, "A by-sequence revert must not restore an operation the LIFO revert already claimed.");
-        Assert.AreEqual("unknown-sequence", concurrent.Reason);
+        Assert.AreEqual("already-reverted", concurrent.Reason);
         CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
         Assert.IsNull(undo.GetLastOperation(workspaceId));
         Assert.IsFalse((await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reverted);
@@ -843,7 +843,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             "The empty operation must be consumed exactly once.");
         var repeatB = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
         Assert.IsFalse(repeatB.Reverted);
-        Assert.AreEqual("unknown-sequence", repeatB.Reason);
+        Assert.AreEqual("already-reverted", repeatB.Reason);
 
         var revertA = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
         Assert.IsTrue(revertA.Reverted, "Undoing B must preserve A's sequence history.");
@@ -897,7 +897,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             "Undoing earlier empty B must retain C as the pending LIFO operation.");
         var repeatB = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
         Assert.IsFalse(repeatB.Reverted);
-        Assert.AreEqual("unknown-sequence", repeatB.Reason);
+        Assert.AreEqual("already-reverted", repeatB.Reason);
 
         Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
             "C must remain undoable through the LIFO route.");
@@ -907,7 +907,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         await AssertDocumentTextAsync(WorkspaceManager.GetCurrentSolution(workspaceId), dogFilePath, "// apply A\n" + dogOriginal);
         var repeatC = await UndoService.RevertBySequenceAsync(workspaceId, sequenceC, CancellationToken.None);
         Assert.IsFalse(repeatC.Reverted);
-        Assert.AreEqual("unknown-sequence", repeatC.Reason);
+        Assert.AreEqual("already-reverted", repeatC.Reason);
         var revertA = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
         Assert.IsTrue(revertA.Reverted, "A's earlier history must survive both B and C being undone.");
         Assert.AreEqual(dogOriginal, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None));
@@ -951,7 +951,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
         var repeat = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
         Assert.IsFalse(repeat.Reverted);
-        Assert.AreEqual("unknown-sequence", repeat.Reason);
+        Assert.AreEqual("already-reverted", repeat.Reason);
         Assert.AreSame(originalSolution, WorkspaceManager.GetCurrentSolution(workspaceId));
         Assert.AreEqual(originalVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
     }
@@ -1025,7 +1025,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.IsNull(UndoService.GetLastOperation(workspaceId));
         var repeat = await UndoService.RevertBySequenceAsync(workspaceId, sequence, CancellationToken.None);
         Assert.IsFalse(repeat.Reverted);
-        Assert.AreEqual("unknown-sequence", repeat.Reason);
+        Assert.AreEqual("already-reverted", repeat.Reason);
         Assert.AreEqual(captureVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
     }
 
@@ -1648,5 +1648,281 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             text.Encoding,
             "Precondition: Roslyn must have detected an encoding for the seeded file — otherwise the " +
             "test cannot distinguish a preserved encoding from the UTF-8-no-BOM fallback.");
+    }
+
+    // ---- undo-b: claim/unclaim vs workspace close (Clear), sequence-0 commit race, already-reverted ----
+
+    /// <summary>Captures Dog.cs (file snapshot) on a fresh service and writes a post-apply body so a restore is observable.</summary>
+    private static async Task<(UndoService Undo, string DogPath, byte[] OriginalBytes, UndoCaptureId Capture)> CaptureDogAsync(
+        IsolatedWorkspaceScope workspace, string description)
+    {
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        var capture = undo.CaptureBeforeApply(
+            workspace.WorkspaceId, description, preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
+        return (undo, dogFilePath, originalBytes, capture);
+    }
+
+    private static CancellationToken Cancelled()
+    {
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        return cts.Token;
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RevertAsync_WorkspaceClosedDuringRestore_UnclaimDoesNotResurrectSlot(bool committed)
+    {
+        // undo-unclaim-resurrects-slot-after-clear: Clear (workspace close) ran while the claimed
+        // restore was in flight; the interrupted revert's unclaim re-installed the slot (and, for a
+        // committed one, a history entry in a detached list) for a workspace that no longer exists.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, _, _, capture) = await CaptureDogAsync(workspace, "interrupted");
+        using var undoLifetime = undo;
+        if (committed)
+            undo.CommitPendingCapture(workspaceId, 1, [workspace.GetPath("SampleLib", "Dog.cs")], capture);
+        undo.AfterLifoClaim = () =>
+        {
+            undo.Clear(workspaceId);
+            return Task.CompletedTask;
+        };
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => undo.RevertAsync(workspaceId, Cancelled()));
+
+        Assert.IsNull(undo.GetLastOperation(workspaceId), "A closed workspace must not get its undo slot back.");
+        Assert.AreEqual(0, undo.TrackedHistoryWorkspaceCount, "No history entry may be revived for a cleared workspace.");
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        Assert.AreEqual("unknown-sequence", (await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reason);
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_WorkspaceClosedDuringRestore_UnclaimDoesNotResurrectSlot()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, _, capture) = await CaptureDogAsync(workspace, "interrupted by sequence");
+        using var undoLifetime = undo;
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+        undo.AfterSequenceClaim = () =>
+        {
+            undo.Clear(workspaceId);
+            return Task.CompletedTask;
+        };
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => undo.RevertBySequenceAsync(workspaceId, 1, Cancelled()));
+
+        Assert.IsNull(undo.GetLastOperation(workspaceId), "A closed workspace must not get its undo slot back.");
+        Assert.AreEqual(0, undo.TrackedHistoryWorkspaceCount);
+        Assert.AreEqual("unknown-sequence", (await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reason);
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_WorkspaceClosedBetweenSlotPeekAndHistoryLock_ClaimsNothing()
+    {
+        // The window between the registry-gate section (slot peek + history lookup/creation) and the
+        // history lock: a close landing there flags the history, so the claim refuses and no history
+        // is left registered. (The interleaving "Clear detached the history but has not yet removed
+        // the slot" is excluded by the gate itself, which this seam cannot reach without deadlocking.)
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, _, _, _) = await CaptureDogAsync(workspace, "peeked");
+        using var undoLifetime = undo;
+        undo.AfterRegistryPeek = () => undo.Clear(workspaceId);
+
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+        Assert.AreEqual(0, undo.TrackedHistoryWorkspaceCount);
+    }
+
+    [TestMethod]
+    public async Task CommitPendingCapture_AfterClear_DoesNotAllocateHistory()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, _, capture) = await CaptureDogAsync(workspace, "stale commit");
+        using var undoLifetime = undo;
+        undo.Clear(workspaceId);
+
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+
+        Assert.AreEqual(0, undo.TrackedHistoryWorkspaceCount, "A commit for a cleared workspace must not re-create its history.");
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+    }
+
+    [TestMethod]
+    public async Task CommitPendingCapture_ClearBetweenSlotPeekAndHistoryLock_LeavesNoHistory()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, _, capture) = await CaptureDogAsync(workspace, "commit vs close");
+        using var undoLifetime = undo;
+        undo.AfterRegistryPeek = () => undo.Clear(workspaceId);
+
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+
+        Assert.AreEqual(0, undo.TrackedHistoryWorkspaceCount);
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+    }
+
+    [TestMethod]
+    public async Task CaptureBeforeApply_WorkspaceClosesAfterVersionRead_LeavesNoSlot()
+    {
+        // The slot write re-checks liveness under the registry gate Clear also uses, so a close between
+        // GetCurrentVersion and the write cannot leave a pending slot for a closed workspace.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var manager = new ClosingAfterVersionReadWorkspaceManager(WorkspaceManager);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+
+        Assert.ThrowsExactly<KeyNotFoundException>(() =>
+            undo.CaptureBeforeApply(workspaceId, "closing", preApplySolution: null, fileSnapshots: []));
+
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+    }
+
+    private sealed class ClosingAfterVersionReadWorkspaceManager(IWorkspaceManager inner) : RoslynMcp.Tests.Helpers.DelegatingWorkspaceManager(inner)
+    {
+        private volatile bool _closed;
+
+        public override int GetCurrentVersion(string workspaceId)
+        {
+            var version = base.GetCurrentVersion(workspaceId);
+            _closed = true;
+            return version;
+        }
+
+        public override bool ContainsWorkspace(string workspaceId) => !_closed && base.ContainsWorkspace(workspaceId);
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_Seq0_CommitRacesUnclaim_KeepsExactlyOneHistoryEntry()
+    {
+        // undo-seq0-history-entry-lost-on-commit-unclaim-race: the commit landed while a LIFO revert held
+        // the (still uncommitted) slot, found no pending slot, and dropped its history entry; the unclaim
+        // then restored a sequence-0 slot, leaving the recorded sequence unrevertable.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, originalBytes, capture) = await CaptureDogAsync(workspace, "seq0 race");
+        using var undoLifetime = undo;
+        undo.AfterLifoClaim = () =>
+        {
+            undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+            return Task.CompletedTask;
+        };
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => undo.RevertAsync(workspaceId, Cancelled()));
+
+        Assert.AreEqual("seq0 race", undo.GetLastOperation(workspaceId)?.Description, "The unclaim must retain the slot.");
+        undo.AfterLifoClaim = null;
+        var bySequence = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+        Assert.IsTrue(bySequence.Reverted, $"The raced commit must keep its history entry (reason: {bySequence.Reason}).");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        Assert.IsNull(undo.GetLastOperation(workspaceId), "Reverting by sequence consumes the pending slot it also owned.");
+        Assert.AreEqual("already-reverted", (await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reason,
+            "Exactly one history entry: a second revert of the sequence has nothing left to restore.");
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_Seq0_CommitRacesSuccessfulRevert_LeavesNoHistoryAndReadsAlreadyReverted()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, originalBytes, capture) = await CaptureDogAsync(workspace, "seq0 race ok");
+        using var undoLifetime = undo;
+        undo.AfterLifoClaim = () =>
+        {
+            undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+            return Task.CompletedTask;
+        };
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+        var repeat = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+        Assert.IsFalse(repeat.Reverted);
+        Assert.AreEqual("already-reverted", repeat.Reason, "The reverted operation's recorded sequence reads as already reverted.");
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_Seq0_CommitRacesUnclaim_NewerCaptureKeepsSlotAndGetsNoStaleHistory()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, _, capture) = await CaptureDogAsync(workspace, "older");
+        using var undoLifetime = undo;
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        undo.AfterLifoClaim = () =>
+        {
+            undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+            undo.CaptureBeforeApply(
+                workspaceId, "newer", preApplySolution: null,
+                fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, File.ReadAllBytes(catFilePath))]);
+            return Task.CompletedTask;
+        };
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => undo.RevertAsync(workspaceId, Cancelled()));
+
+        Assert.AreEqual("newer", undo.GetLastOperation(workspaceId)?.Description, "The newer capture must survive the unclaim.");
+        Assert.AreEqual("unknown-sequence", (await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reason,
+            "A superseded operation gets no history entry (same rule as a commit that loses the slot race).");
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_AlreadyRevertedSequence_ReportsDistinctReason()
+    {
+        // revert-by-sequence-already-reverted-indistinct: a repeat of a reverted sequence is not "unknown".
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, _, capture) = await CaptureDogAsync(workspace, "reverted twice");
+        using var undoLifetime = undo;
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+
+        Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reverted);
+        var repeat = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+
+        Assert.IsFalse(repeat.Reverted);
+        Assert.AreEqual("already-reverted", repeat.Reason);
+        Assert.IsNull(repeat.RevertedOperation);
+        Assert.AreEqual(0, repeat.AffectedFiles.Count);
+        Assert.IsNull(repeat.BlockingSequences);
+        Assert.AreEqual("unknown-sequence", (await undo.RevertBySequenceAsync(workspaceId, 99, CancellationToken.None)).Reason,
+            "A sequence that never had history stays unknown.");
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_SequenceConsumedByLifoRevert_ReportsAlreadyReverted()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, _, capture) = await CaptureDogAsync(workspace, "lifo consumed");
+        using var undoLifetime = undo;
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        Assert.AreEqual("already-reverted", (await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reason);
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_FailedRevert_DoesNotMarkSequenceReverted()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var (undo, dogFilePath, _, capture) = await CaptureDogAsync(workspace, "failed then retried");
+        using var undoLifetime = undo;
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => undo.RevertBySequenceAsync(workspaceId, 1, Cancelled()));
+
+        Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reverted,
+            "An unclaimed revert must leave its sequence retryable, not 'already-reverted'.");
     }
 }

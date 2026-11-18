@@ -33,7 +33,7 @@ internal abstract class DelegatingWorkspaceManager(IWorkspaceManager inner) : IW
     public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
         inner.ReloadAsync(workspaceId, ct);
 
-    public bool ContainsWorkspace(string workspaceId) => inner.ContainsWorkspace(workspaceId);
+    public virtual bool ContainsWorkspace(string workspaceId) => inner.ContainsWorkspace(workspaceId);
 
     public bool IsStale(string workspaceId) => inner.IsStale(workspaceId);
 
