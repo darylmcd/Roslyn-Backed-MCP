@@ -262,7 +262,7 @@ internal sealed class SingleTestScaffolder
         var namespaceSegments = declaration.Ancestors()
             .OfType<BaseNamespaceDeclarationSyntax>()
             .Reverse()
-            .Select(static namespaceDeclaration => namespaceDeclaration.Name.ToString())
+            .Select(static namespaceDeclaration => NamespaceNameIdentity.Of(namespaceDeclaration.Name))
             .ToArray();
         var containingTypes = declaration.Ancestors()
             .OfType<TypeDeclarationSyntax>()
