@@ -29,9 +29,13 @@ namespace RoslynMcp.Roslyn.Services;
 /// directly from disk — no <c>GetChanges</c> dependency. <c>RefactoringService</c>
 /// captures physical source and project before-images for document or reference changes.
 /// Callers without file snapshots use a text-only solution-snapshot restore: it rewrites changed
-/// document text (with a disk walk of the pre-apply documents when <c>GetChanges</c> is empty, so
-/// an empty diff no longer silently wins) and FAILS CLOSED, retaining the snapshot, when the apply
-/// also added/removed documents or projects or changed references or options, which it cannot undo.
+/// document text and only the documents the apply owns: a committed snapshot owns exactly its
+/// <see cref="UndoSnapshot.AffectedFiles"/> (a later file-disjoint sibling apply's edits survive), an
+/// uncommitted one is the single pending apply and owns its own solution diff. A committed snapshot
+/// whose own files show no diff additionally walks those files on disk (an empty diff no longer
+/// silently wins). It reports failure, retaining the snapshot, when a committed snapshot restored
+/// nothing, and FAILS CLOSED when the apply also added/removed documents or projects or changed
+/// references or options, which it cannot undo.
 /// </summary>
 public sealed class UndoService : IUndoService, IDisposable
 {
@@ -565,27 +569,46 @@ public sealed class UndoService : IUndoService, IDisposable
         // handles that.
         var diskRestores = new List<(string FilePath, string Text, Encoding? Encoding)>();
 
+        // Only documents this apply owns may be rewritten. Committed: its recorded AffectedFiles (even
+        // an empty set: a committed solution-only apply that recorded no files owns no document text,
+        // project-level changes were refused above). Uncommitted (null): the single pending apply, whose
+        // own solution diff is its attribution.
+        var ownedFiles = TextRestoreScope(snapshot);
+
         // Phase 1 (primary): trust the Solution diff to tell us what changed.
         var (targetSolution, changedDocumentCount) = await CollectChangesFromSolutionDiffAsync(
-            snapshot.PreApplySolution, currentSolution, diskRestores, cancellationToken).ConfigureAwait(false);
+            snapshot.PreApplySolution, currentSolution, ownedFiles, diskRestores, cancellationToken).ConfigureAwait(false);
 
-        // Phase 2 (safety net, revert-last-apply-disk-consistency): if the Solution diff
-        // came up empty we cannot conclude "nothing changed" — MSBuildWorkspace may have
-        // quietly dropped the apply while leaving disk out of sync. Walk every document
-        // in the pre-apply snapshot, read the on-disk text, and restore any that drifted.
-        if (changedDocumentCount == 0)
+        // Phase 2 (safety net, revert-last-apply-disk-consistency): if the Solution diff of a committed
+        // snapshot came up empty we cannot conclude "nothing changed" — MSBuildWorkspace may have
+        // quietly dropped the apply while leaving disk out of sync. Walk the apply's own files in the
+        // pre-apply snapshot, read the on-disk text, and restore any that drifted. An uncommitted
+        // snapshot has no file attribution, so disk drift there cannot be told apart from a sibling's
+        // or the user's edit and is never rewritten.
+        if (changedDocumentCount == 0 && ownedFiles is not null)
         {
             changedDocumentCount = await CollectChangesFromDiskWalkAsync(
-                snapshot.PreApplySolution, diskRestores, cancellationToken).ConfigureAwait(false);
+                snapshot.PreApplySolution, ownedFiles, diskRestores, cancellationToken).ConfigureAwait(false);
         }
 
         if (changedDocumentCount == 0)
         {
-            _logger.LogInformation(
-                "UndoService.RevertAsync: snapshot for '{WorkspaceId}' contained no document differences against the current solution or disk. " +
-                "Treating revert as a no-op success.",
-                workspaceId);
-            return true;
+            if (ownedFiles is null)
+            {
+                _logger.LogInformation(
+                    "UndoService.RevertAsync: uncommitted snapshot for '{WorkspaceId}' contained no document differences against the current solution. " +
+                    "Nothing was applied to undo; treating revert as a no-op success.",
+                    workspaceId);
+                return true;
+            }
+
+            _logger.LogWarning(
+                "UndoService.RevertAsync: committed snapshot for '{WorkspaceId}' (description: '{Description}') restored no document: none of its {Count} affected file(s) differs from the pre-apply state. " +
+                "Reporting failure; the snapshot is retained.",
+                workspaceId,
+                snapshot.Description,
+                snapshot.AffectedFiles.Count);
+            return false;
         }
 
         // Phase 3: persist the revert to workspace state + disk, reload, and restore version.
@@ -611,7 +634,7 @@ public sealed class UndoService : IUndoService, IDisposable
     {
         var scope = snapshot.SequenceNumber == 0 || snapshot.AffectedFiles.Count == 0
             ? null
-            : new HashSet<string>(snapshot.AffectedFiles, FileSystemPath.Comparer);
+            : AffectedFileSet(snapshot);
         bool InScope(string? path) => scope is null || (path is not null && scope.Contains(path));
 
         // Projects sharing one identity key (e.g. in-memory projects with the same name and no file) cannot
@@ -668,6 +691,20 @@ public sealed class UndoService : IUndoService, IDisposable
         return null;
     }
 
+    private static HashSet<string> AffectedFileSet(UndoSnapshot snapshot) =>
+        new(snapshot.AffectedFiles, FileSystemPath.Comparer);
+
+    /// <summary>
+    /// The documents a solution-snapshot revert may rewrite. A committed snapshot (sequence &gt; 0)
+    /// owns exactly its recorded <see cref="UndoSnapshot.AffectedFiles"/>, possibly none: unlike
+    /// <see cref="FindUnrestorableChange"/>'s project-level scope, an empty list never widens to the
+    /// whole diff, because a later sibling apply's edits would be reverted with it. An uncommitted
+    /// snapshot (null) is the single pending apply (a newer capture supersedes the slot), so its own
+    /// solution diff is its attribution and no file-level scope exists.
+    /// </summary>
+    private static HashSet<string>? TextRestoreScope(UndoSnapshot snapshot) =>
+        snapshot.SequenceNumber == 0 ? null : AffectedFileSet(snapshot);
+
     private static string ProjectKey(Project project) => (project.FilePath ?? string.Empty) + "\n" + project.Name;
 
     private static HashSet<string> DocumentPaths(Project project)
@@ -709,12 +746,14 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <summary>
     /// Phase-1 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Walks
     /// <c>preApplySolution.GetChanges(currentSolution)</c> and, for every document the
-    /// diff flags as changed, schedules a workspace text revert and queues a disk
-    /// restore. Returns the updated target solution plus a count of documents touched.
+    /// diff flags as changed AND the apply owns (<paramref name="ownedFiles"/>; null = every
+    /// changed document), schedules a workspace text revert and queues a disk restore. Returns the
+    /// updated target solution plus a count of documents touched.
     /// </summary>
     private static async Task<(Solution TargetSolution, int ChangedDocumentCount)> CollectChangesFromSolutionDiffAsync(
         Solution preApplySolution,
         Solution currentSolution,
+        HashSet<string>? ownedFiles,
         List<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
         CancellationToken cancellationToken)
     {
@@ -728,8 +767,15 @@ public sealed class UndoService : IUndoService, IDisposable
                 var oldDoc = preApplySolution.GetDocument(docId);
                 if (oldDoc is null) continue;
 
-                var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
                 var currentDoc = currentSolution.GetDocument(docId);
+                var path = currentDoc?.FilePath ?? oldDoc.FilePath;
+                if (ownedFiles is not null && (path is null || !ownedFiles.Contains(path)))
+                {
+                    // A later sibling apply's (or any unattributed) edit: not this apply's to revert.
+                    continue;
+                }
+
+                var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
 
                 // undo-restore-source-kind: the reviewed pre-apply SourceCodeKind is part of what an
                 // apply may have changed; restore it with the text (mirrors RefactoringService rebase).
@@ -741,7 +787,6 @@ public sealed class UndoService : IUndoService, IDisposable
                 targetSolution = targetSolution.WithDocumentText(docId, oldText);
                 changedDocumentCount++;
 
-                var path = currentDoc?.FilePath ?? oldDoc.FilePath;
                 if (!string.IsNullOrWhiteSpace(path))
                 {
                     diskRestores.Add((path!, oldText.ToString(), oldText.Encoding));
@@ -754,12 +799,14 @@ public sealed class UndoService : IUndoService, IDisposable
 
     /// <summary>
     /// Phase-2 helper (safety net) for <see cref="RevertFromSolutionSnapshotAsync"/>.
-    /// Invoked only when the Solution diff returned no changes. Walks every document in
-    /// the pre-apply snapshot, reads the on-disk text, and queues a disk restore for any
-    /// file whose content drifted. Read failures are debug-logged and skipped.
+    /// Invoked only for a committed snapshot whose Solution diff returned no changes. Walks the
+    /// pre-apply documents that are among the apply's own <paramref name="ownedFiles"/>, reads the
+    /// on-disk text, and queues a disk restore for any file whose content drifted. Documents outside
+    /// the apply's files are never touched. Read failures are debug-logged and skipped.
     /// </summary>
     private async Task<int> CollectChangesFromDiskWalkAsync(
         Solution preApplySolution,
+        HashSet<string> ownedFiles,
         List<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
         CancellationToken cancellationToken)
     {
@@ -770,6 +817,7 @@ public sealed class UndoService : IUndoService, IDisposable
             foreach (var oldDoc in project.Documents)
             {
                 if (oldDoc.FilePath is null) continue;
+                if (!ownedFiles.Contains(oldDoc.FilePath)) continue;
                 if (!File.Exists(oldDoc.FilePath)) continue;
 
                 string currentDiskText;

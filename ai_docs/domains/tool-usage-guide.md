@@ -222,7 +222,6 @@ Most write operations follow a two-step pattern:
 ### revert_last_apply — created files
 
 - `revert_last_apply` restores text snapshots **and deletes files the apply created** (`UndoService`: a file with no original text is deleted on revert).
-- The tool's `Description` and `UndoTools.cs` remarks still say created files are not removed; row `undo-tools-description-created-files-stale` tracks that code-side correction.
 - After a revert, confirm with `workspace_changes` or `git status` that no created file remains.
 
 ## Error Recovery

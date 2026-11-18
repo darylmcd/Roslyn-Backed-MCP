@@ -493,7 +493,10 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
             string? consumerSource = null,
             string consumerProject = "SampleLib",
             (string Project, string Source)? otherFile = null,
-            bool relocate = true)
+            bool relocate = true,
+            string typeName = "Selected",
+            string fromNamespace = "Old",
+            string toNamespace = "New")
     {
         var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory);
         Directory.CreateDirectory(fixtureDir);
@@ -507,7 +510,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
 
         var wsId = await workspace.LoadAsync(CancellationToken.None);
         var preview = await CreateService().PreviewChangeTypeNamespaceAsync(
-            wsId, "Selected", "Old", "New", relocate ? destinationPath : null, CancellationToken.None);
+            wsId, typeName, fromNamespace, toNamespace, relocate ? destinationPath : null, CancellationToken.None);
 
         var retrieved = PreviewStore.Retrieve(preview.PreviewToken);
         Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
@@ -866,6 +869,210 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(
             preview.Warnings!.Any(w => w.Contains("Kept `using Old;`", StringComparison.Ordinal)),
             $"Expected a kept-using warning naming `Old`. Warnings:\n{string.Join("\n", preview.Warnings)}");
+    }
+
+    /// <summary>
+    /// Regression (relocation-same-file-nested-destination-namespace): the in-place branch renamed
+    /// only the innermost declaration, so relocating <c>Outer.Inner.Worker</c> to <c>Target</c>
+    /// produced <c>Outer.Target.Worker</c>. The destination is the FULL namespace; unrelated
+    /// members of the enclosing declaration stay, and the consumer binds to the new location.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_InPlace_Honors_The_Full_Destination_Namespace_When_The_Type_Is_In_A_Nested_Namespace()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string source =
+            "namespace Outer\n{\n    public class Unrelated { }\n\n    namespace Inner\n    {\n        public class Worker { }\n    }\n}\n";
+        const string consumer =
+            "using Outer.Inner;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Worker? Value { get; set; }\n}\n";
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(
+            workspace, source, consumer, relocate: false, typeName: "Worker", fromNamespace: "Outer.Inner", toNamespace: "Target");
+        var consumerPath = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory, "Consumer.cs");
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Target.Worker"), $"Worker must arrive in Target:\n{text}");
+        Assert.IsNull(compilation.GetTypeByMetadataName("Outer.Target.Worker"), $"The destination must not stay under Outer:\n{text}");
+        Assert.IsNull(compilation.GetTypeByMetadataName("Outer.Inner.Worker"), $"Worker must leave Outer.Inner:\n{text}");
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Outer.Unrelated"), $"The unrelated enclosing member must stay:\n{text}");
+        var consumerDocument = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, consumerPath, StringComparison.OrdinalIgnoreCase));
+        StringAssert.Contains((await consumerDocument.GetTextAsync(CancellationToken.None)).ToString(), "using Target;");
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// Regression (relocation-same-file-directive-ownership): the selected declaration was removed
+    /// with the conditional directive that opens in its own trivia (stranding the <c>#else</c> /
+    /// <c>#endif</c> that close it), and the new block was appended before the EOF trivia, so a
+    /// conditional closing at EOF cut across the artificial namespace boundary. The previewed AND
+    /// the applied source must parse and compile under both define sets, every retained
+    /// declaration must stay under its own condition, and only the selected type moves.
+    /// </summary>
+    [TestMethod]
+    [DataRow(true, false, DisplayName = "file-scoped, conditional wraps the selected type and closes at EOF")]
+    [DataRow(true, true, DisplayName = "file-scoped, conditional wraps the selected type, active sibling after it")]
+    [DataRow(false, false, DisplayName = "block, conditional wraps the selected type and closes before the brace")]
+    [DataRow(false, true, DisplayName = "block, conditional wraps the selected type, active sibling after it")]
+    public async Task Preview_SameFile_Keeps_Conditional_Directive_Pairs_Whole_Under_Both_Defines(bool fileScoped, bool tailSibling)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var indent = fileScoped ? "" : "    ";
+        var body =
+            $"{indent}public class Keep {{ }}\n\n" +
+            "#if !ALT\n" +
+            $"{indent}public class Selected {{ }}\n" +
+            "#else\n" +
+            $"{indent}public class AltKeep {{ }}\n" +
+            "#endif\n" +
+            (tailSibling ? $"{indent}public class Tail {{ }}\n" : "");
+        var source = fileScoped ? "namespace Old;\n\n" + body : "namespace Old\n{\n" + body + "}\n";
+
+        var (modified, sourceDocument, sourcePath, _, preview) = await PreviewRelocationAsync(workspace, source, relocate: false);
+        Assert.IsNotNull(sourceDocument);
+        var previewText = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        await AssertDirectiveConfigurationsAsync(modified, sourcePath, tailSibling, previewText);
+
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "same_file_directive_pairs", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await workspace.ReloadAsync();
+        var reloaded = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var appliedText = await File.ReadAllTextAsync(sourcePath);
+        Assert.AreEqual(previewText, appliedText, "the applied file must equal the previewed text");
+        await AssertDirectiveConfigurationsAsync(reloaded, sourcePath, tailSibling, appliedText);
+    }
+
+    private static async Task AssertDirectiveConfigurationsAsync(
+        Microsoft.CodeAnalysis.Solution solution, string sourcePath, bool tailSibling, string text)
+    {
+        foreach (var defines in new[] { Array.Empty<string>(), new[] { "ALT" } })
+        {
+            var alt = defines.Length > 0;
+            var label = alt ? "ALT defined" : "ALT undefined";
+            var compilation = await CompileSampleLibUnderDefinesAsync(solution, defines);
+            var errors = compilation.GetDiagnostics(CancellationToken.None)
+                .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error &&
+                            string.Equals(d.Location.SourceTree?.FilePath, sourcePath, StringComparison.OrdinalIgnoreCase))
+                .Select(d => d.ToString()).ToList();
+            Assert.AreEqual(0, errors.Count, $"[{label}] The source must parse and compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+            Assert.IsNotNull(compilation.GetTypeByMetadataName("Old.Keep"), $"[{label}] Keep must stay in Old:\n{text}");
+            Assert.AreEqual(alt, compilation.GetTypeByMetadataName("Old.AltKeep") is not null, $"[{label}] AltKeep must stay under its own condition:\n{text}");
+            Assert.AreEqual(!alt, compilation.GetTypeByMetadataName("New.Selected") is not null, $"[{label}] Selected must move to New, under its own condition:\n{text}");
+            Assert.IsNull(compilation.GetTypeByMetadataName("Old.Selected"), $"[{label}] Selected must leave Old:\n{text}");
+            if (tailSibling)
+                Assert.IsNotNull(compilation.GetTypeByMetadataName("Old.Tail"), $"[{label}] The active sibling after the conditional must stay in Old:\n{text}");
+        }
+    }
+
+    /// <summary>Reparses every SampleLib document from its text with the given extra defines and compiles it.</summary>
+    private static async Task<Microsoft.CodeAnalysis.Compilation> CompileSampleLibUnderDefinesAsync(
+        Microsoft.CodeAnalysis.Solution solution, string[] defines)
+    {
+        var project = solution.Projects.Single(p => p.Name == "SampleLib");
+        var options = ((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)project.ParseOptions!)
+            .WithPreprocessorSymbols(project.ParseOptions!.PreprocessorSymbolNames.Concat(defines));
+        var trees = new List<Microsoft.CodeAnalysis.SyntaxTree>();
+        foreach (var document in project.Documents)
+        {
+            var text = await document.GetTextAsync(CancellationToken.None);
+            trees.Add(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(text, options, document.FilePath ?? document.Name));
+        }
+        var compilation = await project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        return compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(trees);
+    }
+
+    /// <summary>
+    /// Regression (relocation-same-file-preserve-declaration-imports): the sibling-preserving
+    /// branch moved only the selected type into a new namespace block; the namespace-scoped
+    /// imports (aliases included) stayed behind, so the moved type lost its bindings. The retained
+    /// sibling keeps its own binding.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    using Alias = System.Text.StringBuilder;\n    using System.Globalization;\n\n    public class Keep { public Alias Builder = new Alias(); }\n\n    public class Selected\n    {\n        public Alias Builder = new Alias();\n        public CultureInfo Culture = CultureInfo.InvariantCulture;\n    }\n}\n",
+        "Old", DisplayName = "block namespace")]
+    [DataRow("namespace Old;\n\nusing Alias = System.Text.StringBuilder;\nusing System.Globalization;\n\npublic class Keep { public Alias Builder = new Alias(); }\n\npublic class Selected\n{\n    public Alias Builder = new Alias();\n    public CultureInfo Culture = CultureInfo.InvariantCulture;\n}\n",
+        "Old", DisplayName = "file-scoped namespace")]
+    [DataRow("namespace Outer\n{\n    using Alias = System.Text.StringBuilder;\n\n    namespace Inner\n    {\n        using System.Globalization;\n\n        public class Keep { public Alias Builder = new Alias(); }\n\n        public class Selected\n        {\n            public Alias Builder = new Alias();\n            public CultureInfo Culture = CultureInfo.InvariantCulture;\n        }\n    }\n}\n",
+        "Outer.Inner", DisplayName = "imports on two nested scopes")]
+    public async Task Preview_SameFile_Moved_Type_Keeps_Its_Namespace_Scoped_Imports_And_Siblings_Keep_Theirs(
+        string source, string fromNamespace)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, sourcePath, _, preview) = await PreviewRelocationAsync(
+            workspace, source, relocate: false, fromNamespace: fromNamespace);
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"), $"Selected must arrive in New:\n{text}");
+        Assert.IsNotNull(compilation.GetTypeByMetadataName(fromNamespace + ".Keep"), $"Keep must stay:\n{text}");
+        Assert.AreEqual(2, System.Text.RegularExpressions.Regex.Matches(text, "Alias =").Count,
+            $"The retained block keeps its alias and the moved declaration gets its own:\n{text}");
+
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "same_file_imports", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await workspace.ReloadAsync();
+        var reloaded = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.AreEqual(text, await File.ReadAllTextAsync(sourcePath), "the applied file must equal the previewed text");
+        var reloadedErrors = await CompileErrorsInAsync(reloaded, sourcePath);
+        Assert.AreEqual(0, reloadedErrors.Count, $"The applied solution must compile. Errors:\n{string.Join("\n", reloadedErrors)}");
+    }
+
+    /// <summary>
+    /// Same mechanism as the sibling branch: renaming the declaration in place changes what a
+    /// namespace-scoped import written relative to the old namespace (<c>using Sub;</c> meaning
+    /// <c>Old.Sub</c>) binds to.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_InPlace_Rename_Keeps_Relative_Namespace_Scoped_Imports_Bound()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string source = "namespace Old\n{\n    using Sub;\n\n    public class Selected { public Marker Value = new Marker(); }\n}\n";
+        const string other = "namespace Old.Sub\n{\n    public class Marker { }\n}\n";
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(
+            workspace, source, otherFile: ("SampleLib", other), relocate: false);
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"), text);
+    }
+
+    /// <summary>
+    /// The same-file paths built the destination name with an unescaped parse, so a keyword
+    /// segment produced a missing-identifier namespace; the new-file path already escapes it.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n", DisplayName = "sole member renamed in place")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public class Keep { }\n}\n", DisplayName = "extracted next to a sibling")]
+    public async Task Preview_SameFile_Escapes_Keyword_Segments_In_The_Destination_Namespace(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(
+            workspace, source, relocate: false, toNamespace: "Target.class");
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(text, "@class", text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Target.class.Selected"), text);
     }
 
     [TestMethod]

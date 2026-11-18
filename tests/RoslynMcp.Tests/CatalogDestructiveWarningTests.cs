@@ -87,5 +87,9 @@ public sealed class CatalogDestructiveWarningTests
             $"Description must warn that a second revert reports 'No operation to revert'. Actual: '{text}'");
         StringAssert.Contains(text, "revert_apply_by_sequence",
             $"Description must cross-point to revert_apply_by_sequence as the multi-step path. Actual: '{text}'");
+        StringAssert.Contains(text, "Deletes files the apply created",
+            $"Description must state that revert deletes files the apply created (UndoService deletes snapshots with no original text). Actual: '{text}'");
+        Assert.IsFalse(text.Contains("Does not remove created files", StringComparison.Ordinal),
+            $"Description must not claim created files are kept. Actual: '{text}'");
     }
 }
