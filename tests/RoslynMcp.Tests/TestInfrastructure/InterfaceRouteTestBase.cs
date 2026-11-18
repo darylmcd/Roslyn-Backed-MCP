@@ -55,11 +55,14 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
     /// SampleLib file) and loads it. When <paramref name="sharedSource"/> is given, a <c>Shared</c> project holds it and
     /// both SampleLib and Contracts reference it, so signature types the receiver must name have an owner it can see.
     /// <paramref name="projectProperties"/> maps a project name to MSBuild properties added to that project (for example
-    /// <c>AllowUnsafeBlocks</c>); it is applied before the first load.
+    /// <c>AllowUnsafeBlocks</c>); it is applied before the first load. <paramref name="extraSources"/> adds files keyed
+    /// <c>Project/relative/path.cs</c> (the SampleLib ones are compiled too), and <paramref name="libReferencesContracts"/>
+    /// gives SampleLib a project reference to Contracts so a SampleLib file can import that namespace.
     /// </summary>
     protected static async Task<string> PrepareInterfaceRouteFixtureAsync(
         IsolatedWorkspaceScope workspace, string sourceFileName, string sourceText, string consumerFileName, string consumerText,
-        string? sharedSource = null, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? projectProperties = null)
+        string? sharedSource = null, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? projectProperties = null,
+        IReadOnlyDictionary<string, string>? extraSources = null, bool libReferencesContracts = false)
     {
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         AddProjectToCopiedSolution(workspace.RootPath, "Consumer", "net10.0");
@@ -96,6 +99,9 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
             AddItems("Contracts", Reference(SharedReference));
         }
 
+        foreach (var extra in (extraSources ?? new Dictionary<string, string>()).Keys.Where(k => k.StartsWith("SampleLib/", StringComparison.Ordinal)))
+            libItems.Add(new("Compile", new XAttribute("Include", extra["SampleLib/".Length..])));
+        if (libReferencesContracts) libItems.Add(Reference("../Contracts/Contracts.csproj"));
         AddItems("SampleLib", libItems.ToArray());
         AddItems("Consumer", Reference("../SampleLib/SampleLib.csproj"), Reference("../Contracts/Contracts.csproj"));
 
@@ -110,6 +116,13 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
 
         await File.WriteAllTextAsync(sourcePath, sourceText);
         await File.WriteAllTextAsync(workspace.GetPath("Consumer", consumerFileName), consumerText);
+        foreach (var (relative, text) in extraSources ?? new Dictionary<string, string>())
+        {
+            var extraPath = workspace.GetPath(relative.Split('/'));
+            Directory.CreateDirectory(Path.GetDirectoryName(extraPath)!);
+            await File.WriteAllTextAsync(extraPath, text);
+        }
+
         if (sharedSource is not null) await File.WriteAllTextAsync(workspace.GetPath("Shared", "SharedLib.cs"), sharedSource);
         await workspace.LoadAsync();
         await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));

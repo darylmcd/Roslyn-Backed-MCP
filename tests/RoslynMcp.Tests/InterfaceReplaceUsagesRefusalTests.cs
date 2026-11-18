@@ -174,15 +174,6 @@ public sealed class InterfaceReplaceUsagesRefusalTests : InterfaceRouteTestBase
         StringAssert.Contains(absent.Message, "EchoHolder.cs");
     }
 
-    private static async Task AssertGeneratedReferenceAsync(Project project, string generatedTypeName)
-    {
-        var compilation = (await project.GetCompilationAsync())!;
-        var type = compilation.GetTypeByMetadataName(generatedTypeName);
-        Assert.IsNotNull(type, "the generator must emit " + generatedTypeName);
-        Assert.IsInstanceOfType<SourceGeneratedDocument>(project.Solution.GetDocument(type.DeclaringSyntaxReferences.Single().SyntaxTree),
-            "the reference under test must live in a source-generated document");
-    }
-
     private async Task<IsolatedWorkspaceScope> LoadAsync()
     {
         var workspace = CreateIsolatedWorkspaceCopy();
@@ -190,63 +181,5 @@ public sealed class InterfaceReplaceUsagesRefusalTests : InterfaceRouteTestBase
         await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "EchoHolder.cs"), Holder);
         await workspace.LoadAsync(CancellationToken.None);
         return workspace;
-    }
-
-    private sealed class FixedSolutionWorkspace(IWorkspaceManager inner, Solution solution) : DelegatingWorkspaceManager(inner)
-    {
-        public override Solution GetCurrentSolution(string workspaceId) => solution;
-    }
-
-    private const string GeneratorSource = """
-        using Microsoft.CodeAnalysis;
-
-        [Generator(LanguageNames.CSharp)]
-        public sealed class ReferencingGenerator : IIncrementalGenerator
-        {
-            public void Initialize(IncrementalGeneratorInitializationContext context) =>
-                context.RegisterSourceOutput(context.CompilationProvider, static (output, compilation) =>
-                {
-                    var source = compilation.AssemblyName switch
-                    {
-                        "SampleLib" => "namespace SampleLib; public class GeneratedHolder { public EchoService Held = default!; }",
-                        "Consumer" => "namespace Consumer; public sealed class GeneratedUser { public GeneratedUser(SampleLib.RefService service) { } }",
-                        _ => null,
-                    };
-                    if (source is not null) output.AddSource("Referencing.g.cs", source);
-                });
-        }
-        """;
-
-    /// <summary>
-    /// A real analyzer-assembly reference: find-references checksums every analyzer reference and only a file reference
-    /// survives that. The generator is compiled from <see cref="GeneratorSource"/> into the workspace copy under a unique
-    /// assembly name (the default load context cannot hold two same-named assemblies) and emits only into the two named projects.
-    /// </summary>
-    private static AnalyzerReference GeneratorReference(string directory)
-    {
-        var name = "ReferencingGenerator" + Guid.NewGuid().ToString("N");
-        var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
-        var compilation = CSharpCompilation.Create(name,
-            [CSharpSyntaxTree.ParseText(GeneratorSource)],
-            trusted.Select(path => (MetadataReference)MetadataReference.CreateFromFile(path)),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        var path = Path.Combine(directory, name + ".dll");
-        using (var image = File.Create(path))
-        {
-            var result = compilation.Emit(image);
-            Assert.IsTrue(result.Success, string.Join("; ", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-        }
-
-        return new AnalyzerFileReference(path, new DefaultLoadContextAnalyzerLoader());
-    }
-
-    private sealed class DefaultLoadContextAnalyzerLoader : IAnalyzerAssemblyLoader
-    {
-        public void AddDependencyLocation(string fullPath)
-        {
-        }
-
-        public System.Reflection.Assembly LoadFromPath(string fullPath) =>
-            System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromStream(new MemoryStream(File.ReadAllBytes(fullPath)));
     }
 }
