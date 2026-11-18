@@ -493,7 +493,10 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
             string? consumerSource = null,
             string consumerProject = "SampleLib",
             (string Project, string Source)? otherFile = null,
-            bool relocate = true)
+            bool relocate = true,
+            string typeName = "Selected",
+            string fromNamespace = "Old",
+            string toNamespace = "New")
     {
         var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory);
         Directory.CreateDirectory(fixtureDir);
@@ -507,7 +510,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
 
         var wsId = await workspace.LoadAsync(CancellationToken.None);
         var preview = await CreateService().PreviewChangeTypeNamespaceAsync(
-            wsId, "Selected", "Old", "New", relocate ? destinationPath : null, CancellationToken.None);
+            wsId, typeName, fromNamespace, toNamespace, relocate ? destinationPath : null, CancellationToken.None);
 
         var retrieved = PreviewStore.Retrieve(preview.PreviewToken);
         Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
@@ -866,6 +869,40 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(
             preview.Warnings!.Any(w => w.Contains("Kept `using Old;`", StringComparison.Ordinal)),
             $"Expected a kept-using warning naming `Old`. Warnings:\n{string.Join("\n", preview.Warnings)}");
+    }
+
+    /// <summary>
+    /// Regression (relocation-same-file-nested-destination-namespace): the in-place branch renamed
+    /// only the innermost declaration, so relocating <c>Outer.Inner.Worker</c> to <c>Target</c>
+    /// produced <c>Outer.Target.Worker</c>. The destination is the FULL namespace; unrelated
+    /// members of the enclosing declaration stay, and the consumer binds to the new location.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_InPlace_Honors_The_Full_Destination_Namespace_When_The_Type_Is_In_A_Nested_Namespace()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string source =
+            "namespace Outer\n{\n    public class Unrelated { }\n\n    namespace Inner\n    {\n        public class Worker { }\n    }\n}\n";
+        const string consumer =
+            "using Outer.Inner;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Worker? Value { get; set; }\n}\n";
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(
+            workspace, source, consumer, relocate: false, typeName: "Worker", fromNamespace: "Outer.Inner", toNamespace: "Target");
+        var consumerPath = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory, "Consumer.cs");
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Target.Worker"), $"Worker must arrive in Target:\n{text}");
+        Assert.IsNull(compilation.GetTypeByMetadataName("Outer.Target.Worker"), $"The destination must not stay under Outer:\n{text}");
+        Assert.IsNull(compilation.GetTypeByMetadataName("Outer.Inner.Worker"), $"Worker must leave Outer.Inner:\n{text}");
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Outer.Unrelated"), $"The unrelated enclosing member must stay:\n{text}");
+        var consumerDocument = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, consumerPath, StringComparison.OrdinalIgnoreCase));
+        StringAssert.Contains((await consumerDocument.GetTextAsync(CancellationToken.None)).ToString(), "using Target;");
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
     }
 
     [TestMethod]

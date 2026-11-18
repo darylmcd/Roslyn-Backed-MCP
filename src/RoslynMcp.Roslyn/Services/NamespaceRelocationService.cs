@@ -295,10 +295,13 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var containingNs = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault()
             ?? throw new InvalidOperationException("Cannot change namespace of a type with no enclosing namespace declaration.");
 
-        // Any other member of the same declaration (class, struct, interface, record, enum,
-        // delegate, nested namespace) would be dragged along by renaming the whole declaration.
-        // Namespace-level usings and externs are not members, so they never force extraction.
-        var hasOtherMembersInSameNs = containingNs.Members.Any(m => !ReferenceEquals(m, typeDecl));
+        // Renaming the containing declaration in place is correct only when it is a top-level
+        // declaration (its name IS the full namespace; a nested one would keep its enclosing
+        // names, turning Outer.Inner into Outer.Target) and the selected type is its only member:
+        // any other member (class, struct, interface, record, enum, delegate, nested namespace)
+        // would be dragged along. Namespace-level usings and externs are not members, so they
+        // never force extraction.
+        var canRenameInPlace = containingNs.Parent is CompilationUnitSyntax && containingNs.Members.Count == 1;
 
         // Tally sibling types (enums and delegates included) in fromNamespace across ANY other
         // document in the solution — used for consumer using-rewrite decisions (only drop
@@ -311,12 +314,12 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         if (!isRelocating)
         {
             var movedType = new SyntaxAnnotation();
-            var updatedRoot = hasOtherMembersInSameNs
-                ? MoveTypeIntoNewNamespaceInSameFile(sourceRoot, containingNs, typeDecl, toNamespace, movedType)
-                : RewriteNamespaceName(sourceRoot, containingNs, typeDecl, toNamespace, movedType);
+            var updatedRoot = canRenameInPlace
+                ? RewriteNamespaceName(sourceRoot, containingNs, typeDecl, toNamespace, movedType)
+                : MoveTypeIntoNewNamespaceInSameFile(sourceRoot, containingNs, typeDecl, toNamespace, movedType);
             siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(updatedRoot, fromNamespace);
             var updatedDocument = sourceDocument.WithSyntaxRoot(updatedRoot);
-            if (hasOtherMembersInSameNs)
+            if (!canRenameInPlace)
             {
                 // Format only the synthesized namespace declarations so their layout follows editorconfig.
                 updatedDocument = await Formatter.FormatAsync(
