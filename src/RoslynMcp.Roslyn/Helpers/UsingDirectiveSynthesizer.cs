@@ -28,11 +28,13 @@ internal static class UsingDirectiveSynthesizer
         CancellationToken ct)
     {
         var result = new List<UsingDirectiveSyntax>();
-        var alreadyAddedPlainNamespaces = new HashSet<string>(destinationGlobalPlainNamespaces, StringComparer.Ordinal);
+        var requiredKeys = requiredNamespaces.Select(NamespaceNameIdentity.Of).ToHashSet(StringComparer.Ordinal);
+        var alreadyAddedPlainNamespaces = new HashSet<string>(
+            destinationGlobalPlainNamespaces.Select(NamespaceNameIdentity.Of), StringComparer.Ordinal);
 
         PreserveSpecialAndRequiredSourceUsings(
             sourceUsings,
-            requiredNamespaces,
+            requiredKeys,
             preserveGlobalUsings,
             sourceSemanticModel,
             ct,
@@ -128,7 +130,7 @@ internal static class UsingDirectiveSynthesizer
 
     private static void PreserveSpecialAndRequiredSourceUsings(
         IEnumerable<UsingDirectiveSyntax> sourceUsings,
-        IReadOnlyCollection<string> requiredNamespaces,
+        IReadOnlyCollection<string> requiredNamespaceKeys,
         bool preserveGlobalUsings,
         SemanticModel? sourceSemanticModel,
         CancellationToken ct,
@@ -164,7 +166,7 @@ internal static class UsingDirectiveSynthesizer
             // Plain using: keep ONLY if the semantic walk identified this namespace as
             // required. This drops unrelated usings that pollute the generated file.
             var name = GetUsingNamespace(source);
-            if (name is null || !requiredNamespaces.Contains(name))
+            if (name is null || !requiredNamespaceKeys.Contains(name))
             {
                 continue;
             }
@@ -183,7 +185,7 @@ internal static class UsingDirectiveSynthesizer
     {
         foreach (var ns in requiredNamespaces)
         {
-            if (alreadyAddedPlainNamespaces.Add(ns))
+            if (alreadyAddedPlainNamespaces.Add(NamespaceNameIdentity.Of(ns)))
             {
                 result.Add(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns)));
             }
@@ -213,7 +215,7 @@ internal static class UsingDirectiveSynthesizer
 
     private static string? GetUsingNamespace(UsingDirectiveSyntax source)
     {
-        var name = source.Name?.ToString();
+        var name = NamespaceNameIdentity.Of(source.Name);
         return string.IsNullOrWhiteSpace(name) ? null : name;
     }
 
@@ -227,7 +229,7 @@ internal static class UsingDirectiveSynthesizer
 
         return source.Name is { } name
             && sourceSemanticModel.GetSymbolInfo(name, ct).Symbol is INamespaceSymbol namespaceSymbol
-            ? namespaceSymbol.ToDisplayString()
+            ? NamespaceNameIdentity.Of(namespaceSymbol)
             : null;
     }
 
