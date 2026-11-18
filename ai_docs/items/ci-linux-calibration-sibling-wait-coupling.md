@@ -20,6 +20,8 @@
 - Run 44176184128 (five Linux legs, first attempt, green): the resolving step took 2 to 36 seconds per leg.
 - Observed failure: run 44182325844 (head 49e7e206, 2026-11-17), attempt 1, the second run of the five-leg topology. Leg `linux-1-of-5` ran on a degraded runner: step `Initialize PowerShell startup cache` took 21:41:20Z to 21:53:24Z (normally about 5 s) and `Linux host diagnostics` took 2 min 6 s, so its calibration build finished at 21:58:33Z. Legs 2 to 5 each failed in `Resolve Linux shard build times` after 3 min 1 s (for example `linux-2-of-5`: 21:43:04Z to 21:46:05Z). `validate` was red; all six Windows legs were green. Re-running the failed jobs recovered it (attempt 2 green, merged).
 - Job count: a code run holds 11 legs + quality + SDK floor = 13 jobs, plus the repository's CodeQL jobs, against an account limit of 40 concurrent jobs; three overlapping code runs exceed it, and a queued sibling starts its calibration build late.
+- Failed sibling, not late: run 43918494434 (PR 2125, 2026-11-16, four-leg topology). Leg `linux-4-of-4` failed in `./eng/verify-ai-docs.ps1` before its calibration build; legs 1 to 3 then each failed with `Timed out waiting for Linux calibration builds (3/4)`. The sibling message hid the one real failure.
+- Queue saturation: run 44384144078 (PR 2130, 2026-11-18). Five pull requests were pushed within two minutes (about 44 queued jobs against the 40-job account limit). Legs `linux-1-of-5`, `linux-4-of-5` and `linux-5-of-5` failed in `Resolve Linux shard build times`; every Windows leg, `quality` and the SDK-floor lane were green.
 
 ## Context
 

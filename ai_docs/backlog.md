@@ -274,6 +274,7 @@
 | `full-suite-load-sensitive-timeout-family` | Medium | — | **Make the load-sensitive fork, native-build and deadline tests deterministic** — every filter-less run this batch went red on 2-68 timeouts that pass alone; replace wall-clock deadlines with readiness signals. [type: test] [source: 2026-11-18 remediation run full-suite results] | L | items/full-suite-load-sensitive-timeout-family.md |
 | `file-watcher-deleting-one-root-test-red-on-base` | Medium | — | **Fix DeletingOneRoot_RetiresOnlyThatWorkspaceAndKeepsSiblingWatched** — it failed alone on base aafbd01a with a 30 s TimeoutException; re-run on current main, find the missing signal, fix. [type: test] [source: PR 2148 implementation review] | S | items/file-watcher-deleting-one-root-test-red-on-base.md |
 | `namespace-argument-validation-copy-sites` | Medium | — | **Validate and escape namespace strings outside change_type_namespace** — move_file folder namespaces, cross-project targetNamespace and replace_string_literals usingNamespace reach ParseName unvalidated or unescaped. [type: bug] [source: PR 2144 implementation review] | M | items/namespace-argument-validation-copy-sites.md |
+| `net10-host-msbuild-locator-sdk-11-workspaces` | Medium | — | **Prove or fix workspace loading against the .NET 11 SDK from the net10.0 host** — a net10.0 process registered the SDK 10 MSBuild with SDK 11 installed; net11.0 projects and SDK-11-only machines are untested. [type: bug] [source: SDK floor migration 2026-11-18] | M | items/net10-host-msbuild-locator-sdk-11-workspaces.md |
 
 ## Low
 
@@ -599,6 +600,7 @@
 | `invalid-operation-ratchet-stale-entries` | Low | — | **Fail the IOE construction ratchet on stale baseline entries** — AssertSubset only rejects additions, so entries for removed constructions linger; prune them and assert equality. [type: test] [source: PR 2144 implementation review] | S | items/invalid-operation-ratchet-stale-entries.md |
 | `extract-method-service-shared-expression-split` | Low | — | **Move the shared-expression pipeline out of ExtractMethodService** — the 1077-line service hosts extract_method and the whole shared-expression flow; give the latter its own service. [type: tech-debt] [source: PR 2142 implementation review] | M | items/extract-method-service-shared-expression-split.md |
 | `shared-expression-test-csproj-text-patching` | Low | — | **Edit test csproj files structurally** — the shared-expression tests patch SampleLib.csproj with string Replace, which silently does nothing when the anchor text changes. [type: test] [source: PR 2142 implementation review] | S | items/shared-expression-test-csproj-text-patching.md |
+| `agents-devbuild-runner-pilot-stale-tools` | Low | — | **Update the DevBuild-Runner pilot section to the current runner tools** — AGENTS.md still names the retired server_info, job_get and job_logs tools. [type: docs] [source: runner probe 2026-11-18] | S | items/agents-devbuild-runner-pilot-stale-tools.md |
 
 ## Defer
 
