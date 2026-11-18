@@ -56,7 +56,7 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <summary>Test seam: runs immediately before <see cref="RevertBySequenceAsync"/> enters the critical section that resolves, dependency-checks and claims the target.</summary>
     internal Action? BeforeSequenceClaim { get; set; }
 
-    /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which takes no lock) can land in.</summary>
+    /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which writes the slot under the registry gate, never under this history lock) can land in.</summary>
     internal Action? BeforeCommitSwap { get; set; }
 
     /// <summary>Test seam: runs in <see cref="RevertAsync"/> after the pending slot is claimed and before the restore starts, i.e. the window a concurrent by-sequence revert of the same operation can land in.</summary>
@@ -369,7 +369,7 @@ public sealed class UndoService : IUndoService, IDisposable
                     return false; // A by-sequence revert already claimed it.
             }
 
-            // CaptureBeforeApply writes the slot without this lock: a lost compare-and-remove means a
+            // CaptureBeforeApply writes the slot under the registry gate, not this history lock: a lost compare-and-remove means a
             // newer capture replaced the slot, which must survive untouched.
             if (!_snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending)))
                 return false;
@@ -533,7 +533,7 @@ public sealed class UndoService : IUndoService, IDisposable
             var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles };
             BeforeCommitSwap?.Invoke();
 
-            // CaptureBeforeApply writes the slot without this lock, so a newer capture can land after
+            // CaptureBeforeApply writes the slot under the registry gate, not this history lock, so a newer capture can land after
             // the read above. Compare-and-swap against the exact snapshot we validated: a lost race
             // leaves the newer capture in the slot with its own undo and adds no history for this one.
             if (!_snapshots.TryUpdate(workspaceId, promoted, pending))
