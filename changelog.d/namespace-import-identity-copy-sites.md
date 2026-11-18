@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** Namespace imports are compared by namespace identity (identifier values, no `@` escapes or interior trivia) in every place that previously compared the syntax text of an import. `bulk_replace_type_preview` and `replace_string_literals_preview` no longer add a second import when the namespace is already imported in another spelling, and the latter escapes keyword segments of the caller's `usingNamespace`. Generated usings for extracted interfaces and moved types keep a required global or destination import written in another spelling instead of duplicating it. `get_namespace_dependencies` keys an import edge by the resolved namespace, so an escaped or interior-trivia import joins its declared node instead of creating a phantom node and hiding a cycle. `parameter_object_preview` no longer `global::`-qualifies a DTO whose namespace is already in scope under another spelling. `test_discover` and `scaffold_test_preview` build namespace-qualified names from namespace identity (no interior trivia or `@`).
