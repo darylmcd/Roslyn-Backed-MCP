@@ -21,9 +21,17 @@ internal static class InterfacePreviewCompilationGate
         "Resolve the reported errors, choose a different interface name, or, if replaceUsages retyped a consumer, " +
         "preview with replaceUsages=false or include the members those usages call in memberNames, before previewing again.";
 
-    /// <summary>The remedy for a same-project refusal: which causes are possible decides which are named.</summary>
+    /// <summary>Remedy for the same-project route when only a project that compiles a linked copy of an edited file broke.</summary>
+    public const string LinkedCopyRemedy =
+        "Resolve the reported errors in the projects that compile the same file, or choose a different type, before previewing again.";
+
+    /// <summary>
+    /// The remedy for a same-project refusal: which causes are possible decides which are named. With neither a same-named
+    /// type nor <c>replaceUsages</c>, the only edited project besides the source's is one that links a changed file.
+    /// </summary>
     public static string RemedyFor(bool sameNamedType, bool replaceUsages) =>
-        !sameNamedType ? ReplaceUsagesRemedy : replaceUsages ? SiblingReplaceUsagesRemedy : SiblingRemedy;
+        !sameNamedType ? (replaceUsages ? ReplaceUsagesRemedy : LinkedCopyRemedy)
+        : replaceUsages ? SiblingReplaceUsagesRemedy : SiblingRemedy;
 
     public static async Task ValidateAsync(Solution baseline, Solution pending, string remedy, CancellationToken ct)
     {

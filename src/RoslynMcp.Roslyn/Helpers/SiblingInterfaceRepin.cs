@@ -83,24 +83,28 @@ internal static class SiblingInterfaceRepin
                     $"re-pin the references to '{name}' in that one file consistently; reload the workspace and retry.");
             }
 
+            var documentText = await document.GetTextAsync(ct).ConfigureAwait(false);
             foreach (var copy in copies)
             {
                 // The source type's own document is edited again (its base list) after this step, in one copy only; the
                 // linked-document reconciliation that follows on every route copies that final text to the others, so an edit
-                // made here to a second copy would make the copies diverge there.
-                if (copy.Id != sourceDocumentId && !string.IsNullOrWhiteSpace(sourceDocument.FilePath) &&
-                    FileSystemPath.Comparer.Equals(copy.FilePath, sourceDocument.FilePath)) continue;
-                if (!edits.TryGetValue(copy.Id, out var spans)) edits[copy.Id] = spans = [];
+                // made here to a second copy would make the copies diverge there. Those other copies are still checked: the
+                // reconciliation overwrites them with this spelling, so it must mean the same type in their project.
+                var isOtherSourceCopy = copy.Id != sourceDocumentId && !string.IsNullOrWhiteSpace(sourceDocument.FilePath) &&
+                    FileSystemPath.Comparer.Equals(copy.FilePath, sourceDocument.FilePath);
+                Dictionary<TextSpan, string>? spans = null;
+                if (!isOtherSourceCopy && !edits.TryGetValue(copy.Id, out spans)) edits[copy.Id] = spans = [];
                 foreach (var (span, text, original) in documentEdits)
                 {
+                    if (copy.Id != document.Id && !await BindsToAsync(without, copy, span, original, ct).ConfigureAwait(false))
+                        throw Disagreement(document, name, documentText.Lines.GetLinePosition(span.Start).Line + 1);
+                    if (spans is null) continue;
                     if (spans.TryGetValue(span, out var existing))
                     {
-                        if (existing != text) throw Disagreement(document, name, span);
+                        if (existing != text) throw Disagreement(document, name, documentText.Lines.GetLinePosition(span.Start).Line + 1);
                         continue;
                     }
 
-                    if (copy.Id != document.Id && !await BindsToAsync(without, copy, span, original, ct).ConfigureAwait(false))
-                        throw Disagreement(document, name, span);
                     spans[span] = text;
                 }
             }
@@ -157,8 +161,8 @@ internal static class SiblingInterfaceRepin
                bound.ToDisplayString() == original.ToDisplayString();
     }
 
-    private static PublicInvalidOperationException Disagreement(Document document, string name, TextSpan span) =>
-        new($"Linked C# documents at '{document.FilePath}' would pin the reference to '{name}' at position {span.Start} to different types " +
+    private static PublicInvalidOperationException Disagreement(Document document, string name, int line) =>
+        new($"Linked C# documents at '{document.FilePath}' would pin the reference to '{name}' on line {line} to different types " +
             "in different projects, so the preview cannot write one spelling into every project; choose a different interface name.");
 
     private static async Task RefuseReboundGeneratedReferencesAsync(

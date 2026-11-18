@@ -121,22 +121,29 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             newSolution = await GeneratedInterfaceReference.AddToBaseListAsync(
                 repin.Solution, sourceDocument.Id, repin.TypeMark, interfaceDoc.Id, multilineContinuation: false, ct).ConfigureAwait(false);
 
+            // The base list went into one copy of the source file and the usage rewrite edits each reference document on its
+            // own. Either file may be linked into other projects: copy its final text to every copy (and reference the
+            // interface's project), so the pending solution matches what apply writes to the one physical file.
+            var reconcile = new List<DocumentId> { sourceDocument.Id };
             if (replaceUsages)
             {
+                var beforeReplace = newSolution;
                 newSolution = await ReplaceConcreteUsagesAsync(
                     newSolution, sourceDocument.Project.Id, typeSymbol, interfaceDoc.Id, ct).ConfigureAwait(false);
+                reconcile.AddRange(newSolution.GetChanges(beforeReplace).GetProjectChanges().SelectMany(change => change.GetChangedDocuments()));
             }
 
-            // The source type's file may be linked into other projects: copy its final text to those copies, so the pending
-            // solution matches what the apply writes to disk and the gate below sees every project that compiles that file.
             newSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(
-                solution, newSolution, sourceDocument.Id, sourceDocument.Project.Id, ct).ConfigureAwait(false);
+                solution, newSolution, reconcile, sourceDocument.Project.Id, ct).ConfigureAwait(false);
 
-            // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override), and
-            // re-pinning edits documents the caller did not name: refuse either preview rather than publish a token
-            // whose apply does not compile. The remedy names every cause that could apply to this request.
+            // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override), re-pinning
+            // edits documents the caller did not name, and a linked copy of an edited file compiles in another project (the
+            // type may be internal there): refuse any of them rather than publish a token whose apply does not compile.
+            // The remedy names every cause that could apply to this request.
             var sameNamedType = sameNamed.Count > 0 || repin.Repinned;
-            if (replaceUsages || sameNamedType)
+            var otherProjectsChanged = newSolution.GetChanges(solution).GetProjectChanges()
+                .Any(change => change.ProjectId != sourceDocument.Project.Id);
+            if (replaceUsages || sameNamedType || otherProjectsChanged)
             {
                 await InterfacePreviewCompilationGate.ValidateAsync(
                     solution, newSolution, InterfacePreviewCompilationGate.RemedyFor(sameNamedType, replaceUsages), ct).ConfigureAwait(false);

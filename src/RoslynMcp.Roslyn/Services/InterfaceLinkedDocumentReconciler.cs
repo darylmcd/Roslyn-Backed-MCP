@@ -31,20 +31,20 @@ internal static class InterfaceLinkedDocumentReconciler
     }
 
     /// <summary>
-    /// Reconciles only the copies of <paramref name="documentId"/>'s file: the route generated its interface beside one
-    /// document and edited the other changed documents consistently across their copies itself, so only this document's
-    /// final text still has to reach the other projects that compile it.
+    /// Reconciles only the files of <paramref name="documentIds"/>: a route that edits some documents consistently across
+    /// their linked copies itself (the re-pin) names just the documents it edited one copy of (the source type, the
+    /// documents a usage rewrite changed), so unrelated linked files do not gain a project reference they do not need.
     /// </summary>
     internal static async Task<Solution> ReconcileLinkedCopiesAsync(
-        Solution baseline, Solution pending, DocumentId documentId, ProjectId interfaceProjectId, CancellationToken ct)
+        Solution baseline, Solution pending, IReadOnlyCollection<DocumentId> documentIds, ProjectId interfaceProjectId, CancellationToken ct)
     {
-        var path = pending.GetDocument(documentId)?.FilePath;
-        if (string.IsNullOrWhiteSpace(path)) return pending;
+        var paths = documentIds.Select(id => pending.GetDocument(id)?.FilePath)
+            .Where(path => !string.IsNullOrWhiteSpace(path)).ToHashSet(FileSystemPath.Comparer);
         var changedIds = ChangedDocumentIds(baseline, pending);
-        var group = LinkedGroups(pending).FirstOrDefault(candidate => FileSystemPath.Comparer.Equals(candidate.Key, path));
-        return group is null
-            ? pending
-            : await ReconcileGroupAsync(baseline, pending, group.Key, group.ToArray(), changedIds, interfaceProjectId, ct).ConfigureAwait(false);
+        foreach (var group in LinkedGroups(pending).Where(candidate => paths.Contains(candidate.Key)))
+            pending = await ReconcileGroupAsync(baseline, pending, group.Key, group.ToArray(), changedIds, interfaceProjectId, ct).ConfigureAwait(false);
+
+        return pending;
     }
 
     private static HashSet<DocumentId> ChangedDocumentIds(Solution baseline, Solution pending) =>
@@ -67,12 +67,13 @@ internal static class InterfaceLinkedDocumentReconciler
             .Where(document => document is not null).ToArray();
         var originalTexts = await Task.WhenAll(originals.Select(document => document!.GetTextAsync(ct))).ConfigureAwait(false);
         if (originalTexts.Select(text => text.ToString()).Distinct(StringComparer.Ordinal).Skip(1).Any())
-            throw new PublicInvalidOperationException($"Linked C# documents at '{path}' have divergent baseline content.");
+            throw new PublicInvalidOperationException($"Linked C# documents at '{path}' have different content in different projects, so the preview cannot write one final text to the shared file; reload the workspace and retry.");
 
         var changed = linked.Where(document => changedIds.Contains(document.Id)).ToArray();
         var changedTexts = await Task.WhenAll(changed.Select(document => document.GetTextAsync(ct))).ConfigureAwait(false);
         if (changedTexts.Select(text => text.ToString()).Distinct(StringComparer.Ordinal).Skip(1).Any())
-            throw new PublicInvalidOperationException($"Linked C# documents at '{path}' have divergent edits.");
+            throw new PublicInvalidOperationException($"Linked C# documents at '{path}' were changed in different ways in different projects, so one final text cannot be written to the shared file; " +
+                "preview with replaceUsages=false, or choose a different interface name, before previewing again.");
         foreach (var document in linked)
         {
             pending = pending.WithDocumentText(document.Id, changedTexts[0]);
