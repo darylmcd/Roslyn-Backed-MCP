@@ -98,3 +98,45 @@ updates:
         versions: [">=18.0.0"]
       - dependency-name: "Microsoft.Build.Utilities.Core"
         versions: [">=18.0.0"]
+
+      # Roslyn above 5.9 is blocked by the SDK floor, not merely unreviewed.
+      # Each stable Roslyn version ships with one SDK band (5.9 = 10.0.4xx,
+      # 5.12 = 11.0.100). RoslynMcp.Host.Stdio loads the in-repo analyzer, which
+      # is built against the central Roslyn pin, so a pin newer than the
+      # compiler of the global.json SDK floor fails the build with CS9057.
+      # Microsoft.CodeAnalysis.Workspaces.MSBuild 5.12.0 also requires
+      # Microsoft.Build.Framework 18.7.1, which the MSBuild 18.x block above
+      # forbids. PR #2126 was closed on this basis.
+      #
+      # Lift these ignores only as part of backlog row
+      # dotnet-11-sdk-roslyn-5-12-migration (SDK floor, MSBuild 18.x and the
+      # Roslyn API family move in one reviewed change with an ADR).
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp"
+        versions: [">=5.10.0"]
+      - dependency-name: "Microsoft.CodeAnalysis.Analyzers"
+        versions: [">=5.10.0"]
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp.Workspaces"
+        versions: [">=5.10.0"]
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp.Features"
+        versions: [">=5.10.0"]
+      - dependency-name: "Microsoft.CodeAnalysis.Features"
+        versions: [">=5.10.0"]
+      - dependency-name: "Microsoft.CodeAnalysis.Workspaces.MSBuild"
+        versions: [">=5.10.0"]
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp.Scripting"
+        versions: [">=5.10.0"]
+
+      # The Extensions runtime family stays on the 10.0.x servicing line while
+      # the target framework is net10.0 (docs/upgrade-matrix.md sections 1 and
+      # 3). Dependabot's 11.0.0 proposal (PR #2127) also dragged
+      # Microsoft.CodeAnalysis.Workspaces.MSBuild to 5.12.0 on its own, which
+      # splits the Roslyn API family and fails restore with NU1107. The move to
+      # the 11.x line is decided in the same migration row as above.
+      - dependency-name: "Microsoft.Extensions.Hosting"
+        versions: [">=11.0.0"]
+      - dependency-name: "Microsoft.Extensions.Http"
+        versions: [">=11.0.0"]
+      - dependency-name: "Microsoft.Extensions.Logging"
+        versions: [">=11.0.0"]
+      - dependency-name: "Microsoft.Extensions.Logging.Console"
+        versions: [">=11.0.0"]
