@@ -43,7 +43,12 @@ public sealed class UndoService : IUndoService, IDisposable
     private static long _captureCounter;
 
     private readonly ConcurrentDictionary<string, UndoSnapshot> _snapshots = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, List<UndoSnapshot>> _history = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, WorkspaceUndoHistory> _history = new(StringComparer.Ordinal);
+
+    // Registry gate: orders Clear against every path that creates or enters a workspace's history or
+    // writes its pending slot. Held only for dictionary work (no await, no I/O). Lock order is fixed:
+    // _registrySync, then a WorkspaceUndoHistory lock; code holding a history lock never takes this gate.
+    private readonly object _registrySync = new();
     private readonly ILogger<UndoService> _logger;
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IChangeTracker? _changeTracker;
@@ -51,11 +56,17 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <summary>Test seam: runs immediately before <see cref="RevertBySequenceAsync"/> enters the critical section that resolves, dependency-checks and claims the target.</summary>
     internal Action? BeforeSequenceClaim { get; set; }
 
-    /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which takes no lock) can land in.</summary>
+    /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which writes the slot under the registry gate, never under this history lock) can land in.</summary>
     internal Action? BeforeCommitSwap { get; set; }
 
     /// <summary>Test seam: runs in <see cref="RevertAsync"/> after the pending slot is claimed and before the restore starts, i.e. the window a concurrent by-sequence revert of the same operation can land in.</summary>
     internal Func<Task>? AfterLifoClaim { get; set; }
+
+    /// <summary>Test seam: runs in <see cref="RevertBySequenceAsync"/> after the target is claimed and before the restore starts, i.e. the window a workspace close (<see cref="Clear"/>) can land in.</summary>
+    internal Func<Task>? AfterSequenceClaim { get; set; }
+
+    /// <summary>Test seam: runs in the claim and commit paths after the registry-gate section (slot peek plus history lookup/creation) and before the history lock is taken, i.e. the window <see cref="Clear"/> can land in.</summary>
+    internal Action? AfterRegistryPeek { get; set; }
 
     /// <summary>Test seam: number of workspaces that own a history list. Production code must not read it.</summary>
     internal int TrackedHistoryWorkspaceCount => _history.Count;
@@ -100,7 +111,7 @@ public sealed class UndoService : IUndoService, IDisposable
 
         var preApplyVersion = _workspaceManager.GetCurrentVersion(workspaceId);
         var capture = new UndoCaptureId(Interlocked.Increment(ref _captureCounter));
-        _snapshots[workspaceId] = new UndoSnapshot(
+        var snapshot = new UndoSnapshot(
             workspaceId,
             description,
             solution,
@@ -110,6 +121,17 @@ public sealed class UndoService : IUndoService, IDisposable
             SequenceNumber: 0,
             AffectedFiles: Array.Empty<string>(),
             capture);
+
+        // The workspace can close between GetCurrentVersion above and this write; Clear runs under the
+        // same gate, so re-checking liveness here means no slot is ever left behind for a closed workspace.
+        lock (_registrySync)
+        {
+            if (!_workspaceManager.ContainsWorkspace(workspaceId))
+                throw new KeyNotFoundException($"Workspace '{workspaceId}' was closed while its undo snapshot was being captured.");
+
+            _snapshots[workspaceId] = snapshot;
+        }
+
         return capture;
     }
 
@@ -155,6 +177,7 @@ public sealed class UndoService : IUndoService, IDisposable
             return false;
         }
 
+        CompleteClaim(claim);
         return true;
     }
 
@@ -163,7 +186,9 @@ public sealed class UndoService : IUndoService, IDisposable
         int sequenceNumber,
         CancellationToken cancellationToken = default)
     {
-        if (!_history.TryGetValue(workspaceId, out var historyList))
+        // No history object means nothing was ever committed or reverted for this workspace (or it was
+        // cleared together with its consumed-sequence record): a pure lookup, never an allocation.
+        if (!_history.TryGetValue(workspaceId, out var history))
         {
             return new RevertBySequenceResult(
                 Reverted: false,
@@ -184,17 +209,30 @@ public sealed class UndoService : IUndoService, IDisposable
         UndoSnapshot target;
         int claimedIndex;
         bool wasPending;
-        lock (historyList)
+        lock (history)
         {
-            claimedIndex = historyList.FindIndex(s => s.SequenceNumber == sequenceNumber);
-            if (claimedIndex < 0)
+            if (history.Cleared)
             {
-                // Unknown, or a competing claimant already took it: refuse without restoring.
+                // The workspace closed after the lookup: its history (and consumed record) is gone.
                 return new RevertBySequenceResult(
                     Reverted: false,
                     RevertedOperation: null,
                     AffectedFiles: Array.Empty<string>(),
                     Reason: "unknown-sequence",
+                    BlockingSequences: null);
+            }
+
+            var historyList = history.Entries;
+            claimedIndex = historyList.FindIndex(s => s.SequenceNumber == sequenceNumber);
+            if (claimedIndex < 0)
+            {
+                // Already reverted (or being reverted by a competing claimant, which marks the
+                // sequence consumed at claim time) versus never in this workspace's history.
+                return new RevertBySequenceResult(
+                    Reverted: false,
+                    RevertedOperation: null,
+                    AffectedFiles: Array.Empty<string>(),
+                    Reason: history.ConsumedSequences.Contains(sequenceNumber) ? "already-reverted" : "unknown-sequence",
                     BlockingSequences: null);
             }
 
@@ -234,13 +272,16 @@ public sealed class UndoService : IUndoService, IDisposable
             // Claim the history entry and, when the target is also the pending LIFO snapshot, the slot
             // too (compare-and-remove: a newer capture that raced in is not clobbered) — all under
             // this lock, so RevertAsync's claim cannot interleave.
-            wasPending = ClaimUnderLock(workspaceId, historyList, claimedIndex, target);
+            wasPending = ClaimUnderLock(workspaceId, history, claimedIndex, target);
         }
 
-        var claim = new RevertClaim(target, historyList, claimedIndex, wasPending);
+        var claim = new RevertClaim(target, history, claimedIndex, wasPending) { ConsumedSequence = sequenceNumber };
         bool reverted;
         try
         {
+            if (AfterSequenceClaim is not null)
+                await AfterSequenceClaim().ConfigureAwait(false);
+
             reverted = await RevertSnapshotAsync(workspaceId, target, cancellationToken).ConfigureAwait(false);
         }
         catch
@@ -274,98 +315,159 @@ public sealed class UndoService : IUndoService, IDisposable
             BlockingSequences: null);
     }
 
-    /// <summary>A won claim on one undo snapshot: the history position it left (-1: none) and whether it was also the pending LIFO slot.</summary>
-    private sealed record RevertClaim(UndoSnapshot Target, List<UndoSnapshot>? HistoryList, int HistoryIndex, bool WasPending);
+    /// <summary>
+    /// A won claim on one undo snapshot: the history position it left (-1: none), whether it was also the
+    /// pending LIFO slot, the sequence it marked consumed (0: none), and, for a sequence-0 slot, the
+    /// commit that raced the claim (applied by <see cref="UnclaimRevert"/>, dropped by <see cref="CompleteClaim"/>).
+    /// Mutable fields are only touched under the <see cref="History"/> lock.
+    /// </summary>
+    private sealed class RevertClaim(UndoSnapshot target, WorkspaceUndoHistory history, int historyIndex, bool wasPending)
+    {
+        public UndoSnapshot Target { get; } = target;
+        public WorkspaceUndoHistory History { get; } = history;
+        public int HistoryIndex { get; } = historyIndex;
+        public bool WasPending { get; } = wasPending;
+        public int ConsumedSequence { get; init; }
+        public (int Sequence, IReadOnlyList<string> AffectedFiles)? DeferredCommit { get; set; }
+    }
 
     /// <summary>
     /// Claims the pending LIFO snapshot for <see cref="RevertAsync"/> under the per-workspace lock
     /// (the one <see cref="RevertBySequenceAsync"/> and <see cref="CommitPendingCapture"/> use). A
-    /// committed slot (sequence &gt; 0) also gives up its history entry; a sequence-0 slot has none,
-    /// so its claim is the compare-and-remove alone.
+    /// committed slot (sequence &gt; 0) also gives up its history entry and marks its sequence consumed; a
+    /// sequence-0 slot registers as in flight so a commit that races the claim is deferred, not lost.
     /// </summary>
     private bool TryClaimPending(string workspaceId, out RevertClaim claim)
     {
         claim = null!;
-        if (!_history.TryGetValue(workspaceId, out var historyList))
+
+        // Peek of the live slot and lookup/creation of the history are ONE registry-gate section, the
+        // section Clear's detach-and-remove also runs in: Clear-first leaves no slot to peek (so no
+        // history is created for a closed workspace); peek-first registers the history Clear then flags.
+        // An unknown workspace has no slot and never allocates a history.
+        WorkspaceUndoHistory history;
+        lock (_registrySync)
         {
-            // No history list exists (unknown/closed workspace, or nothing committed yet): only an
-            // uncommitted sequence-0 slot can be pending, it has no history entry to give up, and every
-            // other writer to the slot (capture, commit) is a compare-and-swap on the dictionary itself,
-            // so the compare-and-remove alone is the claim. Never allocate a list for an unknown id.
-            if (!_snapshots.TryGetValue(workspaceId, out var uncommitted) || uncommitted.SequenceNumber != 0)
+            if (!_snapshots.ContainsKey(workspaceId))
                 return false;
 
-            if (!_snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, uncommitted)))
-                return false;
-
-            claim = new RevertClaim(uncommitted, HistoryList: null, HistoryIndex: -1, WasPending: true);
-            return true;
+            history = _history.GetOrAdd(workspaceId, static _ => new WorkspaceUndoHistory());
         }
 
-        lock (historyList)
+        AfterRegistryPeek?.Invoke();
+
+        lock (history)
         {
-            if (!_snapshots.TryGetValue(workspaceId, out var pending))
+            if (history.Cleared || !_snapshots.TryGetValue(workspaceId, out var pending))
                 return false;
 
             var index = -1;
             if (pending.SequenceNumber > 0)
             {
-                index = historyList.FindIndex(s => s.SequenceNumber == pending.SequenceNumber);
+                index = history.Entries.FindIndex(s => s.SequenceNumber == pending.SequenceNumber);
                 if (index < 0)
                     return false; // A by-sequence revert already claimed it.
             }
 
-            // CaptureBeforeApply writes the slot without this lock: a lost compare-and-remove means a
+            // CaptureBeforeApply writes the slot under the registry gate, not this history lock: a lost compare-and-remove means a
             // newer capture replaced the slot, which must survive untouched.
             if (!_snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending)))
                 return false;
 
             if (index >= 0)
-                historyList.RemoveAt(index);
+                history.Entries.RemoveAt(index);
 
-            claim = new RevertClaim(pending, historyList, index, WasPending: true);
+            if (pending.SequenceNumber > 0)
+            {
+                history.ConsumedSequences.Add(pending.SequenceNumber);
+                claim = new RevertClaim(pending, history, index, wasPending: true) { ConsumedSequence = pending.SequenceNumber };
+            }
+            else
+            {
+                claim = new RevertClaim(pending, history, index, wasPending: true);
+                history.InFlightPending[pending.CaptureId] = claim;
+            }
+
             return true;
         }
     }
 
     /// <summary>
-    /// Caller holds the <paramref name="historyList"/> lock. Drops the by-sequence target's history
-    /// entry and compare-removes it from the pending slot. Returns whether the target was the pending
-    /// slot, so <see cref="UnclaimRevert"/> restores exactly what was taken.
+    /// Caller holds the <paramref name="history"/> lock. Drops the by-sequence target's history entry,
+    /// marks its sequence consumed, and compare-removes it from the pending slot. Returns whether the
+    /// target was the pending slot, so <see cref="UnclaimRevert"/> restores exactly what was taken.
     /// </summary>
-    private bool ClaimUnderLock(string workspaceId, List<UndoSnapshot> historyList, int historyIndex, UndoSnapshot target)
+    private bool ClaimUnderLock(string workspaceId, WorkspaceUndoHistory history, int historyIndex, UndoSnapshot target)
     {
-        historyList.RemoveAt(historyIndex);
+        history.Entries.RemoveAt(historyIndex);
+        history.ConsumedSequences.Add(target.SequenceNumber);
         return _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, target));
     }
 
     /// <summary>
-    /// Undoes a claimed-but-failed (or cancelled) revert: reinserts the history entry at (or as close
-    /// as bounds allow to) its original ordinal position so the dependency-ordered overlap check stays
-    /// correct, and re-installs the target as the pending LIFO snapshot ONLY when it was the pending
-    /// slot when claimed (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
-    /// newer capture that raced in during the restore). Callers pass only a claim they won.
+    /// Undoes a claimed-but-failed (or cancelled) revert, under the history lock and only while the
+    /// workspace is still open (<see cref="WorkspaceUndoHistory.Cleared"/>: a closed workspace gets no
+    /// revived slot or entry): reinserts the history entry at (or as close as bounds allow to) its
+    /// original ordinal position so the dependency-ordered overlap check stays correct, un-marks the
+    /// consumed sequence, and re-installs the target as the pending LIFO snapshot ONLY when it was the
+    /// pending slot when claimed (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
+    /// newer capture that raced in during the restore). A commit deferred while a sequence-0 claim was
+    /// in flight is applied here: the slot returns as the promoted snapshot with its history entry (no
+    /// entry when a newer capture holds the slot, as in <see cref="CommitPendingCapture"/>). Callers pass
+    /// only a claim they won.
     /// </summary>
     private void UnclaimRevert(string workspaceId, RevertClaim claim)
     {
-        if (claim.HistoryList is not { } historyList)
+        var history = claim.History;
+        lock (history)
         {
-            if (claim.WasPending)
-                _snapshots.TryAdd(workspaceId, claim.Target);
-            return;
-        }
+            if (claim.Target.SequenceNumber == 0)
+                history.InFlightPending.Remove(claim.Target.CaptureId);
 
-        lock (historyList)
-        {
+            if (history.Cleared)
+                return;
+
+            if (claim.ConsumedSequence > 0)
+                history.ConsumedSequences.Remove(claim.ConsumedSequence);
+
+            if (claim.DeferredCommit is { } deferred)
+            {
+                var promoted = claim.Target with { SequenceNumber = deferred.Sequence, AffectedFiles = deferred.AffectedFiles };
+                if (_snapshots.TryAdd(workspaceId, promoted))
+                {
+                    var at = history.Entries.FindIndex(s => s.SequenceNumber > deferred.Sequence);
+                    history.Entries.Insert(at < 0 ? history.Entries.Count : at, promoted);
+                }
+
+                return;
+            }
+
             if (claim.HistoryIndex >= 0)
             {
                 // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
                 // calls may have grown the list while the restore was in flight.
-                historyList.Insert(Math.Min(claim.HistoryIndex, historyList.Count), claim.Target);
+                history.Entries.Insert(Math.Min(claim.HistoryIndex, history.Entries.Count), claim.Target);
             }
 
             if (claim.WasPending)
                 _snapshots.TryAdd(workspaceId, claim.Target);
+        }
+    }
+
+    /// <summary>
+    /// A LIFO revert succeeded: the sequence-0 claim leaves the in-flight set and a commit that raced it
+    /// leaves no history entry (the operation is reverted) but its sequence reads as already reverted.
+    /// </summary>
+    private static void CompleteClaim(RevertClaim claim)
+    {
+        var history = claim.History;
+        lock (history)
+        {
+            if (claim.Target.SequenceNumber == 0)
+                history.InFlightPending.Remove(claim.Target.CaptureId);
+
+            if (claim.DeferredCommit is { } deferred && !history.Cleared)
+                history.ConsumedSequences.Add(deferred.Sequence);
         }
     }
 
@@ -383,10 +485,36 @@ public sealed class UndoService : IUndoService, IDisposable
         }
 
         // Same per-workspace lock RevertBySequenceAsync claims under, so the ownership check, the
-        // promotion and the history append are one step relative to claims and other commits.
-        var historyList = _history.GetOrAdd(workspaceId, _ => new List<UndoSnapshot>());
-        lock (historyList)
+        // promotion and the history append are one step relative to claims and other commits. The slot
+        // peek and the history lookup/creation are ONE registry-gate section (the one Clear runs in): a
+        // history is created only for a live pending slot this capture owns, so a stale or after-Clear
+        // commit never allocates one. An existing history is also consulted for a sequence-0 revert in
+        // flight on this capture (its commit is deferred to the claim, not lost).
+        WorkspaceUndoHistory? history;
+        lock (_registrySync)
         {
+            if (_snapshots.TryGetValue(workspaceId, out var peek)
+                && peek.CaptureId == capture
+                && peek.SequenceNumber == 0)
+            {
+                history = _history.GetOrAdd(workspaceId, static _ => new WorkspaceUndoHistory());
+            }
+            else
+            {
+                _history.TryGetValue(workspaceId, out history);
+            }
+        }
+
+        if (history is null)
+            return;
+
+        AfterRegistryPeek?.Invoke();
+
+        lock (history)
+        {
+            if (history.Cleared)
+                return;
+
             // Promote only the pending (uncommitted) snapshot this operation captured. A mismatch means
             // a newer capture replaced it (stale id: the newer slot must survive), the slot was already
             // promoted, consumed by an undo, or cleared.
@@ -394,13 +522,18 @@ public sealed class UndoService : IUndoService, IDisposable
                 || pending.CaptureId != capture
                 || pending.SequenceNumber != 0)
             {
+                // The slot may be claimed by a LIFO revert of THIS capture that is still restoring: hand
+                // the commit to the claim so an unclaim keeps the history entry.
+                if (history.InFlightPending.TryGetValue(capture, out var inFlight) && inFlight.DeferredCommit is null)
+                    inFlight.DeferredCommit = (sequenceNumber, affectedFiles);
+
                 return;
             }
 
             var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles };
             BeforeCommitSwap?.Invoke();
 
-            // CaptureBeforeApply writes the slot without this lock, so a newer capture can land after
+            // CaptureBeforeApply writes the slot under the registry gate, not this history lock, so a newer capture can land after
             // the read above. Compare-and-swap against the exact snapshot we validated: a lost race
             // leaves the newer capture in the slot with its own undo and adds no history for this one.
             if (!_snapshots.TryUpdate(workspaceId, promoted, pending))
@@ -408,7 +541,7 @@ public sealed class UndoService : IUndoService, IDisposable
                 return;
             }
 
-            historyList.Add(promoted);
+            history.Entries.Add(promoted);
         }
     }
 
@@ -925,8 +1058,42 @@ public sealed class UndoService : IUndoService, IDisposable
 
     public void Clear(string workspaceId)
     {
-        _snapshots.TryRemove(workspaceId, out _);
-        _history.TryRemove(workspaceId, out _);
+        // Detach the history, flag it, and drop the pending slot in ONE registry-gate section, the one
+        // every claim/commit/capture peeks in. An in-flight revert's UnclaimRevert (history lock,
+        // Cleared check) then either finished before this section (its reinstalled slot is removed
+        // here) or finds the flag and revives nothing.
+        lock (_registrySync)
+        {
+            if (_history.TryRemove(workspaceId, out var history))
+            {
+                lock (history)
+                {
+                    history.Cleared = true;
+                }
+            }
+
+            _snapshots.TryRemove(workspaceId, out _);
+        }
+    }
+
+    /// <summary>
+    /// One workspace's committed undo history, also the lock object for every claim, commit and unclaim
+    /// on it. Retained until <see cref="Clear"/>: <see cref="ConsumedSequences"/> grows by one int per
+    /// reverted sequence for the workspace's lifetime (bounded by its apply count) and is released
+    /// with the workspace.
+    /// </summary>
+    private sealed class WorkspaceUndoHistory
+    {
+        public List<UndoSnapshot> Entries { get; } = new();
+
+        /// <summary>Sequences claimed by a revert (in flight or done): a repeat reports already-reverted, not unknown-sequence.</summary>
+        public HashSet<int> ConsumedSequences { get; } = new();
+
+        /// <summary>Sequence-0 pending slots claimed by <see cref="RevertAsync"/> and still restoring, by capture id.</summary>
+        public Dictionary<UndoCaptureId, RevertClaim> InFlightPending { get; } = new();
+
+        /// <summary>Set by <see cref="Clear"/> under the history lock; a cleared history accepts no claim, commit or unclaim.</summary>
+        public bool Cleared { get; set; }
     }
 
     private sealed record UndoSnapshot(

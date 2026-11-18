@@ -15,7 +15,9 @@ public interface IChangeTracker
     event Action<ChangeRecordedEventArgs>? ChangeRecorded;
 
     /// <summary>
-    /// Appends a change entry to the workspace ledger and raises <see cref="ChangeRecorded"/>.
+    /// Appends a change entry to the workspace ledger and raises <see cref="ChangeRecorded"/>. A record for a
+    /// workspace that is not open (closed, or closing concurrently) is dropped: no ledger is re-created and
+    /// <see cref="ChangeRecorded"/> does not fire.
     /// </summary>
     /// <param name="capture">
     /// The <see cref="IUndoService.CaptureBeforeApply"/> id taken by the SAME logical operation, or
