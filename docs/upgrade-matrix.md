@@ -41,23 +41,23 @@ The SDK floor follows the Roslyn API family: the repository's release analyzer i
 | `Microsoft.Extensions.Http` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.Logging` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.Logging.Console` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.TimeProvider.Testing` | `10.11.0` | `Directory.Packages.props` | Test-only; routine servicing group |
+| `Microsoft.Extensions.TimeProvider.Testing` | `11.0.0` | `Directory.Packages.props` | Test-only; routine servicing group |
 | `DiffPlex` | `1.9.0` | `Directory.Packages.props` | Independent |
 | `Microsoft.Build.Framework` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Tasks.Core` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Utilities.Core` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.NET.StringTools` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; MSBuild 18.x runtime dependency excluded for MSBuildLocator |
-| `Microsoft.NET.Test.Sdk` | `18.11.0` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
-| `MSTest.TestAdapter` | `4.5.2` | `Directory.Packages.props` | MSTest family; move with framework including majors |
-| `MSTest.TestFramework` | `4.5.2` | `Directory.Packages.props` | MSTest family; move with adapter including majors |
-| `coverlet.collector` | `10.1.0` | `Directory.Packages.props` | Coverage-only |
+| `Microsoft.NET.Test.Sdk` | `18.12.0` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
+| `MSTest.TestAdapter` | `4.5.3` | `Directory.Packages.props` | MSTest family; move with framework including majors |
+| `MSTest.TestFramework` | `4.5.3` | `Directory.Packages.props` | MSTest family; move with adapter including majors |
+| `coverlet.collector` | `10.1.1` | `Directory.Packages.props` | Coverage-only |
 | `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest` | `1.1.2` | `Directory.Packages.props` | Analyzer test harness; review Roslyn ABI |
 | `NuGet.Frameworks` | `6.3.4` | `Directory.Packages.props` | Direct test pin required by MSBuildLocator asset policy |
 | `Microsoft.CodeAnalysis.BannedApiAnalyzers` | `5.6.0` | `Directory.Packages.props` | Independently versioned analyzer |
 | `Nito.AsyncEx` | `5.1.2` | `Directory.Packages.props` | Independent |
-| `Microsoft.SourceLink.GitHub` | `10.0.403` | `Directory.Packages.props` | Routine SDK-wave servicing |
-| `System.Security.Cryptography.Xml` | `10.0.14` | `Directory.Packages.props` | Security override; update central rationale and notices together |
+| `Microsoft.SourceLink.GitHub` | `10.0.404` | `Directory.Packages.props` | Routine SDK-wave servicing |
+| `System.Security.Cryptography.Xml` | `10.0.15` | `Directory.Packages.props` | Security override; update central rationale and notices together |
 
 **Samples:** `samples/GeneratedDocumentSolution/ConsumerLib.Generators` uses `VersionOverride="5.0.0"` for `Microsoft.CodeAnalysis.CSharp` intentionally; it is outside central-package parity and moves only when that sample scenario requires it.
 
