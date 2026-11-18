@@ -742,6 +742,17 @@ public sealed class ExtractMethodService : IExtractMethodService
                 if (candidateType is null) continue;
                 if (!allowCrossFile && candidateType != exampleType) continue;
 
+                // Use-site guard, for the example and every candidate: a helper call is a value, so an
+                // occurrence that needs a variable (assignment target, ref/out/in argument, mutated struct
+                // receiver) cannot be replaced by it.
+                if (SharedExpressionUseSite.Classify(candidate, docModel, ct) == SharedExpressionUseSiteKind.StorageRequired)
+                {
+                    throw new PublicInvalidOperationException(
+                        $"The expression at {doc.Name}:{candidate.GetLocation().GetLineSpan().StartLinePosition.Line + 1} is used where a " +
+                        "writable variable or by-reference storage is required, which a value-returning helper cannot provide. " +
+                        "Select a different example or narrow the extraction scope.");
+                }
+
                 // Semantic-type guard: every free variable must have the same ITypeSymbol as the
                 // example. Matches by position (structural equivalence aligns them 1:1).
                 var candidateFreeVars = CollectFreeVariables(candidate, docModel);
