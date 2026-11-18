@@ -20,3 +20,7 @@
 ## Evidence
 
 - Cold review of PR #1863 (2026-10-27): these sites call `_previewStore.Store` without a diagnostics delta; others may rely on separate gates, unaudited.
+
+## Notes
+
+2026-11-18: InterfaceExtractionService Store moved to :168; it is gated only when replaceUsages, a same-named type or a linked copy applies (:146-152). Per-producer row filed: extract-interface-standalone-ungated-store.
