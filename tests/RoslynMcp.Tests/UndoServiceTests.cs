@@ -1045,7 +1045,8 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     // silently rewritten as UTF-8-no-BOM. `EditService` always supplies file snapshots, so the
     // solution-snapshot branch is unreachable from a normal apply; both tests below force it by
     // calling `CaptureBeforeApply` directly with `fileSnapshots: null`. They cover the two
-    // collection phases separately: the Solution-diff phase and the disk-walk safety net.
+    // collection phases separately: the Solution-diff phase and the disk-walk safety net. The disk
+    // walk restores only a COMMITTED snapshot's AffectedFiles, so its test commits the capture.
 
     /// <summary>
     /// Phase-1 (Solution diff) coverage. The <c>utf8-nobom</c> row is the inverse guard: Roslyn
