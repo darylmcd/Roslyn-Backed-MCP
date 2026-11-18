@@ -57,7 +57,7 @@ The JSON shape is the same across MCP clients (VS Code uses a top-level `"server
 
 ## Live Surface
 
-The current release exposes **171 tools** (110 stable / 61 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental).
+The current release exposes **172 tools** (110 stable / 61 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental).
 
 Use the running server for the authoritative live catalog and support tiers:
 
