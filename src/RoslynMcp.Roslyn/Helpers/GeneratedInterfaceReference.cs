@@ -15,15 +15,36 @@ internal static class GeneratedInterfaceReference
 {
     public static TypeSyntax Create(INamedTypeSymbol generated, SemanticModel model, int position)
     {
+        TryCreate(generated, model, position, out var spelling);
+        return spelling;
+    }
+
+    /// <summary>
+    /// <see cref="Create"/>, reporting whether the returned spelling was verified to bind to <paramref name="generated"/> at
+    /// <paramref name="position"/>. <c>false</c> means no spelling did (an extern alias hides the type, or another type of that
+    /// name is visible under the global alias): the returned <c>global::</c> spelling then means something else or nothing.
+    /// </summary>
+    public static bool TryCreate(INamedTypeSymbol generated, SemanticModel model, int position, out TypeSyntax spelling)
+    {
         var bare = Name(generated.Name);
-        if (Binds(model, position, bare, generated)) return bare;
+        if (Binds(model, position, bare, generated))
+        {
+            spelling = bare;
+            return true;
+        }
+
         if (generated.ContainingNamespace is { IsGlobalNamespace: false })
         {
             var qualified = Qualify(generated, global: false);
-            if (Binds(model, position, qualified, generated)) return qualified;
+            if (Binds(model, position, qualified, generated))
+            {
+                spelling = qualified;
+                return true;
+            }
         }
 
-        return Qualify(generated, global: true);
+        spelling = Qualify(generated, global: true);
+        return Binds(model, position, spelling, generated);
     }
 
     /// <summary>Identity across compilations: a referenced project's symbol is not guaranteed to be the same instance.</summary>
@@ -32,7 +53,8 @@ internal static class GeneratedInterfaceReference
         (SymbolEqualityComparer.Default.Equals(type, expected) || IsSameAcrossCompilations(type, expected));
 
     // Same metadata name, same chain of containing types (a nested `Outer.IFoo` is not `IFoo`), and for the
-    // outermost type the same namespace and assembly.
+    // outermost type the same namespace and the same assembly identity (name, version, culture, key): two versions of
+    // one assembly, referenced under different extern aliases, define different types.
     private static bool IsSameAcrossCompilations(INamedTypeSymbol type, INamedTypeSymbol expected)
     {
         if (type.MetadataName != expected.MetadataName) return false;
@@ -40,7 +62,7 @@ internal static class GeneratedInterfaceReference
         {
             return type.ContainingType is null && expected.ContainingType is null &&
                 type.ContainingNamespace.ToDisplayString() == expected.ContainingNamespace.ToDisplayString() &&
-                type.ContainingAssembly?.Identity.Name == expected.ContainingAssembly?.Identity.Name;
+                Equals(type.ContainingAssembly?.Identity, expected.ContainingAssembly?.Identity);
         }
 
         return IsSameAcrossCompilations(type.ContainingType, expected.ContainingType);

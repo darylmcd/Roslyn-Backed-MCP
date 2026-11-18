@@ -659,6 +659,8 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
     [DataRow("int[]", "an array type")]
     [DataRow("int*", "a pointer type")]
     [DataRow("delegate*<int, void>", "a function pointer type")]
+    [DataRow("(int, string)", "a tuple type")]
+    [DataRow("int?", "a nullable value type")]
     public async Task A_Name_Reached_Through_An_Alias_Of_An_Array_Or_Pointer_Type_Refuses_The_Preview(string target, string kind)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
@@ -793,7 +795,7 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
     }
 
     [TestMethod]
-    public async Task A_Sibling_Failure_Without_ReplaceUsages_Does_Not_Blame_ReplaceUsages()
+    public async Task A_Name_Visible_Only_Through_An_Extern_Alias_Refuses_As_Not_Re_Pinnable()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         await WriteAsync(workspace, SiblingFixture.Take(2).Append(("SampleLib/ExtUser.cs", """
@@ -807,9 +809,9 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
                 public IItemService Item = default!;
             }
             """)));
-        // `Shared` is reachable only through the `ext` alias, and GeneratedInterfaceReference.Create tries only a bare, a
-        // namespace-qualified and a global:: spelling, never an extern alias: the re-pinned reference cannot be spelled, so
-        // the compile gate refuses. (If Create learns aliases this scenario becomes repairable and the test needs a new cause.)
+        // `Shared` is reachable only through the `ext` alias, and GeneratedInterfaceReference.TryCreate tries only a bare, a
+        // namespace-qualified and a global:: spelling, each verified by a speculative bind, never an extern alias: no spelling
+        // reaches the original, so the re-pin refuses. (If TryCreate learns aliases this scenario becomes repairable.)
         AddProjectToCopiedSolution(workspace.RootPath, "Shared", "net10.0");
         await File.WriteAllTextAsync(workspace.GetPath("Shared", "IItemService.cs"), "namespace Shared;\n\npublic interface IItemService\n{\n}\n");
         var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
@@ -823,9 +825,93 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
         var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false));
 
-        StringAssert.Contains(refusal.Message, "The generated interface introduces compiler errors");
-        StringAssert.Contains(refusal.Message, InterfacePreviewCompilationGate.SiblingRemedy);
+        StringAssert.Contains(refusal.Message, "cannot be re-pinned");
+        StringAssert.Contains(refusal.Message, "Shared.IItemService");
+        StringAssert.Contains(refusal.Message, "ExtUser.cs");
+        StringAssert.Contains(refusal.Message, "line 8");
         Assert.IsFalse(refusal.Message.Contains("replaceUsages", StringComparison.Ordinal), refusal.Message);
+    }
+
+    [TestMethod]
+    public async Task A_Same_Named_Type_Under_The_Global_Alias_Is_Not_Taken_For_The_Extern_Aliased_One()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, SiblingFixture.Take(2).Append(("SampleLib/ExtUser.cs", """
+            extern alias V1;
+            using IItemService = V1::N.T;
+
+            namespace SampleLib;
+
+            public class ExtUser
+            {
+                public IItemService X = default!;
+            }
+            """)));
+        // Two assemblies define N.T: A1 only under the V1 alias, A2 under the global alias. `global::N.T` binds, compiles, and
+        // means A2's type, so a spelling that is not verified against the original would silently change what `X` is.
+        foreach (var assembly in new[] { "A1", "A2" })
+        {
+            AddProjectToCopiedSolution(workspace.RootPath, assembly, "net10.0");
+            await File.WriteAllTextAsync(workspace.GetPath(assembly, "T.cs"), "namespace N;\n\npublic class T\n{\n}\n");
+        }
+
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var projectXml = System.Xml.Linq.XDocument.Load(projectPath);
+        projectXml.Root!.Add(new System.Xml.Linq.XElement("ItemGroup",
+            new System.Xml.Linq.XElement("ProjectReference", new System.Xml.Linq.XAttribute("Include", "../A1/A1.csproj"), new System.Xml.Linq.XElement("Aliases", "V1")),
+            new System.Xml.Linq.XElement("ProjectReference", new System.Xml.Linq.XAttribute("Include", "../A2/A2.csproj"))));
+        projectXml.Save(projectPath);
+        await workspace.LoadAsync(CancellationToken.None);
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        var files = Snapshot(workspace.RootPath);
+
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false));
+
+        StringAssert.Contains(refusal.Message, "cannot be re-pinned");
+        StringAssert.Contains(refusal.Message, "N.T");
+        StringAssert.Contains(refusal.Message, "ExtUser.cs");
+        StringAssert.Contains(refusal.Message, "line 8");
+        AssertSnapshot(files);
+    }
+
+    [TestMethod]
+    public void Two_Versions_Of_One_Assembly_Are_Not_The_Same_Type_Across_Compilations()
+    {
+        static INamedTypeSymbol TypeOf(string version)
+        {
+            var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
+                $"[assembly: System.Reflection.AssemblyVersion(\"{version}\")] namespace N {{ public class T {{ }} }}");
+            var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("A", [tree],
+                [Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                 Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(System.Reflection.AssemblyVersionAttribute).Assembly.Location)],
+                new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            return compilation.GetTypeByMetadataName("N.T")!;
+        }
+
+        Assert.IsTrue(GeneratedInterfaceReference.IsSame(TypeOf("1.0.0.0"), TypeOf("1.0.0.0")), "a rebuilt compilation of one assembly is the same type");
+        Assert.IsFalse(GeneratedInterfaceReference.IsSame(TypeOf("1.0.0.0"), TypeOf("2.0.0.0")),
+            "two versions of one assembly, referenced under different extern aliases, are different types");
+    }
+
+    [TestMethod]
+    public async Task A_Sibling_And_A_Linked_Copy_Failure_Without_ReplaceUsages_Names_Both_Causes_Without_Blaming_ReplaceUsages()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, [("SampleLib/Contracts/IItemService.cs", Sibling),
+            ("SampleLib/ItemService.cs", Item.Replace("public class", "internal class", StringComparison.Ordinal))]);
+        AddLinkedProject(workspace, "ZLinked", "../SampleLib/ItemService.cs", "../SampleLib/Contracts/IItemService.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+        var files = Snapshot(workspace.RootPath);
+
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false));
+
+        StringAssert.Contains(refusal.Message, "The generated interface introduces compiler errors");
+        StringAssert.Contains(refusal.Message, "choose a different interface name");
+        StringAssert.Contains(refusal.Message, "every project that compiles an edited file");
+        Assert.IsFalse(refusal.Message.Contains("replaceUsages", StringComparison.Ordinal), refusal.Message);
+        AssertSnapshot(files);
     }
 
     private static async Task WriteAsync(IsolatedWorkspaceScope workspace, IEnumerable<(string Path, string Text)> files)
@@ -927,7 +1013,7 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
 
         StringAssert.Contains(refusal.Message, "would rebind");
         StringAssert.Contains(refusal.Message, "source-generated document");
-        StringAssert.Contains(refusal.Message, "project 'SampleLib'");
+        StringAssert.Contains(refusal.Message, "project 'SampleLib', line ");
         Assert.AreEqual(0, store.GetRedeemableTokens(workspace.WorkspaceId).Count);
         AssertSnapshot(files);
     }

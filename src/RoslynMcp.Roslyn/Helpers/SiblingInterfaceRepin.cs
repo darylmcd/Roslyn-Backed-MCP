@@ -75,7 +75,18 @@ internal static class SiblingInterfaceRepin
                             "choose a different interface name.");
                     }
 
-                    spelled.Add((node.Span, GeneratedInterfaceReference.Create(original, after, node.SpanStart).ToString(), original));
+                    // A spelling that does not bind to the original at that position would silently mean another type (an extern
+                    // alias hides the original while the global alias reaches a same-named type) or nothing: refuse, verified.
+                    if (!GeneratedInterfaceReference.TryCreate(original, after, node.SpanStart, out var spelling))
+                    {
+                        throw new PublicInvalidOperationException(
+                            $"Generating interface '{name}' would rebind the reference to '{original.ToDisplayString()}' on line " +
+                            $"{documentText.Lines.GetLinePosition(node.SpanStart).Line + 1} of '{document.FilePath ?? document.Name}', " +
+                            "which cannot be re-pinned: no spelling of that type reaches it from there (it is visible only through an " +
+                            "extern alias, or another type of the same name is visible without one); choose a different interface name.");
+                    }
+
+                    spelled.Add((node.Span, spelling.ToString(), original));
                 }
 
                 candidates.Add((document, spelled));
@@ -97,7 +108,7 @@ internal static class SiblingInterfaceRepin
             {
                 throw new PublicInvalidOperationException(
                     $"Linked C# documents at '{document.FilePath}' have different content in different projects, so the preview cannot " +
-                    $"re-pin the references to '{name}' in that one file consistently; reload the workspace and retry.");
+                    $"re-pin the references to '{name}' in that one file consistently; reload the workspace, or unlink the file from one of the projects, and retry.");
             }
 
             var documentText = await document.GetTextAsync(ct).ConfigureAwait(false);
@@ -201,11 +212,13 @@ internal static class SiblingInterfaceRepin
             if (earlier is not null && (await earlier.GetTextAsync(ct).ConfigureAwait(false)).ContentEquals(await document.GetTextAsync(ct).ConfigureAwait(false)))
                 before = await earlier.GetSemanticModelAsync(ct).ConfigureAwait(false);
 
-            if (FindRebound(root, after, before, generated, name, ct).Count > 0)
+            var rebound = FindRebound(root, after, before, generated, name, ct);
+            if (rebound.Count > 0)
             {
+                var line = (await document.GetTextAsync(ct).ConfigureAwait(false)).Lines.GetLinePosition(rebound[0].Node.SpanStart).Line + 1;
                 throw new PublicInvalidOperationException(
                     $"Generating interface '{name}' would rebind a reference to '{name}' in source-generated document '{document.HintName}' " +
-                    $"(project '{project.Name}'), which no preview can edit; choose a different interface name.");
+                    $"(project '{project.Name}', line {line}), which no preview can edit; choose a different interface name.");
             }
         }
     }
@@ -236,6 +249,8 @@ internal static class SiblingInterfaceRepin
         IArrayTypeSymbol => "an array type",
         IPointerTypeSymbol => "a pointer type",
         IFunctionPointerTypeSymbol => "a function pointer type",
+        INamedTypeSymbol { IsTupleType: true } => "a tuple type",
+        INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } => "a nullable value type",
         INamedTypeSymbol { Arity: > 0 } => "a generic type",
         INamedTypeSymbol { ContainingType: not null } => "a nested type",
         _ => "a type with no namespace spelling",
@@ -244,9 +259,9 @@ internal static class SiblingInterfaceRepin
     /// <summary>
     /// Identifiers spelled <paramref name="name"/> that bound to a type or namespace before the generated interface existed and
     /// do not bind to the same symbol now (a different type, or ambiguity). The earlier symbol need not be called
-    /// <paramref name="name"/>: a using alias spelled that way reaches a differently named, generic, nested, array or pointer
-    /// type, or a namespace, and the namespace member the new interface becomes beats the alias. With no <paramref name="before"/> model, names that now reach
-    /// the generated interface.
+    /// <paramref name="name"/>: a using alias spelled that way reaches a differently named, generic, nested, tuple, nullable,
+    /// array, pointer or function-pointer type, or a namespace, and the namespace member the new interface becomes beats the
+    /// alias. With no <paramref name="before"/> model, names that now reach the generated interface.
     /// </summary>
     private static List<(IdentifierNameSyntax Node, ISymbol? Original)> FindRebound(
         SyntaxNode root, SemanticModel after, SemanticModel? before, INamedTypeSymbol generated, string name, CancellationToken ct)
