@@ -376,7 +376,9 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
             InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(divergentBaseline, pending, [a], third,
                 InterfaceLinkedDocumentReconciler.CrossProjectRemedy, CancellationToken.None));
         StringAssert.Contains(baselineRefusal.Message, "different content in different projects");
-        StringAssert.Contains(baselineRefusal.Message, InterfaceLinkedDocumentReconciler.CrossProjectRemedy);
+        StringAssert.Contains(baselineRefusal.Message, "reload the workspace");
+        Assert.IsFalse(baselineRefusal.Message.Contains("different interface name", StringComparison.Ordinal),
+            "a different interface name cannot fix copies whose baseline text differs: " + baselineRefusal.Message);
     }
 
     [TestMethod]
@@ -654,13 +656,78 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
     }
 
     [TestMethod]
+    [DataRow("int[]", "an array type")]
+    [DataRow("int*", "a pointer type")]
+    [DataRow("delegate*<int, void>", "a function pointer type")]
+    public async Task A_Name_Reached_Through_An_Alias_Of_An_Array_Or_Pointer_Type_Refuses_The_Preview(string target, string kind)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, SiblingFixture.Concat(
+        [
+            ("SampleLib/AliasUser.cs", $"using unsafe IItemService = {target};\n\nnamespace SampleLib;\n\npublic unsafe class AliasUser\n{{\n    public IItemService X = default;\n}}\n"),
+        ]));
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var projectXml = System.Xml.Linq.XDocument.Load(projectPath);
+        projectXml.Root!.Add(new System.Xml.Linq.XElement("PropertyGroup", new System.Xml.Linq.XElement("AllowUnsafeBlocks", "true")));
+        projectXml.Save(projectPath);
+        await workspace.LoadAsync(CancellationToken.None);
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        var files = Snapshot(workspace.RootPath);
+
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false), target);
+
+        StringAssert.Contains(refusal.Message, kind);
+        StringAssert.Contains(refusal.Message, "cannot be re-pinned");
+        StringAssert.Contains(refusal.Message, "AliasUser.cs");
+        AssertSnapshot(files);
+    }
+
+    [TestMethod]
+    public async Task A_Namespace_That_Still_Binds_To_The_Same_Namespace_Is_Not_A_Rebound_Reference()
+    {
+        // `Logging` binds to namespace Company.Logging both before and after the interface named `Logging` exists, but the two
+        // bindings come from two compilations: the namespace symbols are distinct instances that must still count as the same.
+        await using var workspace = await LoadAsync(SiblingFixture.Concat(
+        [
+            ("SampleLib/Company/Log.cs", "namespace Company.Logging;\n\npublic class Log\n{\n}\n"),
+            ("SampleLib/LogUser.cs", "using Company.Logging;\n\nnamespace SampleLib;\n\npublic class LogUser\n{\n    public Log L = default!;\n\n    public Company.Logging.Log M = default!;\n}\n"),
+        ]).ToArray());
+
+        var preview = await ExtractAsync(workspace, "ItemService", "Logging", null, replaceUsages: false);
+
+        var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        await AssertCompilesAsync(pending);
+        Assert.IsNotNull((await CompileAsync(pending, "SampleLib")).GetTypeByMetadataName("SampleLib.Logging"));
+    }
+
+    [TestMethod]
+    public async Task A_Name_Reached_Through_A_Namespace_Alias_Refuses_The_Preview()
+    {
+        await using var workspace = await LoadAsync(SiblingFixture.Concat(
+        [
+            ("SampleLib/AliasUser.cs", "using IItemService = System.Text;\n\nnamespace SampleLib;\n\npublic class AliasUser\n{\n    public IItemService.StringBuilder X = default!;\n}\n"),
+        ]).ToArray());
+        var files = Snapshot(workspace.RootPath);
+
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false));
+
+        StringAssert.Contains(refusal.Message, "a namespace");
+        StringAssert.Contains(refusal.Message, "System.Text");
+        StringAssert.Contains(refusal.Message, "line 7");
+        AssertSnapshot(files);
+    }
+
+    [TestMethod]
     [DataRow("cross-project")]
     [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
     public async Task A_Re_Pinned_Consumer_Linked_Into_A_Project_That_Does_Not_Reference_The_Interface_Gains_No_Reference(string route)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var sourcePath = await PrepareInterfaceRouteFixtureAsync(workspace, "ItemService.cs",
-            "using Contracts;\nusing SampleLib.Legacy;\n\nnamespace SampleLib;\n\npublic class ItemService : IItemService\n{\n    public int Compute() => 1;\n\n    public int Extra() => 2;\n}\n",
+            "namespace SampleLib;\n\npublic class ItemService\n{\n    public int Compute() => 1;\n\n    public int Extra() => 2;\n}\n",
             "Uses.cs", "namespace Consumer;\n\npublic class Uses\n{\n}\n",
             extraSources: new Dictionary<string, string>
             {
@@ -679,6 +746,11 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
 
         var preview = await PreviewInterfaceRouteAsync(route, workspace.WorkspaceId, sourcePath, "ItemService", new CompositePreviewStore());
 
+        Assert.IsTrue(preview.Changes.Any(c => c.FilePath.EndsWith("UsesBoth.cs", StringComparison.Ordinal)), "the consumer is re-pinned");
+        Assert.IsFalse(preview.Changes.Any(c => c.FilePath.Contains("ZLinked", StringComparison.Ordinal) && c.FilePath.EndsWith(".csproj", StringComparison.Ordinal)),
+            "no csproj edit for the linked project: a file the re-pin edited identically in every copy needs no project reference to the interface");
+        // The composite store of the extract-and-wire route holds file edits, not a solution; the others store the pending solution.
+        if (route == "extract-and-wire") return;
         var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         await AssertCompilesAsync(pending);
         var contracts = pending.Projects.Single(p => p.Name == "Contracts").Id;

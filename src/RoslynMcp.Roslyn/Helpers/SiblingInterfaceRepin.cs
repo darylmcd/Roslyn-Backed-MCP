@@ -63,14 +63,16 @@ internal static class SiblingInterfaceRepin
                 var spelled = new List<(TextSpan Span, string Text, INamedTypeSymbol Original)>();
                 foreach (var (node, symbol) in rebound)
                 {
-                    // `Create` spells a non-generic, non-nested type by namespace: anything else (a generic or nested alias
-                    // target, a namespace alias) has no spelling it can produce, so refuse rather than leave the reference captured.
+                    // `Create` spells a non-generic, non-nested named type by namespace: anything else (a generic, nested, array,
+                    // pointer or function-pointer alias target, a namespace alias) has no spelling it can produce, so refuse
+                    // rather than leave the reference captured.
                     if (symbol is not INamedTypeSymbol { Arity: 0, ContainingType: null } original)
                     {
                         throw new PublicInvalidOperationException(
-                            $"Generating interface '{name}' would rebind the reference to '{symbol!.ToDisplayString()}' on line " +
+                            $"Generating interface '{name}' would rebind the reference to '{symbol!.ToDisplayString()}' ({Describe(symbol)}) on line " +
                             $"{documentText.Lines.GetLinePosition(node.SpanStart).Line + 1} of '{document.FilePath ?? document.Name}', " +
-                            "which cannot be re-pinned (a generic or nested type, or a namespace alias); choose a different interface name.");
+                            "which cannot be re-pinned: only a plain non-generic, non-nested named type can be spelled again; " +
+                            "choose a different interface name.");
                     }
 
                     spelled.Add((node.Span, GeneratedInterfaceReference.Create(original, after, node.SpanStart).ToString(), original));
@@ -228,11 +230,22 @@ internal static class SiblingInterfaceRepin
         return false;
     }
 
+    private static string Describe(ISymbol symbol) => symbol switch
+    {
+        INamespaceSymbol => "a namespace",
+        IArrayTypeSymbol => "an array type",
+        IPointerTypeSymbol => "a pointer type",
+        IFunctionPointerTypeSymbol => "a function pointer type",
+        INamedTypeSymbol { Arity: > 0 } => "a generic type",
+        INamedTypeSymbol { ContainingType: not null } => "a nested type",
+        _ => "a type with no namespace spelling",
+    };
+
     /// <summary>
     /// Identifiers spelled <paramref name="name"/> that bound to a type or namespace before the generated interface existed and
     /// do not bind to the same symbol now (a different type, or ambiguity). The earlier symbol need not be called
-    /// <paramref name="name"/>: a using alias spelled that way reaches a differently named (or generic, or nested) type, and the
-    /// namespace member the new interface becomes beats the alias. With no <paramref name="before"/> model, names that now reach
+    /// <paramref name="name"/>: a using alias spelled that way reaches a differently named, generic, nested, array or pointer
+    /// type, or a namespace, and the namespace member the new interface becomes beats the alias. With no <paramref name="before"/> model, names that now reach
     /// the generated interface.
     /// </summary>
     private static List<(IdentifierNameSyntax Node, ISymbol? Original)> FindRebound(
@@ -255,10 +268,13 @@ internal static class SiblingInterfaceRepin
             }
 
             var earlier = before.GetSymbolInfo(node, ct).Symbol;
+            // `before` and `after` come from two compilations, so symbols are compared by identity across compilations
+            // (a named type) or by display string (a namespace, an array, a pointer, a function pointer): never by instance.
             var unchanged = earlier switch
             {
                 INamedTypeSymbol type => GeneratedInterfaceReference.IsSame(current.Symbol, type),
-                INamespaceSymbol ns => SymbolEqualityComparer.Default.Equals(current.Symbol, ns),
+                INamespaceSymbol ns => current.Symbol is INamespaceSymbol now && now.ToDisplayString() == ns.ToDisplayString(),
+                ITypeSymbol other => current.Symbol is ITypeSymbol now && now.ToDisplayString() == other.ToDisplayString(),
                 _ => true,
             };
             if (!unchanged) rebound.Add((node, earlier));

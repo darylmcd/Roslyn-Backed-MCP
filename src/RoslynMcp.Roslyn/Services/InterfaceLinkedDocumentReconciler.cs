@@ -27,7 +27,7 @@ internal static class InterfaceLinkedDocumentReconciler
         return documents[0]!.Project.Id;
     }
 
-    /// <summary>The documents of <paramref name="pending"/> whose text differs from <paramref name="since"/>.</summary>
+    /// <summary>The documents of <paramref name="pending"/> whose state (text, name, folders, path) differs from <paramref name="since"/>; added documents are not included.</summary>
     internal static List<DocumentId> DocumentsChangedSince(Solution since, Solution pending) =>
         pending.GetChanges(since).GetProjectChanges().SelectMany(change => change.GetChangedDocuments()).ToList();
 
@@ -69,7 +69,7 @@ internal static class InterfaceLinkedDocumentReconciler
         {
             throw new PublicInvalidOperationException(
                 $"Linked C# documents at '{path}' have different content in different projects, so the preview cannot write one final " +
-                $"text to the shared file; reload the workspace and retry. {remedy}");
+                "text to the shared file; reload the workspace, or unlink the file from one of the projects, and retry.");
         }
 
         var changed = linked.Where(document => changedIds.Contains(document.Id)).ToArray();
