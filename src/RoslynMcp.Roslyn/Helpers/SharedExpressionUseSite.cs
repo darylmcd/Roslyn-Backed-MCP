@@ -130,8 +130,7 @@ internal static class SharedExpressionUseSite
         switch (child.Parent)
         {
             case AssignmentExpressionSyntax assignment when assignment.Left == child:
-            case PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PreIncrementExpression or (int)SyntaxKind.PreDecrementExpression
-                or (int)SyntaxKind.AddressOfExpression }:
+            case PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PreIncrementExpression or (int)SyntaxKind.PreDecrementExpression or (int)SyntaxKind.AddressOfExpression }:
             case PostfixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PostIncrementExpression or (int)SyntaxKind.PostDecrementExpression }:
             case RefExpressionSyntax:
                 return true;
