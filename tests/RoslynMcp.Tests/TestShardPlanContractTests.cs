@@ -631,6 +631,71 @@ public sealed class TestShardPlanContractTests
         Assert.AreEqual(expectedFilter, shard.Filter);
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Planner_ActiveSdkNewerThanPowerShellRuntime_LoadsMetadataContextFromALoadableSdkAsync()
+    {
+        // global.json can select an SDK a major version ahead of the runtime PowerShell runs on
+        // (SDK 11 building net10.0 projects under PowerShell on .NET 10). That SDK's
+        // System.Reflection.MetadataLoadContext.dll cannot load into the planner process, so the
+        // planner must fall back to an installed SDK the host runtime can load.
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(TestShardPlanContractTests),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            const string futureSdkVersion = "99.0.100";
+            var futureSdkDirectory = Path.Combine(fixtureRoot, "sdk", futureSdkVersion);
+            Directory.CreateDirectory(futureSdkDirectory);
+            await File.WriteAllTextAsync(
+                Path.Combine(futureSdkDirectory, "System.Reflection.MetadataLoadContext.dll"),
+                "not an assembly this runtime can load");
+            var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+            var testAssemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
+
+            var baseline = await RunPlannerAsync(testAssemblyPath, shardCount: 1, shardIndex: 0);
+            AssertSucceeded(baseline);
+            var result = await PwshScriptRunner.RunAsync(
+                [
+                    "-NoProfile", "-Command",
+                    """
+                    $realDotnet = (Get-Command dotnet -CommandType Application | Select-Object -First 1).Source
+                    function dotnet {
+                        if ($args.Count -eq 1 -and $args[0] -eq '--version') {
+                            $global:LASTEXITCODE = 0
+                            return $env:ROSLYNMCP_TEST_FUTURE_SDK_VERSION
+                        }
+                        if ($args.Count -eq 1 -and $args[0] -eq '--list-sdks') {
+                            & $realDotnet --list-sdks
+                            return "$env:ROSLYNMCP_TEST_FUTURE_SDK_VERSION [$env:ROSLYNMCP_TEST_FUTURE_SDK_ROOT]"
+                        }
+                        & $realDotnet @args
+                    }
+                    & $env:ROSLYNMCP_TEST_SHARD_PLANNER_PATH -TestAssemblyPath $env:ROSLYNMCP_TEST_ASSEMBLY_PATH -TestShardCount 1 -TestShardIndex 0
+                    """,
+                ],
+                workingDirectory: repositoryRoot,
+                environment: new Dictionary<string, string?>
+                {
+                    ["ROSLYNMCP_TEST_SHARD_PLANNER_PATH"] = Path.Combine(repositoryRoot, "eng", "get-test-shard-plan.ps1"),
+                    ["ROSLYNMCP_TEST_ASSEMBLY_PATH"] = testAssemblyPath,
+                    ["ROSLYNMCP_TEST_FUTURE_SDK_VERSION"] = futureSdkVersion,
+                    ["ROSLYNMCP_TEST_FUTURE_SDK_ROOT"] = Path.Combine(fixtureRoot, "sdk"),
+                },
+                timeout: _processTimeout,
+                description: "test-shard planner with a future active SDK");
+
+            AssertSucceeded(result);
+            CollectionAssert.AreEqual(
+                ParsePlan(baseline.StdOut).Shards.Single().Classes.ToArray(),
+                ParsePlan(result.StdOut).Shards.Single().Classes.ToArray(),
+                "The fallback SDK must produce the same plan as the active one.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     private static TestShardPlan ParsePlan(string json)
         => JsonSerializer.Deserialize<TestShardPlan>(
             json,
