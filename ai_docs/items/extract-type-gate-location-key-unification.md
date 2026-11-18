@@ -18,3 +18,7 @@
 ## Evidence
 
 - 2026-11-11 re-derivation at 95f65134: the two fallbacks differ. PR #2064 made the key a parameter to avoid changing either caller; the divergence remains.
+
+## Notes
+
+Remediation run 2026-11-18: SharedExpressionProjectionVerifier.cs:42 (PR 2142) also passes PreviewCompilationDelta.DocumentKey, so DocumentKey is the de-facto shared rule; only InterfacePreviewCompilationGate.cs:25 (and the local keys at InterfaceNullableProjection.cs:183/289) still diverge.

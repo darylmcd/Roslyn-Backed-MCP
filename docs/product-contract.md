@@ -18,7 +18,7 @@ The expected execution sequence for agent sessions is:
 | Need | Default tier | Escalate when |
 |---|---|---|
 | workspace/session management, semantic navigation, diagnostics, build/test, bounded refactoring | stable | stable surface cannot express the required operation |
-| scaffolding, project mutation, cross-project orchestration, dead-code removal, direct edit helpers | experimental | no stable equivalent exists and preview-first constraints are acceptable |
+| scaffolding, project mutation, cross-project orchestration, dead-code removal, multi-file edit helpers | experimental | no stable equivalent exists and preview-first constraints are acceptable |
 | prompts | experimental | never; prompts are not compatibility-stable API |
 
 ## Stable Surface

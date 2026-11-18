@@ -1274,13 +1274,14 @@ public sealed partial class ParameterObjectService : IParameterObjectService
         // Enclosing namespace chain, outermost-first (handles nested block namespaces).
         var namespaceParts = new List<string>();
         foreach (var ns in contextNode.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>())
-            namespaceParts.Insert(0, ns.Name.ToString());
+            namespaceParts.Insert(0, NamespaceNameIdentity.Of(ns.Name));
         var contextNamespace = string.Join('.', namespaceParts);
 
         // Name lookup searches each enclosing namespace outward, so the bare name binds when
         // the context namespace equals the DTO namespace or is nested anywhere under it.
-        if (string.Equals(contextNamespace, dtoNamespace, StringComparison.Ordinal)
-            || contextNamespace.StartsWith(dtoNamespace + ".", StringComparison.Ordinal))
+        var dtoKey = NamespaceNameIdentity.Of(dtoNamespace);
+        if (string.Equals(contextNamespace, dtoKey, StringComparison.Ordinal)
+            || contextNamespace.StartsWith(dtoKey + ".", StringComparison.Ordinal))
         {
             return typeName;
         }
@@ -1298,9 +1299,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
             };
             foreach (var directive in usings)
             {
-                if (directive.Alias is null
-                    && directive.StaticKeyword.IsKind(SyntaxKind.None)
-                    && string.Equals(directive.Name?.ToString(), dtoNamespace, StringComparison.Ordinal))
+                if (NamespaceNameIdentity.ImportsNamespace(directive, dtoKey))
                 {
                     return typeName;
                 }

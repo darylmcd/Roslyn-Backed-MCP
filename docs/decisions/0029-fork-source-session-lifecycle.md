@@ -1,6 +1,6 @@
 # ADR 0029: Retain fork source sessions and drain fork operations before provider teardown
 
-Status: Accepted 2026-10-24 for the next major release.
+Status: Accepted 2026-10-24. Shipped in 5.0.0 (2026-10-28).
 
 ## Context
 
@@ -26,7 +26,7 @@ Cleanup failures remain observable and propagate through asynchronous disposal. 
 
 ## Compatibility and migration
 
-This is a breaking behavior correction for the next major release. Tool names, request fields, result DTOs and the stdio transport remain unchanged.
+This is a breaking behavior correction, shipped in 5.0.0. Tool names, request fields, result DTOs and the stdio transport remain unchanged.
 
 Clients must wait for or cancel an active fork before closing its source. Capacity-constrained clients should close another idle workspace or raise capacity; `evictPolicy=lru` cannot evict an actively retained source. Handle refusal by error category rather than exact exception prose.
 

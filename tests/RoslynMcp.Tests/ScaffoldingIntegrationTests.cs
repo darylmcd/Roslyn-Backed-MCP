@@ -1569,6 +1569,84 @@ public static class StaticUtil
             "Static-class scaffold must NOT emit a `subject` instance.");
     }
 
+    // relocation-using-semantic-identity copy site (SingleTestScaffolder.GetQualifiedTypeNames):
+    // the sampling preflight named its ambiguity candidates from the syntax Name.ToString() of each
+    // namespace declaration, so interior trivia and escapes leaked into the displayed type name.
+    [TestMethod]
+    public async Task Scaffold_Test_AmbiguousTarget_NamesCandidatesByNamespaceIdentity()
+    {
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "SpelledWidgetFixture.cs"), """
+namespace Alpha . Sub
+{
+    public sealed class Widget { }
+}
+
+namespace @Beta
+{
+    public sealed class Widget { }
+}
+""", CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var ambiguous = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            Services.ScaffoldingService.PreviewScaffoldTestAsync(
+                workspace.WorkspaceId,
+                new ScaffoldTestDto("SampleLib.Tests", "Widget", "Describe", ReferenceTestFile: string.Empty, UseSampling: true),
+                CancellationToken.None,
+                new RecordingTestNameSuggestionProvider("Describe_WhenReady_Works")));
+
+        StringAssert.Contains(ambiguous.Message, "Ambiguous type name 'Widget'");
+        StringAssert.Contains(ambiguous.Message, "Alpha.Sub.Widget");
+        StringAssert.Contains(ambiguous.Message, "Beta.Widget");
+        Assert.IsFalse(ambiguous.Message.Contains("Alpha . Sub", StringComparison.Ordinal), ambiguous.Message);
+        Assert.IsFalse(ambiguous.Message.Contains("@Beta", StringComparison.Ordinal), ambiguous.Message);
+    }
+
+    // relocation-using-semantic-identity copy site (TrimUsingsToReferencedNamespaces): the sibling
+    // import was compared as text with the resolved namespace, so an equivalent spelling was
+    // trimmed away although the captured constructor parameter needs it.
+    [TestMethod]
+    public async Task Scaffold_Test_With_ReferenceTestFile_Keeps_A_Needed_Using_Written_In_An_Equivalent_Spelling()
+    {
+        await using var workspace = CreateLibraryTestsWorkspace();
+        var siblingPath = workspace.GetPath("SampleLib.Tests", "SpelledShapeRendererTests.cs");
+        await File.WriteAllTextAsync(siblingPath, """
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SampleLib . Hierarchy ;
+
+namespace SampleLib.Tests;
+
+[TestClass]
+public class SpelledShapeRendererTests
+{
+    private readonly Shape _shape;
+
+    public SpelledShapeRendererTests(Shape shape)
+    {
+        _shape = shape;
+    }
+
+    [TestMethod]
+    public void Render_Returns_Ok() { }
+}
+""", CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto("SampleLib.Tests", "AnimalService", ReferenceTestFile: siblingPath),
+            CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var contents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib.Tests", "AnimalServiceGeneratedTests.cs"), CancellationToken.None);
+        StringAssert.Contains(contents, "using SampleLib.Hierarchy;");
+        StringAssert.Contains(contents, "public AnimalServiceGeneratedTests(Shape shape)");
+    }
+
     private static async Task AddDuplicateWidgetFixtureAsync(IsolatedWorkspaceTestBase.IsolatedWorkspaceScope workspace)
     {
         var fixturePath = workspace.GetPath("SampleLib", "DuplicateWidgetFixture.cs");

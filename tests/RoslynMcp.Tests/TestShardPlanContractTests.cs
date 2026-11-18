@@ -13,27 +13,18 @@ public sealed class TestShardPlanContractTests
 
     [TestMethod]
     [TestCategory("Process")]
-    public async Task Planner_OneTwoAndFourShards_AreCompleteDisjointBalancedAndDeterministicAsync()
+    public async Task Planner_OneTwoAndEveryRoutedShardCount_AreCompleteDisjointBalancedAndDeterministicAsync()
     {
         var testAssemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
 
         var oneShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 1, shardIndex: 0);
         var zeroIndexTwoShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 2, shardIndex: 0);
-        var firstMaxIndexFourShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 4, shardIndex: 3);
-        var secondMaxIndexFourShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 4, shardIndex: 3);
 
         AssertSucceeded(oneShardResult);
         AssertSucceeded(zeroIndexTwoShardResult);
-        AssertSucceeded(firstMaxIndexFourShardResult);
-        AssertSucceeded(secondMaxIndexFourShardResult);
-        Assert.AreEqual(
-            firstMaxIndexFourShardResult.StdOut.Trim(),
-            secondMaxIndexFourShardResult.StdOut.Trim(),
-            "The same assembly and shard arguments must produce byte-identical JSON.");
 
         var oneShardPlan = ParsePlan(oneShardResult.StdOut);
         var zeroIndexTwoShardPlan = ParsePlan(zeroIndexTwoShardResult.StdOut);
-        var maxIndexFourShardPlan = ParsePlan(firstMaxIndexFourShardResult.StdOut);
 
         Assert.AreEqual(1, oneShardPlan.SchemaVersion);
         Assert.AreEqual(1, oneShardPlan.TestShardCount);
@@ -42,10 +33,62 @@ public sealed class TestShardPlanContractTests
 
         AssertCompleteDisjointBalancedPlan(oneShardPlan, oneShardPlan, expectedShardCount: 1);
         AssertCompleteDisjointBalancedPlan(oneShardPlan, zeroIndexTwoShardPlan, expectedShardCount: 2);
-        AssertCompleteDisjointBalancedPlan(oneShardPlan, maxIndexFourShardPlan, expectedShardCount: 4);
         AssertSelectedShard(oneShardPlan, expectedIndex: 0);
         AssertSelectedShard(zeroIndexTwoShardPlan, expectedIndex: 0);
-        AssertSelectedShard(maxIndexFourShardPlan, expectedIndex: 3);
+
+        // Every shard count the CI router can hand the planner, read from the router itself so a
+        // topology change cannot leave a routed count unplanned here.
+        var routedShardCounts = await GetRoutedShardCountsAsync();
+        Assert.IsTrue(
+            routedShardCounts.Any(count => count > 1),
+            "The router must report at least one sharded pull-request route.");
+        foreach (var shardCount in routedShardCounts.Where(count => count > 1))
+        {
+            var maxIndex = shardCount - 1;
+            var firstResult = await RunPlannerAsync(testAssemblyPath, shardCount, shardIndex: maxIndex);
+            var secondResult = await RunPlannerAsync(testAssemblyPath, shardCount, shardIndex: maxIndex);
+            AssertSucceeded(firstResult);
+            AssertSucceeded(secondResult);
+            Assert.AreEqual(
+                firstResult.StdOut.Trim(),
+                secondResult.StdOut.Trim(),
+                $"The same assembly and shard arguments must produce byte-identical JSON at {shardCount} shards.");
+
+            var plan = ParsePlan(firstResult.StdOut);
+            AssertCompleteDisjointBalancedPlan(oneShardPlan, plan, expectedShardCount: shardCount);
+            AssertSelectedShard(plan, expectedIndex: maxIndex);
+        }
+    }
+
+    private static async Task<int[]> GetRoutedShardCountsAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var routerPath = Path.Combine(repositoryRoot, "eng", "resolve-ci-topology.ps1");
+        var routes = new[]
+        {
+            new[] { "-EventName", "pull_request", "-ChangedFilesJson", """[[{"filename":"src/Foo.cs"}]]""", "-ReportedChangedFileCount", "1" },
+            new[] { "-EventName", "pull_request", "-ChangedFilesJson", """[[{"filename":"README.md"}]]""", "-ReportedChangedFileCount", "1" },
+            new[] { "-EventName", "merge_group" },
+            new[] { "-EventName", "workflow_dispatch" },
+        };
+
+        var shardCounts = new SortedSet<int>();
+        foreach (var route in routes)
+        {
+            var result = await PwshScriptRunner.RunAsync(
+                ["-NoProfile", "-File", routerPath, .. route],
+                workingDirectory: repositoryRoot,
+                timeout: _processTimeout,
+                description: "CI topology resolver");
+            AssertSucceeded(result);
+            using var decision = JsonDocument.Parse(result.StdOut);
+            foreach (var leg in decision.RootElement.GetProperty("runner_matrix").EnumerateArray())
+            {
+                shardCounts.Add(leg.GetProperty("test_shard_count").GetInt32());
+            }
+        }
+
+        return [.. shardCounts];
     }
 
     [TestMethod]
@@ -586,6 +629,71 @@ public sealed class TestShardPlanContractTests
             "|",
             shard.Classes.Select(className => $"ClassName={className}"));
         Assert.AreEqual(expectedFilter, shard.Filter);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Planner_ActiveSdkNewerThanPowerShellRuntime_LoadsMetadataContextFromALoadableSdkAsync()
+    {
+        // global.json can select an SDK a major version ahead of the runtime PowerShell runs on
+        // (SDK 11 building net10.0 projects under PowerShell on .NET 10). That SDK's
+        // System.Reflection.MetadataLoadContext.dll cannot load into the planner process, so the
+        // planner must fall back to an installed SDK the host runtime can load.
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(TestShardPlanContractTests),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            const string futureSdkVersion = "99.0.100";
+            var futureSdkDirectory = Path.Combine(fixtureRoot, "sdk", futureSdkVersion);
+            Directory.CreateDirectory(futureSdkDirectory);
+            await File.WriteAllTextAsync(
+                Path.Combine(futureSdkDirectory, "System.Reflection.MetadataLoadContext.dll"),
+                "not an assembly this runtime can load");
+            var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+            var testAssemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
+
+            var baseline = await RunPlannerAsync(testAssemblyPath, shardCount: 1, shardIndex: 0);
+            AssertSucceeded(baseline);
+            var result = await PwshScriptRunner.RunAsync(
+                [
+                    "-NoProfile", "-Command",
+                    """
+                    $realDotnet = (Get-Command dotnet -CommandType Application | Select-Object -First 1).Source
+                    function dotnet {
+                        if ($args.Count -eq 1 -and $args[0] -eq '--version') {
+                            $global:LASTEXITCODE = 0
+                            return $env:ROSLYNMCP_TEST_FUTURE_SDK_VERSION
+                        }
+                        if ($args.Count -eq 1 -and $args[0] -eq '--list-sdks') {
+                            & $realDotnet --list-sdks
+                            return "$env:ROSLYNMCP_TEST_FUTURE_SDK_VERSION [$env:ROSLYNMCP_TEST_FUTURE_SDK_ROOT]"
+                        }
+                        & $realDotnet @args
+                    }
+                    & $env:ROSLYNMCP_TEST_SHARD_PLANNER_PATH -TestAssemblyPath $env:ROSLYNMCP_TEST_ASSEMBLY_PATH -TestShardCount 1 -TestShardIndex 0
+                    """,
+                ],
+                workingDirectory: repositoryRoot,
+                environment: new Dictionary<string, string?>
+                {
+                    ["ROSLYNMCP_TEST_SHARD_PLANNER_PATH"] = Path.Combine(repositoryRoot, "eng", "get-test-shard-plan.ps1"),
+                    ["ROSLYNMCP_TEST_ASSEMBLY_PATH"] = testAssemblyPath,
+                    ["ROSLYNMCP_TEST_FUTURE_SDK_VERSION"] = futureSdkVersion,
+                    ["ROSLYNMCP_TEST_FUTURE_SDK_ROOT"] = Path.Combine(fixtureRoot, "sdk"),
+                },
+                timeout: _processTimeout,
+                description: "test-shard planner with a future active SDK");
+
+            AssertSucceeded(result);
+            CollectionAssert.AreEqual(
+                ParsePlan(baseline.StdOut).Shards.Single().Classes.ToArray(),
+                ParsePlan(result.StdOut).Shards.Single().Classes.ToArray(),
+                "The fallback SDK must produce the same plan as the active one.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
     }
 
     private static TestShardPlan ParsePlan(string json)

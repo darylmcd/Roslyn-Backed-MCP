@@ -14,7 +14,7 @@ function Test-PublicationBoundary {
 
     $gitPattern = '(?im)(?:^|[\r\n;&|])\s*&?\s*git(?:\.exe)?(?:\s+-C\s+(?:"[^"]+"|''[^'']+''|\S+))?\s+(?:commit|push)(?:\s|$)'
     $githubPattern = '(?im)(?:^|[\r\n;&|])\s*&?\s*gh(?:\.exe)?\s+pr\s+(?:create|merge)(?:\s|$)'
-    $shipPattern = '(?im)(?:^|[\r\n;&|])\s*&?\s*(?:gbash|bash)(?:\.exe)?\b[^\r\n;&|]*\bship-(?:preflight|staged-guard)\.sh\b'
+    $shipPattern = '(?im)(?:^|[\r\n;&|])\s*&?\s*node(?:\.exe)?\b[^\r\n;&|]*\bship\.mjs\s+(?:run|preflight|staged-guard)\b'
 
     return $Command -match $gitPattern -or
         $Command -match $githubPattern -or

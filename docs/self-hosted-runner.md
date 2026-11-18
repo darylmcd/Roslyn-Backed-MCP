@@ -6,13 +6,15 @@ This repository is public. Pull-request validation therefore runs only on epheme
 
 | Situation | Windows | Linux |
 |---|---|---|
-| Code-bearing PR | Four hosted class shards | Four hosted class shards |
-| Policy-only documentation PR | No Windows leg | Four hosted class shards |
+| Code-bearing PR | Six hosted class shards | Five hosted class shards |
+| Policy-only documentation PR | No Windows leg | One hosted leg: every release gate, and only the test classes that read documentation |
 | Dispatch / weekly schedule | None | One unsharded hosted coverage/live-network leg |
 
-Each OS partition is complete and disjoint. `eng/get-test-shard-plan.ps1` derives exact class filters from the compiled MSTest assembly; the release verifier rejects invalid, empty, overlapping, or incomplete plans.
+Each code-route OS partition is complete and disjoint. `eng/get-test-shard-plan.ps1` derives exact class filters from the compiled MSTest assembly; the release verifier rejects invalid, empty, overlapping, or incomplete plans.
 
-The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (eight legs for code, four for policy-only documentation).
+A documentation-only pull request does not run the whole suite. Its single leg runs the classes listed in `eng/docs-tier-test-consumers.json`, and a guard test (`DocsTierTestConsumerContractTests`) fails when a test starts reading a documentation file without being on that list. A documentation change that breaks a test the list misses is caught by the next code-bearing pull request or the weekly run, not on the documentation pull request itself. See [Docs Route Test Selection](../CI_POLICY.md#docs-route-test-selection).
+
+The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (eleven legs for code, one for policy-only documentation).
 
 ## Retired repository runner
 
@@ -41,7 +43,7 @@ Do not restore a local Windows shard merely by adding `runs-on: [self-hosted, ..
 4. Ensure fork-authored workflow YAML cannot select the runner.
 5. Ensure only base-controlled automation can authorize a trusted same-repository head SHA.
 6. Report the local shard against that exact SHA with a distinct required check; never let dispatch/schedule substitute for it.
-7. Run the local and hosted Windows partitions concurrently. Keep the fully-hosted four-shard fallback until repeated TRX evidence proves the local path.
+7. Run the local and hosted Windows partitions concurrently. Keep the fully-hosted six-shard fallback until repeated TRX evidence proves the local path.
 
 A personal-account repository cannot create an organization runner group. Moving the repository to an organization or using a separate private/isolation control plane is therefore an infrastructure prerequisite, not a workflow-only edit.
 
@@ -56,7 +58,7 @@ The 2026-08-24 pre-refactor baseline was test-bound:
 
 The local machine exposes 24 logical processors and 32 GB RAM. GitHub's standard public-repository `windows-latest` and `ubuntu-latest` runners currently expose 4 CPUs and 16 GB RAM. Standard hosted runners are free and unlimited for public repositories. See [GitHub-hosted runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
-The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, so it did not beat the repository-level median. Its TRX durations drove the four-shard topology. The 2026-10-29 recheck found material skew on both hosted images and calls for an image-specific duration profile: see [Hosted Shard Weighting Decision](../CI_POLICY.md#hosted-shard-weighting-decision) for the measurements, the decision and the re-check trigger. Revisit balancing only when that trigger is met, using fresh hosted per-leg TRX evidence.
+The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, so it did not beat the repository-level median. Its TRX durations drove the four-shard topology. The 2026-10-29 recheck found material skew on both hosted images and calls for an image-specific duration profile: see the [CI topology decision log](../ai_docs/references/ci-topology-decision-log.md) for the measurements and [Hosted Shard Weighting Decision](../CI_POLICY.md#hosted-shard-weighting-decision) for the standing rule and re-check trigger. Revisit balancing only when that trigger is met, using fresh hosted per-leg TRX evidence.
 
 ## Residual local service removal
 
@@ -175,7 +177,7 @@ Restart Windows, then rerun the inventory, service, process, original-root, and 
 
 ### A required check is pending after jobs finish
 
-The default-branch ruleset must require exactly `validate`, emitted by `validate-gate` only for pull requests. Confirm `route` and every `validate-leg (...)` job completed. Do not require dynamic matrix leg names or `validate-informational`.
+The default-branch ruleset must require exactly `validate`, emitted by `validate-gate` for pull requests and merge-queue groups (`merge_group`); dispatch and schedule runs emit `validate-informational`. Confirm `route` and every `validate-leg (...)` job completed. Do not require dynamic matrix leg names or `validate-informational`.
 
 ### A local runner appears in a pull-request run
 

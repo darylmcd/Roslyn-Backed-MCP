@@ -148,6 +148,9 @@ function Invoke-OwnedDotNetProcess {
     # restore/format children gain nothing from node reuse, so disable it to avoid a lingering
     # descendant hanging the caller's drain of this process's output.
     $startInfo.Environment['MSBUILDDISABLENODEREUSE'] = '1'
+    foreach ($variable in $formatInheritedMsBuildLocationVariables) {
+        [void]$startInfo.Environment.Remove($variable)
+    }
     foreach ($argument in $Arguments) {
         $startInfo.ArgumentList.Add($argument)
     }

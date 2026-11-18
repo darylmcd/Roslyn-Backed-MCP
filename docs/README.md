@@ -14,7 +14,7 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | [release-policy.md](release-policy.md) | Release gates, compatibility rules, deprecation policy, versioning |
 | [upgrade-matrix.md](upgrade-matrix.md) | SDK, Roslyn, MSBuild, analyzers, and related dependency coupling; what to bump together |
 | [roadmap.md](roadmap.md) | Strategic roadmap decisions and planned feature directions |
-| [parity-gap-matrix.md](parity-gap-matrix.md) | Hard boundaries vs roadmap opportunities; what agents should treat as known gaps |
+| [parity-gap-matrix.md](parity-gap-matrix.md) | Hard boundaries vs roadmap opportunities (release decisions are a historical snapshot) |
 | [parity-gap-implementation-plan.md](parity-gap-implementation-plan.md) | Status and next steps for matrix "must-have" items; release verify vs roadmap |
 | [coverage-baseline.md](coverage-baseline.md) | Aggregate coverage expectations; ties to CI Cobertura artifacts |
 | [experimental-promotion-analysis.md](experimental-promotion-analysis.md) | Promotion history and criteria for experimental -> stable changes |

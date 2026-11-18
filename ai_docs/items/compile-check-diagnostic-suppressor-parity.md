@@ -16,3 +16,7 @@
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. Retained historical evidence reports compile_check/native build divergence on branch-only tests. Current method reads raw compiler/emit diagnostics. Exact cause remains unproven; this is an independent investigation, not a claim the historical branch suite is deployed.
 - Source: closed PR #1806 head `d333c2e9`, kept by GitHub as `refs/pull/1806/head` (archive branch and tag deleted 2026-10-27). No build/test ran in this content audit; historical receipts are not current runtime qualification.
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Release impact unqualified. Confirm native suppressor parity and define the intended stable compile_check diagnostic/emit semantics before removing findings from its public projection. Keep native analyzer availability reporting and verify both public modes.

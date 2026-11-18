@@ -49,7 +49,7 @@ Update later with `dotnet tool update -g Darylmcd.RoslynMcp`.
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-The plugin bundles 32 skills and safety hooks, then launches the exact release-matched `Darylmcd.RoslynMcp` package through `dnx`; it does not require a global `roslynmcp` shim. The first launch requires NuGet access unless the package is already cached. The plugin's bundled `"."` boundary resolves to the session's working directory, so start Claude Code inside the repo you want to analyze; see [Setup](docs/setup.md#claude-code-plugin) for the other supported overrides.
+The plugin bundles 32 skills and advisory reminder hooks, then launches the exact release-matched `Darylmcd.RoslynMcp` package through `dnx`; it does not require a global `roslynmcp` shim. The first launch requires NuGet access unless the package is already cached. The plugin's bundled `"."` boundary resolves to the session's working directory, so start Claude Code inside the repo you want to analyze; see [Setup](docs/setup.md#claude-code-plugin) for the other supported overrides.
 
 ### Per-Client Config
 
@@ -65,13 +65,13 @@ Use the running server for the authoritative live catalog and support tiers:
 - `roslyn://server/catalog` for the machine-readable contract
 - `roslyn://server/resource-templates` for resource URI templates
 
-Stable families include workspace/session management, semantic navigation, diagnostics, build/test helpers, and preview/apply refactoring flows. Experimental families include broader project mutation, scaffolding, orchestration, direct text-edit helpers, and prompts. Set `ROSLYNMCP_TOOL_TIERS=stable` to register only the closed stable workflow (currently 91 callable tools) for clients that eagerly load tool definitions.
+Stable families include workspace/session management, semantic navigation, diagnostics, build/test helpers, and preview/apply refactoring flows. Experimental families include broader project mutation, scaffolding, orchestration, multi-file edit helpers, and prompts. Set `ROSLYNMCP_TOOL_TIERS=stable` to register only the closed stable workflow (currently 91 callable tools) for clients that eagerly load tool definitions.
 
 ## Configuration And Security
 
-All operational settings are optional `ROSLYNMCP_*` environment variables with compiled-in defaults; the full reference is in [docs/setup.md](docs/setup.md#environment-variables). The exception is `ROSLYNMCP_SANCTIONED_ROOTS`, which you must set (see above).
+All operational settings are optional `ROSLYNMCP_*` environment variables with compiled-in defaults; the common ones are in [docs/setup.md](docs/setup.md#environment-variables) and the complete reference is [ai_docs/references/environment-variables.md](ai_docs/references/environment-variables.md). The exception is `ROSLYNMCP_SANCTIONED_ROOTS`, which you must set (see above).
 
-Loading a solution or project executes MSBuild evaluation: only load repositories you trust, or run the server in a sandbox. The filesystem boundary is server-owned; a client's MCP Roots can only narrow it. See [docs/setup.md](docs/setup.md#security-model) and [SECURITY.md](SECURITY.md) for the disclosure policy. Upgrading from 2.x? Read the [migration notes](docs/setup.md#upgrading-from-2x) first.
+Loading a solution or project executes MSBuild evaluation: only load repositories you trust, or run the server in a sandbox. The filesystem boundary is server-owned; a client's MCP Roots can only narrow it. See [docs/setup.md](docs/setup.md#security-model) and [SECURITY.md](SECURITY.md) for the disclosure policy. Upgrading from 2.x? Read the [migration notes](docs/setup.md#upgrading-from-2x) first. Upgrading from 4.x? See the [5.0 contract](docs/product-contract.md#50-contract) and the `[5.0.0]` migration notes in [CHANGELOG.md](CHANGELOG.md).
 
 ## Docs
 

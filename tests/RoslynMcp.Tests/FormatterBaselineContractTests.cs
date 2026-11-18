@@ -1210,6 +1210,15 @@ public sealed class FormatterBaselineContractTests
                 startInfo.ArgumentList.Add("-NoRestore");
             }
 
+            // MSBuildLocator exports these into the test host once any workspace test has run, naming
+            // the SDK the host runtime can load rather than the one global.json selects for the
+            // generator's dotnet children. Always hand the generator a foreign location so the
+            // run proves it scrubs them, independent of which tests happened to run first.
+            var foreignMsBuildRoot = Path.Combine(Path.GetTempPath(), "roslynmcp-foreign-msbuild");
+            startInfo.Environment["MSBUILD_EXE_PATH"] = Path.Combine(foreignMsBuildRoot, "MSBuild.dll");
+            startInfo.Environment["MSBuildSDKsPath"] = Path.Combine(foreignMsBuildRoot, "Sdks");
+            startInfo.Environment["MSBuildExtensionsPath"] = foreignMsBuildRoot + Path.DirectorySeparatorChar;
+
             processTimeout = _processTimeout;
             snapshotCompetingProcesses = SnapshotCompetingProcesses;
             // Taken before launch, so nothing the generator itself spawns can appear in it.

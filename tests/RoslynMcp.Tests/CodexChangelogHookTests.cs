@@ -46,7 +46,7 @@ public sealed class CodexChangelogHookTests
                 ("Bash", "git commit --dry-run"),
                 ("shell_command", "git push --dry-run"),
                 ("shell_command", "gh pr create --title fixture"),
-                ("shell_command", "gbash C:/fixture/ship-preflight.sh"),
+                ("shell_command", "node C:/fixture/ship.mjs preflight --mode=full"),
             })
             {
                 var denial = await InvokeHookAsync(fixtureRoot, ToolInput(toolName, command));

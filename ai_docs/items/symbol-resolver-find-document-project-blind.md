@@ -31,3 +31,5 @@
 Size L: the production files share one defect mechanism (path-only first-match document lookup) and one linked-file semantics decision, so triage and the shared helper land together; sites that do not need project identity close as triaged-no-change.
 
 The 5.x partial move cold review confirmed CrossProjectRefactoringService.cs:40 also calls the path-only resolver before acquiring the source project symbol. Add this experimental move consumer to the existing linked-document project-context sweep, with a fixture that distinguishes different compilations of the same physical file.
+
+2026-11-18 (PR 2148, iface-extraction-b report round 2): extract_interface_preview resolves the source through SymbolResolver.FindDocument (InterfaceExtractionService.cs:182; SymbolResolver.cs:563-578 returns the first project copy), so for a file linked into several projects the interface is generated into whichever project sorts first (a linking project named Linked beat SampleLib). The tool has no project selector; tests name the linking project ZLinked to work around it.
