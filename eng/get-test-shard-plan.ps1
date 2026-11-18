@@ -142,21 +142,39 @@ if ([string]::IsNullOrWhiteSpace($sdkVersion)) {
 }
 
 $sdkEntries = Invoke-DotnetQuery -Description 'dotnet SDK inventory query' -Arguments @('--list-sdks')
-$matchingSdkDirectories = @(
+# System.Reflection.MetadataLoadContext is loaded into this PowerShell process, so the copy must
+# target a runtime no newer than the one PowerShell runs on. The SDK that global.json selects can
+# be a major version ahead of it (SDK 11 building net10.0 projects under PowerShell on .NET 10).
+# Prefer the active SDK; otherwise take the newest installed SDK this runtime can load.
+$hostRuntimeMajor = [System.Environment]::Version.Major
+$loadableSdks = @(
     foreach ($entry in $sdkEntries) {
-        if ($entry -match '^([^\s]+)\s+\[(.+)\]\s*$' -and $Matches[1] -eq $sdkVersion) {
-            Join-Path $Matches[2] $sdkVersion
+        if ($entry -notmatch '^([^\s]+)\s+\[(.+)\]\s*$') { continue }
+        $entryVersion = $Matches[1]
+        $entryRoot = $Matches[2]
+        $parsedVersion = $null
+        if (-not [System.Version]::TryParse(($entryVersion -split '-', 2)[0], [ref]$parsedVersion)) { continue }
+        if ($parsedVersion.Major -gt $hostRuntimeMajor) { continue }
+        $candidatePath = Join-Path (Join-Path $entryRoot $entryVersion) 'System.Reflection.MetadataLoadContext.dll'
+        if (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) { continue }
+        [pscustomobject]@{
+            Version = $entryVersion
+            Parsed = $parsedVersion
+            IsPrerelease = $entryVersion.Contains('-')
+            Path = $candidatePath
         }
     }
 )
-if ($matchingSdkDirectories.Count -ne 1) {
-    throw "Expected exactly one installed path for active dotnet SDK '$sdkVersion'; found $($matchingSdkDirectories.Count)."
+$selectedSdk = @($loadableSdks | Where-Object Version -eq $sdkVersion) | Select-Object -First 1
+if ($null -eq $selectedSdk) {
+    $selectedSdk = $loadableSdks |
+        Sort-Object -Property @{ Expression = 'Parsed'; Descending = $true }, @{ Expression = 'IsPrerelease' } |
+        Select-Object -First 1
 }
-
-$metadataLoadContextPath = Join-Path $matchingSdkDirectories[0] 'System.Reflection.MetadataLoadContext.dll'
-if (-not (Test-Path -LiteralPath $metadataLoadContextPath -PathType Leaf)) {
-    throw "The active dotnet SDK does not contain System.Reflection.MetadataLoadContext.dll: $metadataLoadContextPath"
+if ($null -eq $selectedSdk) {
+    throw "No installed dotnet SDK provides a System.Reflection.MetadataLoadContext.dll that PowerShell on .NET $hostRuntimeMajor can load. Active SDK: '$sdkVersion'. Install an SDK with major version $hostRuntimeMajor or lower, or run a PowerShell built on a newer .NET."
 }
+$metadataLoadContextPath = $selectedSdk.Path
 
 Add-Type -Path $metadataLoadContextPath
 

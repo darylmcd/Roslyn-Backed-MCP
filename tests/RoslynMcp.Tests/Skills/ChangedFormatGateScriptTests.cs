@@ -400,6 +400,35 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
+    public async Task Gate_InheritedMsBuildLocationVariables_AreNotPassedToDotnetAsync()
+    {
+        // A caller that registered MSBuildLocator exports these for the SDK its own runtime can
+        // load. Passed on to the gate's dotnet child they launch worker nodes from that foreign
+        // SDK, whose handshake with the child never succeeds.
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        await CommitAllAsync("clean edit");
+        var fakeDotnetPath = Path.Combine(_repositoryDirectory, "fake-dotnet.ps1");
+        WriteRepositoryFile(
+            "fake-dotnet.ps1",
+            "param([Parameter(ValueFromRemainingArguments = $true)][string[]] $RemainingArguments)\n" +
+            "if ($env:MSBUILD_EXE_PATH -or $env:MSBuildSDKsPath -or $env:MSBuildExtensionsPath) { exit 7 }\n" +
+            "exit 0\n");
+        var foreignRoot = Path.Combine(Path.GetTempPath(), "roslynmcp-foreign-msbuild");
+
+        var result = await RunGateAsync(
+            dotnetCommand: fakeDotnetPath,
+            environment: new Dictionary<string, string?>
+            {
+                ["MSBUILD_EXE_PATH"] = Path.Combine(foreignRoot, "MSBuild.dll"),
+                ["MSBuildSDKsPath"] = Path.Combine(foreignRoot, "Sdks"),
+                ["MSBuildExtensionsPath"] = foreignRoot + Path.DirectorySeparatorChar,
+            });
+
+        Assert.AreEqual(0, result.ExitCode, Describe("The gate must not hand a foreign MSBuild location to dotnet", result));
+    }
+
+    [TestMethod]
     public async Task Gate_UnexpectedFormatterExitCode_FailsClosedAsync()
     {
         await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
@@ -533,7 +562,10 @@ public sealed class ChangedFormatGateScriptTests
             $"git {string.Join(' ', arguments)} failed in the fixture repository. stdout={result.StdOut} stderr={result.StdErr}");
     }
 
-    private async Task<PwshScriptResult> RunGateAsync(string? baseRef = null, string? dotnetCommand = null)
+    private async Task<PwshScriptResult> RunGateAsync(
+        string? baseRef = null,
+        string? dotnetCommand = null,
+        IReadOnlyDictionary<string, string?>? environment = null)
     {
         var scriptPath = ResolveScriptPath();
         Assert.IsTrue(File.Exists(scriptPath), $"verify-changed-format.ps1 was not found at '{scriptPath}'.");
@@ -559,7 +591,8 @@ public sealed class ChangedFormatGateScriptTests
         return await RunProcessAsync(
             OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
             _repositoryDirectory,
-            [.. arguments]);
+            [.. arguments],
+            environment: environment);
     }
 
     private async Task<PwshScriptResult> RunGateWithFakeDotnetAsync(string output, int exitCode)
@@ -575,9 +608,13 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     private static Task<PwshScriptResult> RunProcessAsync(
-        string fileName, string workingDirectory, string[] arguments, TimeSpan? timeout = null) =>
+        string fileName,
+        string workingDirectory,
+        string[] arguments,
+        TimeSpan? timeout = null,
+        IReadOnlyDictionary<string, string?>? environment = null) =>
         PwshScriptRunner.RunExecutableAsync(
-            fileName, arguments, null, workingDirectory, timeout ?? TimeSpan.FromMinutes(5),
+            fileName, arguments, environment, workingDirectory, timeout ?? TimeSpan.FromMinutes(5),
             description: "changed-format fixture process");
 
     private static string Describe(string expectation, PwshScriptResult result) =>

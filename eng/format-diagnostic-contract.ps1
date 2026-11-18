@@ -6,6 +6,12 @@ $formatTruncationMarker = 'Required references did not load'
 # so anything emitted there would break the generator's determinism contract.
 # Line shape: "<prefix> <phase> <start|end> elapsedMs=<n>", e.g. "##format-phase## restore end elapsedMs=41230".
 $formatPhaseMarkerPrefix = '##format-phase##'
+# MSBuildLocator.RegisterDefaults and `dotnet test` export these into their own process, pinning
+# MSBuild to the SDK that process selected. A caller on an older runtime registers an older SDK
+# than global.json selects for the `dotnet` child, and the child then launches worker nodes from
+# the inherited MSBUILD_EXE_PATH: every node handshake fails and it spawns nodes until killed.
+# Same rule as DotnetCommandRunner.CreateStartInfo; both formatter scripts remove them.
+$formatInheritedMsBuildLocationVariables = @('MSBUILD_EXE_PATH', 'MSBuildExtensionsPath', 'MSBuildSDKsPath')
 # Repository path identity follows the host filesystem. Keep the decision shared by the
 # generator and changed-file gate so their baseline keys have the same semantics.
 $formatPathComparer = if ($IsWindows) {

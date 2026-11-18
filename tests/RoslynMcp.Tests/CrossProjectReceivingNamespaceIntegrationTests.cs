@@ -287,7 +287,13 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
         async Task AssertContextAsync(Solution solution, string projectName, string metadataName, string documentation)
         {
             var project = solution.Projects.Single(p => p.Name == projectName);
-            Assert.AreEqual(LanguageVersion.CSharp14, ((CSharpParseOptions)project.ParseOptions!).LanguageVersion);
+            // Contracts pins LangVersion 14.0 through SetReceivingPolicy. Every other sample project
+            // inherits LangVersion=latest from the repository Directory.Build.props copied into the
+            // fixture, which resolves to the newest version of the pinned Roslyn, not a fixed one.
+            var expectedLanguageVersion = projectName == "Contracts"
+                ? LanguageVersion.CSharp14
+                : LanguageVersion.Latest.MapSpecifiedToEffectiveVersion();
+            Assert.AreEqual(expectedLanguageVersion, ((CSharpParseOptions)project.ParseOptions!).LanguageVersion);
             var compilation = (await project.GetCompilationAsync())!;
             Assert.AreEqual(NullableContextOptions.Enable, compilation.Options.NullableContextOptions);
             var type = compilation.GetTypeByMetadataName(metadataName)!;

@@ -68,7 +68,7 @@ Re-check trigger: re-run the collector when the shard count changes, when non-te
 
 ## Quality job
 
-30-minute cap, full-history checkout, latest `10.0.x` SDK. Order: mandatory audit (restores its own solution assets); on an exact cache miss, canonical sample preparation and explicit package save; on code PRs and merge groups, a checked Debug build of `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` (restore alone does not produce the project analyzer binary), then the changed-file formatter with `-NoRestore`. Dispatch/schedule keep the audit and conditional sample preparation/cache save. Docs and evidence routes skip the job.
+30-minute cap, full-history checkout, latest `11.0.x` SDK plus `10.0.x` for the `net10.0` runtime. Order: mandatory audit (restores its own solution assets); on an exact cache miss, canonical sample preparation and explicit package save; on code PRs and merge groups, a checked Debug build of `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` (restore alone does not produce the project analyzer binary), then the changed-file formatter with `-NoRestore`. Dispatch/schedule keep the audit and conditional sample preparation/cache save. Docs and evidence routes skip the job.
 
 ## NuGet cache lifecycle
 
