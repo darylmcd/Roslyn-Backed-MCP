@@ -288,19 +288,24 @@ public sealed class FileWatcherSharedWatcherTests
         var parent = NewTempRoot();
         var outerRoot = Path.Combine(parent, "outer");
         var innerRoot = Path.Combine(outerRoot, "inner");
+        var siblingRoot = Path.Combine(outerRoot, "sibling");
         Directory.CreateDirectory(innerRoot);
+        Directory.CreateDirectory(siblingRoot);
         var factory = new RaisableWatcherFactory();
         using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
         var outer = Guid.NewGuid().ToString("N");
         var inner = Guid.NewGuid().ToString("N");
+        var sibling = Guid.NewGuid().ToString("N");
         var raised = new List<string>();
         watcher.WorkspaceRootMissing += id => { lock (raised) raised.Add(id); };
         try
         {
             watcher.Watch(outer, Path.Combine(outerRoot, "Sample.slnx"));
             watcher.Watch(inner, Path.Combine(innerRoot, "Sample.slnx"));
+            watcher.Watch(sibling, Path.Combine(siblingRoot, "Sample.slnx"));
 
-            // The outer root is both a workspace root and the inner workspace's ancestor directory.
+            // The outer root is both a workspace root and the shared ancestor directory of the inner and
+            // sibling workspaces, so one watcher carries two subscribers and must pick only the removed one.
             var outerAsAncestor = factory.Shared(outerRoot);
             if (rename)
                 outerAsAncestor.RaiseRenamed("inner", "inner-moved");
@@ -312,6 +317,7 @@ public sealed class FileWatcherSharedWatcherTests
         finally
         {
             watcher.Unwatch(inner);
+            watcher.Unwatch(sibling);
             watcher.Unwatch(outer);
             Directory.Delete(parent, recursive: true);
         }
