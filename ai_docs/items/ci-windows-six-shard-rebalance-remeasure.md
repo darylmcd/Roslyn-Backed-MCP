@@ -6,12 +6,12 @@
 
 - `eng/shard-duration-profile.json` — committed profile from runs 43762219005, 43765191714, 43774416634, 44121901489, 44128243501 (all on the superseded 4 + 4 topology); 512 profiled classes per image, 10 on the static fallback.
 - `eng/collect-hosted-shard-timings.ps1` — the only sanctioned generator (`-ProfileJson`) and the timing report.
-- `CI_POLICY.md:178` — § Hosted duration profile: refresh procedure and the known-hole table.
-- `CI_POLICY.md:209` — § Linux Shard Count Decision, 2026-11-17: estimate against run 44176184128.
+- `ai_docs/references/ci-internals.md` — § Duration-profile refresh: refresh procedure.
+- `ai_docs/references/ci-topology-decision-log.md` — 2026-11-17 six Windows + five Linux entry: the known-hole table and the estimate against run 44176184128.
 
 ## Acceptance
 
-- [ ] Five complete green first-attempt code `pull_request` runs under the 6 + 5 topology are measured with `eng/collect-hosted-shard-timings.ps1`; run ids, heads and the per-image table are recorded in `CI_POLICY.md`.
+- [ ] Five complete green first-attempt code `pull_request` runs under the 6 + 5 topology are measured with `eng/collect-hosted-shard-timings.ps1`; run ids, heads and the per-image table are recorded in `ai_docs/references/ci-topology-decision-log.md` (standing rules stay in `CI_POLICY.md`).
 - [ ] `eng/shard-duration-profile.json` is regenerated from those runs by the documented procedure (never hand-edited). `InterfaceParameterSemanticsDefaultsRouteTests`, `InterfaceParameterSemanticsAttributesRouteTests`, `InterfaceParameterSemanticsModifiersRouteTests`, `CrossProjectInterfaceBindingIntegrationTests` and `WorkspaceCloseDrainTests` carry measured weights, or the row records which of them changed again and still fall back.
 - [ ] Across five further complete green runs on the regenerated profile, the median slowest `windows-latest` leg is within the collector's single-leg noise band of the mean Windows leg. If it is not, the cause of the slow legs is identified and recorded before any further count or cap change.
 

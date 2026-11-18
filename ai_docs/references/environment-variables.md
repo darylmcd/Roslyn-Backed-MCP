@@ -2,7 +2,17 @@
 
 <!-- purpose: Canonical table of ROSLYNMCP_* environment overrides read by the stdio host. -->
 
-Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs` (plus `WorkspaceForkApplyService` for the `ROSLYNMCP_FORK_*` rows). Numeric values must be positive integers unless noted.
+Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs` (plus `WorkspaceForkApplyService` for the `ROSLYNMCP_FORK_*` rows and `TestRunnerService` for `ROSLYNMCP_FAST_FAIL_FILE_LOCK`).
+
+Invalid-value behavior differs by variable family:
+
+| Family | Invalid value |
+|---|---|
+| `MAX_*`, `PREVIEW_*`, `RATE_LIMIT_*`, `REQUEST_TIMEOUT`, validation timeouts, `MAX_RELATED_FILES`, `RESTORE_RACE_WAIT_MS` (0 allowed), `REFERENCE_RESPONSE_MAX_BYTES` | Silently uses the default |
+| `FAST_FAIL_FILE_LOCK` | Only `false` disables it; any other value keeps it on |
+| `SCRIPT_*`, `ON_STALE`, `TOOL_TIERS`, `OBSERVABILITY_*` | Fails startup with an `InvalidOperationException` |
+| `SCRIPT_WATCHDOG_GRACE_SECONDS` | Minimum 0; timeout plus grace is capped, over the cap fails startup |
+| `FORK_*` hours/minutes | Double-valued; invalid values silently use the default (`FORK_TTL_HOURS` allows 0) |
 
 | Variable | Affects | Default |
 |----------|---------|---------|

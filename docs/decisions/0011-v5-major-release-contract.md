@@ -33,7 +33,7 @@ Status: Accepted 2026-10-28 (operator decisions 2026-10-28) for the 5.0.0 releas
 | `get_test_coverage_map` | `test_coverage` |
 | `apply_composite_preview` | `apply_composite` |
 
-Also removed, as 5.0 wire/API changes: the `ToolAliasDeprecation` machinery and the top-level `deprecation` property on every catalog entry and on the `document_symbols`, `find_duplicated_methods` and `test_coverage` responses (always null once the aliases went). Removal is intentional: the machinery was dead, and any future tool consolidation must design its own alias lifecycle under its own ADR rather than inherit a vestigial one. The change ledger (`workspace_changes`) now records composite applies as `apply_composite` (it always recorded `apply_composite_preview`), and the PostToolUse hook matcher lists `apply_composite`.
+Also removed, as 5.0 wire/API changes: the `ToolAliasDeprecation` machinery and the top-level `deprecation` property on every catalog entry and on the `document_symbols`, `find_duplicated_methods` and `test_coverage` responses (always null once the aliases went). The machinery was dead; any future consolidation designs its own alias lifecycle under its own ADR. The change ledger (`workspace_changes`) now records composite applies as `apply_composite` (it always recorded `apply_composite_preview`), and the PostToolUse hook matcher lists `apply_composite`.
 
 Migration: call the replacement tools (identical parameters and payloads); stop reading `deprecation`; match `apply_composite` in `workspace_changes` tool names and hook matchers.
 
@@ -52,7 +52,7 @@ Migration: call the replacement tools (identical parameters and payloads); stop 
 
 **`DiagnosticDto.filePath` is kept.** 4.4.0 marked `DiagnosticDto.FilePath` `[Obsolete]`; 5.0 reverses that for diagnostics only. It means "the file this diagnostic is about" and is populated whenever a file is known, including file-only rows (`NU1201`, `MSB1009`, unresolved-analyzer, `WORKSPACE001`) where `location` is null. Where both exist they agree. Workspace-failure rows with no file keep `filePath: null`. The C# constructor is now `(Id, Message, Severity, Category, FilePath, Location = null)`.
 
-**Operator exemption from `docs/release-policy.md:38`, dated 2026-10-28.** `PropertyWriteDto` and `MutationCallerDto` never had a released deprecation window. They are removed in 5.0 anyway because both already carry a complete `location` since the 4.x stage 2, to match the primary DTOs, and to avoid another flat-plus-nested major. A span with a blank path falls back to the owning document's `FilePath`, else its `Name`, so no reference is dropped (also applied to `TypeUsageDto`).
+**Operator exemption from `docs/release-policy.md:38`, dated 2026-10-28.** `PropertyWriteDto` and `MutationCallerDto` never had a released deprecation window. They are removed in 5.0 anyway: both already carry a complete `location` since 4.x stage 2, and this matches the primary DTOs and avoids another flat-plus-nested major. A span with a blank path falls back to the owning document's `FilePath`, else its `Name`, so no reference is dropped (also applied to `TypeUsageDto`).
 
 Unchanged: `symbol_search` summary rows keep their compact flat `filePath` / `startLine` / `startColumn`. `MutatingMemberDto` still carries flat `filePath` / `line` and no nested `location`.
 
@@ -71,15 +71,15 @@ Migration: read `location.filePath`, `startLine`, `startColumn`, `endLine`, `end
 | Unusable request narrowing root | `InvalidArgument` attributed to `options` | `InvalidArgument` attributed to `narrowingRootPaths` (client roots: `path`) |
 | Caller boundary denial | `InvalidArgument` | unchanged: `InvalidArgument`, exact `ArgumentException`, opaque message, no path |
 
-The `reason: "WorkspaceNotFound"` field is removed in 5.0 from the tool envelope and from the `resources/read` message suffix. **Operator exemption from `docs/release-policy.md:38`, dated 2026-10-28:** it never had a deprecation window and is removed anyway because the `WorkspaceNotFound` category now carries the same information. The cost is real: the 4.x product contract told consumers to branch on `reason`. Migration: branch on `category: "WorkspaceNotFound"` and `exceptionType` instead of `reason`. A malformed `symbolHandle` stays `InvalidArgument`. Symbol, file and metadata-name misses stay `NotFound`. `WorkspaceEvicted` is unchanged. Document and type not-found sites that still report `InvalidOperation` are tracked by `document-and-type-not-found-report-invalid-operation`.
+The `reason: "WorkspaceNotFound"` field is removed in 5.0 from the tool envelope and from the `resources/read` message suffix. **Operator exemption from `docs/release-policy.md:38`, dated 2026-10-28:** it never had a deprecation window and is removed anyway because the `WorkspaceNotFound` category now carries the same information. Cost: the 4.x product contract told consumers to branch on `reason`. A malformed `symbolHandle` stays `InvalidArgument`. Symbol, file and metadata-name misses stay `NotFound`. `WorkspaceEvicted` is unchanged. Document and type not-found sites that still report `InvalidOperation` are tracked by `document-and-type-not-found-report-invalid-operation`.
 
 `ToolErrorHandler.BuildSafeArgumentMessage` is reduced to the sanctioned-root marker, the public-message marker and the generic fallback. The sniffing arms (ParamName `parametersJson`, `projectName`, `pattern` plus the regex sentinel, "Unsupported catalog diff", file-path-plus-column) are retired; `SemanticGrepService.InvalidRegexSentinel` is removed. Released messages came from public carriers and are unchanged for MCP callers.
 
-Migration: branch on `category == "WorkspaceNotFound"` (or `exceptionType == "WorkspaceNotFoundException"`); treat `NotFound` from project or symbol parameters as "named item does not exist" and stop special-casing `InvalidOperation` for them; treat `InvalidOperation` from path-taking tools as a server configuration or client-roots transport fault, not a bad path argument.
+Migration: branch on `category == "WorkspaceNotFound"` (or `exceptionType`) instead of `reason`; treat `NotFound` from project or symbol parameters as "named item does not exist" and stop special-casing `InvalidOperation` for them; treat `InvalidOperation` from path-taking tools as a server configuration or client-roots transport fault, not a bad path argument.
 
 ### 4. `server_info.update.updateAvailable` is nullable
 
-The schema changes from `boolean` to `["boolean","null"]` (still required). `true` = a known registry version is strictly newer than the running build, even when the latest check is `pending` or `failed` (a stale cached newer version is still a valid signal, since versions only move forward); `false` only when `checkStatus` is `succeeded` and no newer version exists; `null` = unknown (`neverChecked`, `pending`, `failed`, `timedOut` with no newer version known). 4.x emitted `false` in every non-true state. `checkStatus` describes the latest check, not the validity of `updateAvailable`.
+The schema changes from `boolean` to `["boolean","null"]` (still required). `true` = a known registry version is strictly newer than the running build, even when the latest check is `pending` or `failed` (versions only move forward); `false` only when `checkStatus` is `succeeded` and no newer version exists; `null` = unknown (`neverChecked`, `pending`, `failed`, `timedOut` with no newer version known). 4.x emitted `false` in every non-true state. `checkStatus` describes the latest check, not the validity of `updateAvailable`.
 
 Migration: treat `null` as unknown, not "no update"; read `update.checkStatus`; widen typed bindings to `bool?`.
 
@@ -92,4 +92,4 @@ Not a wire change. A banned-symbols rule forbidding direct `ArgumentException` a
 - Every breaking item above has a `Changed — BREAKING` fragment with a `Migration:` sentence; the 5.0.0 changelog section is generated from them.
 - ADR 0001 section 2 is amended by section 2 of this ADR.
 - `docs/product-contract.md` "Deprecations scheduled for 5.0" is replaced by the 5.0 contract.
-- Future tool consolidation (`tool-merge-*` rows) needs its own ADR and alias lifecycle.
+- Future `tool-merge-*` consolidation needs its own ADR (see section 1).

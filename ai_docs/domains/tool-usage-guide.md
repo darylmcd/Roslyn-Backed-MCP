@@ -56,7 +56,7 @@ After any C# edit (`Edit`, `Write`, or `*_apply`):
 validate_recent_git_changes(workspaceId)
   → derives changedFilePaths from `git status --porcelain`
   → runs compile_check + project_diagnostics (errors) + test_related_files
-  → scoped to the projects that own the touched files
+  → compile and diagnostics cover the whole workspace; related-test discovery uses the touched files
   → returns an aggregate envelope carrying an overallStatus verdict
     (all values + caller actions: see the verdict table below)
 ```
@@ -97,7 +97,7 @@ format_check(workspaceId, projectName: "RoslynMcp.Roslyn")
 
 **Rule of thumb:**
 
-- Multi-file edits: `validate_recent_git_changes` first (one call, scoped to touched files, aggregate pass/fail).
+- Multi-file edits: `validate_recent_git_changes` first (one call, whole-workspace compile and diagnostics plus related tests for the touched files, aggregate pass/fail).
 - Drop to the primitive triple only when the bundle's shape does not fit (compile-only verify, custom test filter).
 
 ### `overallStatus` verdict table
@@ -116,7 +116,8 @@ format_check(workspaceId, projectName: "RoslynMcp.Roslyn")
 | `test-failure` | both | Stop. Read `testRunResult.failures` and fix before re-running. |
 | `test-zero-run` | both | `runTests=true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass. |
 | `compile-incomplete` | both | Compilation was cancelled or fewer projects completed than were selected, with no higher-priority diagnostic or test failure. Retry compilation before treating validation as passing. |
-| `timeout` | both | A validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase and a synthetic `testRunResult.failureEnvelope` with `errorKind: "Timeout"`, even with `runTests=false`; safe to retry. |
+| `timeout` | both | A validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase and a synthetic `testRunResult.failureEnvelope` with `errorKind: "Timeout"`, even with `runTests=false`; safe to retry. When the test runner's own timeout fires instead, the runner's original non-retryable envelope is retained. |
+| `workspace-changed` | both | An otherwise clean result used a workspace snapshot that was already stale, changed, or closed during test execution. Re-run validation. |
 | `git-status-unknown` | `validate_recent_git_changes` only | The `git status` scope-collection itself timed out, so a would-be `clean` verdict was computed over an untrustworthy fallback scope instead of the real working tree. Retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` (see [`runtime.md`](../runtime.md)) if `git status` is slow on this repo. |
 
 "both" = reachable from `validate_workspace` **and** `validate_recent_git_changes`.
@@ -207,7 +208,7 @@ Most write operations follow a two-step pattern:
 1. **Preview** (`*_preview`) — Returns a diff and a `previewToken`. Inspect the changes.
 2. **Apply** (`*_apply`) — Pass the `previewToken` to commit changes. Tokens expire after 5 minutes by default (`ROSLYNMCP_PREVIEW_TTL_MINUTES`; see [environment-variables.md](../references/environment-variables.md)).
 
-- If the workspace changes between preview and apply, the token is stale and the apply fails.
+- Sibling applies do not invalidate a token: apply rebases the preview onto the current workspace. A workspace reload or close, or the TTL, does invalidate it; re-run the preview.
 - After applying, verify with the [post-edit workflow](#verification-workflow-post-edit-default) (`validate_recent_git_changes` or `compile_check`); `build_workspace` is for process-level build parity.
 
 ## Undo
@@ -218,28 +219,15 @@ Most write operations follow a two-step pattern:
 - History is single-slot: a second call does **not** undo the one before it (reports `No operation to revert`).
 - Earlier applies: `revert_apply_by_sequence(workspaceId, sequenceNumber)` with the sequence from `workspace_changes`. It refuses when a later apply touched the same file; revert the blocking sequences first.
 
-### revert_last_apply — side-effect cleanup
+### revert_last_apply — created files
 
-- `revert_last_apply` reverts **text edits** only; it does **NOT** remove files created as a side effect.
-- `extract_type_apply`, `extract_method_apply`, `extract_interface_apply` (and any `*_apply` that creates files) leave the new file on disk as an orphan after the revert.
-- **Canonical follow-up:** call `delete_file_apply` on the created file to finish the undo.
-
-**Worked example:**
-
-```text
-extract_type_apply(..., newTypeName: "Foo")
-  → moves Foo out of Bar.cs into new file Foo.cs.
-revert_last_apply(workspaceId)
-  → Bar.cs is restored (Foo's members move back in),
-    BUT Foo.cs still exists on disk (now empty of the extracted symbol
-    or a leftover scaffold, depending on what the extract wrote).
-delete_file_apply(workspaceId, filePath: ".../Foo.cs")
-  → removes Foo.cs. Workspace is now byte-identical to the pre-extract state.
-```
+- `revert_last_apply` restores text snapshots **and deletes files the apply created** (`UndoService`: a file with no original text is deleted on revert).
+- The tool's `Description` and `UndoTools.cs` remarks still say created files are not removed; row `undo-tools-description-created-files-stale` tracks that code-side correction.
+- After a revert, confirm with `workspace_changes` or `git status` that no created file remains.
 
 ## Error Recovery
 
-- **"Preview token is invalid, expired, or stale ..."** — The workspace changed since the preview, or the TTL elapsed. Re-run the preview.
+- **"Preview token is invalid, expired, or stale ..."** — The workspace was reloaded or closed since the preview, or the TTL elapsed. Re-run the preview.
 - **"Workspace '<id>' was not found ..."** — Call `workspace_load` (again) and use the returned `workspaceId`.
 - **"No symbol found at <file>:<line>:<col>"** — Verify file path and line/column. Use `symbol_search` to find the correct location.
 - **Build failures after refactoring** — Check `project_diagnostics` for the specific errors, then use `code_fix_preview` for automated fixes.

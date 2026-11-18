@@ -2,6 +2,8 @@
 
 This matrix defines what agents should treat as hard boundaries vs roadmap opportunities.
 
+> **Historical snapshot:** the "Release decision" column and the "Must-Have Before Release" list record the pre-1.0 release-hardening decisions, not the current release posture. For the live contract use `docs/product-contract.md` and `roslyn://server/catalog`.
+
 Use with:
 
 - `docs/product-contract.md` for compatibility expectations

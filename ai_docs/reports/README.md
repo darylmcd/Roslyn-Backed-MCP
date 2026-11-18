@@ -39,6 +39,20 @@ Each rollup should include:
 
 **Rollup scaffolding:** author by hand when a release-gate sign-off requires a narrative rollup. The skill does not generate rollup markdown — for routine batches, `review-inbox/` + the backlog commit is the evidence trail.
 
+## Inventory
+
+| Report | Content |
+|---|---|
+| `20260521T043918Z_…_roslyn-mcp-multisession-retro.md`, `20260608T203050Z_…`, `20260805T210025Z_…`, `20260913T200750Z_…` | Multi-session retrospectives (immutable; `host_repo_path` frontmatter keeps the retired `C:/Code-Repo` mount) |
+| `20260708T234500Z_roslyn-backed-mcp_refactor-matrix-pass1.md` | Refactor matrix pass 1 (12 slices, 84 scored cells) |
+| `20260813T025903Z_roslyn-backed-mcp_mcp-token-overhead-and-conformance-audit.md` | MCP token-overhead and SDK/spec conformance audit |
+| `20260914-tool-contract-remediation.md` | Tool-contract remediation record |
+| `2026-10-25-remediate-count10.md`, `2026-10-25-remediation-4.md` | Remediation batch records |
+| `2026-10-25-restore-closeout.md` | Restore delivery closeout |
+| `2026-10-25-pr1806-reconciliation.md`, `2026-10-25-pr1806-reconciliation/` | PR1806 unique-content reconciliation and its evidence tables |
+| `2026-10-26-interface-split-delivery.md` | Interface extraction split delivery |
+| `20261017-test-efficiency/` | Test-efficiency report with timing and fixture evidence |
+
 ## Retention
 
 Retain each report until a newer report names the same target through a `supersedes:` header or explicit citation. Retirement requires operator approval; it is never automatic.

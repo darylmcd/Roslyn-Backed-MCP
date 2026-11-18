@@ -116,7 +116,7 @@ Apart from `ROSLYNMCP_SANCTIONED_ROOTS` (empty default = deny all path access; s
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build operation timeout |
 | `ROSLYNMCP_RESTORE_TIMEOUT_SECONDS` | `90` | `workspace_load`/`workspace_reload` `autoRestore` budget (also clamped to the remaining request timeout minus a 30s reload reserve) |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test run timeout |
-| `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `120` | NuGet vulnerability scan timeout |
+| `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `300` | NuGet vulnerability scan timeout |
 | `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `20` | Preview store entries per store |
 | `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `5` | Preview store entry lifetime |
 | `ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS` | `120` | Per-window request count |
@@ -129,7 +129,7 @@ Apart from `ROSLYNMCP_SANCTIONED_ROOTS` (empty default = deny all path access; s
 | `ROSLYNMCP_SCRIPT_MAX_CONCURRENT` | `4` | Concurrent script-evaluation slots |
 | `ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS` | `5` | Capacity-slot acquisition timeout |
 | `ROSLYNMCP_SCRIPT_MAX_ABANDONED` | `8` | Fail-fast limit for worker processes the OS could not terminate |
-| `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Secret-safe structured unexpected-failure diagnostics; set to `stderr` for local operator capture |
+| `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Secret-safe structured unexpected-failure diagnostics; set to `stderr` for local operator capture or `file` for bounded local JSON-lines files |
 
 Example MCP client config with overrides:
 
@@ -164,8 +164,9 @@ This server runs entirely on your local machine and does not transmit or store t
 
 - **Data processed:** `.sln`, `.csproj`, and `.cs` files from workspaces you explicitly load. All analysis happens in-process via Roslyn.
 - **Network access:** None from the server itself. `dotnet build` / `dotnet test` child processes may download NuGet packages as part of normal SDK behavior.
-- **Data retention:** Workspace state is in-memory only; preview tokens expire after 5 minutes. No data is persisted to disk beyond what `dotnet build`/`test` produce.
-- **Logging:** Operational logs use local stderr and never the MCP protocol stream. Optional `ROSLYNMCP_OBSERVABILITY_SINK=stderr` events contain only correlation, exception-type topology, and stack-frame counts; exception messages, source paths, and user-code content are excluded. No logs are written to disk or sent to external services.
+- **Data retention:** Workspace state is in-memory only; preview tokens expire after 5 minutes. On disk the server writes only a small `host-process.json` metadata file (previous-process PID, exit time and recycle reason) under `%LOCALAPPDATA%\roslyn-mcp` on Windows or `$XDG_STATE_HOME/roslyn-mcp` elsewhere, plus the optional preview-persist directory when `ROSLYNMCP_PREVIEW_PERSIST_DIR` is set. `dotnet build`/`test` produce their own output as usual.
+- **Logging:** Operational logs use local stderr and never the MCP protocol stream. Optional `ROSLYNMCP_OBSERVABILITY_SINK=stderr` events contain only correlation, exception-type topology, and stack-frame counts; exception messages, source paths, and user-code content are excluded.
+- **Optional file sink:** `ROSLYNMCP_OBSERVABILITY_SINK=file` writes the enabled `ILogger` stream as bounded, rotated JSON-lines files on the local machine. Nothing is sent to external services.
 - **Third-party sharing:** No data is shared with Anthropic, any third party, or any external service.
 
 ## Cross-platform notes

@@ -9,16 +9,16 @@ This document supports the post-release roadmap item **“promote experimental �
 | **Read-only vs mutation** | High | Read-only tools are easier to stabilize; destructive tools need stronger preview/apply evidence. |
 | **Integration test coverage** | High | Prefer evidence in `tests/RoslynMcp.Tests/` (see `docs/coverage-baseline.md`). |
 | **Contract simplicity** | Medium | Narrow JSON DTOs with few optional branches reduce breaking-change risk. |
-| **Operational usage** | Medium | Field feedback, repo-matrix audit rollups under `ai_docs/reports/`, and supporting raw deep-review runs under `ai_docs/audit-reports/`. |
+| **Operational usage** | Medium | Field feedback and raw surface-test runs in the repository-root `audit-reports/` directory. |
 | **Schema/description accuracy** | Medium | Tool description matches behavior (audit PASS on schema-vs-behavior). |
 
 ## Aggregate surface (reference)
 
 This document tracks promotion history and criteria, not the live surface totals. For current tool/resource/prompt counts, use `server_info` or `roslyn://server/catalog`.
 
-Operational evidence for promotion decisions should come from the latest deep-review rollup in `ai_docs/reports/`, backed by immutable raw audits in `ai_docs/audit-reports/`.
+Operational evidence for promotion decisions should come from the latest raw `*_mcp-server-surface-test.md` run in the repository-root `audit-reports/` directory.
 
-**Current state (server 4.4.0):** the tool surface is 110 stable / 61 experimental (see [README](../README.md#live-surface)). Most of the tools named in the historical tiers below have since been promoted; the Tier 1 sections after v1.9.0 and the "Next promotion pass" section reflect that. Verify any individual tool's tier against the live catalog before relying on this document.
+Most of the tools named in the historical tiers below have since been promoted; the Tier 1 sections after v1.9.0 and the "Next promotion pass" section reflect that. Verify any individual tool's tier against the live catalog before relying on this document.
 
 ## Tier 1 — promoted (v1.6.0)
 
@@ -89,7 +89,7 @@ Rows for tools that are now stable are marked **promoted**; only the still-exper
 1. Confirm tests + coverage for the tool’s service path.
 2. Update `ServerSurfaceCatalog` entry from `"experimental"` to `"stable"`.
 3. Update `docs/product-contract.md` stable tool families list.
-4. Minor semver bump; `CHANGELOG.md` **Added** under stable surface.
+4. Add a `changelog.d/` fragment (category `Added`) for the promotion; the release bump consumes it into `CHANGELOG.md`.
 5. Run `./eng/verify-release.ps1` and `./eng/verify-ai-docs.ps1`.
 6. Re-run catalog parity: `SurfaceCatalogTests`.
 

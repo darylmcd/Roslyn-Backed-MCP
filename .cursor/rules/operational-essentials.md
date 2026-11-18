@@ -33,19 +33,19 @@ All commands are available as `just` recipes (`just --list` for the full menu).
 - For C# edits on peer repos, use Roslyn MCP **refactoring** tools
   (`rename_*`, `extract_*`, `code_fix_*`, etc.) with preview → apply.
 - On THIS repo, write-side rules depend on session shape:
-  - **Worktree session** (default for `/backlog-remediate` delegated executors; running against the
+  - **Worktree session** (default for remediation worker sessions, `~/.claude/prompts/remediate.md`; running against the
     installed global tool): `*_apply` is safe — use it when a refactor tool covers the
     operation. Load the worktree's own `RoslynMcp.slnx`; `workspace_reload` after
     apply if a downstream call needs fresh state.
   - **Main-checkout self-edit** (running `dotnet run --project src/RoslynMcp.Host.Stdio`
     against the checkout you're editing): `*_apply` is restricted; use `Edit` /
     `Write`. Read-side tools and `*_preview` remain fully supported.
-- Pass `workspaceId` and respect workspace version for mutations.
+- Pass `workspaceId` for mutations; a workspace reload or close invalidates outstanding preview tokens.
 
 ## Merge-Ready Handoff
 
 - Follow `CI_POLICY.md` before merge handoff.
-- Run `./eng/verify-release.ps1` for code changes; `./eng/verify-ai-docs.ps1` for doc-only changes.
+- Run the commands in `CI_POLICY.md` § Local Validation (docs route for doc-only changes, one release shard for code changes).
 - Sync with base branch if repository settings require it.
 
 ## Ownership

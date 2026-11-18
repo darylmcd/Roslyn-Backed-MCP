@@ -5,7 +5,7 @@
 ## Anchors
 
 - `.github/workflows/ci.yml:156` — Every matrix leg, including the policy-docs leg, acquires latest 10.0.x through setup-dotnet before its release gates and tests.
-- `CI_POLICY.md:10` — Policy-only docs run one hosted Linux leg: every release gate plus the docs-tier consumer test classes.
+- `CI_POLICY.md:10` (routing table, policy-only row) — Policy-only docs run one hosted Linux leg: every release gate plus the docs-tier consumer test classes.
 - `eng/docs-tier-test-consumers.json` — The consumer class list the docs leg runs; `DocsTierTestConsumerContractTests` requires a reviewed classification for every test class with a detectable docs-tier signal.
 - `eng/verify-release.ps1` — `-DocsTierConsumerTests` is the docs leg's entry point; it builds the solution and runs `dotnet test`, so it needs an SDK.
 - [PR1836 corrected-head CI](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/runs/40225081974) — Both docs-linux legs fail SDK setup HTTP 409 before repository tests.

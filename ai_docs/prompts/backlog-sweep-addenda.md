@@ -1,12 +1,12 @@
 # Backlog-remediation addenda — Roslyn-Backed-MCP
 
-<!-- purpose: Repo-specific facts consumed by the global /backlog-remediate workflow. -->
+<!-- purpose: Repo-specific facts read by global tooling (anchors report, worktree-lock-release, ship, watch-pr, refactor-audit). -->
 <!-- scope: in-repo -->
-<!-- contract: historical filename retained for compatibility; read by /backlog-remediate when present. -->
+<!-- contract: historical filename retained for compatibility; the retired /backlog-remediate engine no longer consumes it. -->
 
 verifiedAt: 2026-10-04
 
-This file is the single source of repo-specific extensions to `/backlog-remediate`. The global workflow handles routing, state schema, plan-directory convention, ship discipline, and mode dispatch. Everything below is **facts about this repo** the workflow needs to do its job here.
+This file holds repo-specific facts for global tooling; backlog remediation itself is the prompt `~/.claude/prompts/remediate.md`. Everything below is **facts about this repo**; sections that name the retired engine are historical.
 
 If you change a fact (e.g. add a new hotspot file, swap build commands, ship a new analyzer that gates a structural unit), update this file in the same PR.
 
@@ -306,7 +306,7 @@ recover_stalled_subagent: /recover-stalled-subagent
 ship: /ship
 ```
 
-These are the preferred-path skills the global commands reference. All resolve; the first five are repo-local under `.claude/skills/`, `/ship` is global under `~/.claude/skills/`.
+These are the preferred-path skills the global tooling references. `reconcile_backlog_vs_issues` and `recover_stalled_subagent` are repo-local under `.claude/skills/`; `draft_changelog_entry`, `close_backlog_rows` and `ship` are global under `~/.claude/skills/`.
 
 ## Repo-specific overrides (none currently)
 

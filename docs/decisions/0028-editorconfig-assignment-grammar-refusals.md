@@ -1,6 +1,6 @@
 # ADR 0028: Refuse editorconfig input that is not one provider-valid assignment
 
-Status: Accepted 2026-10-20 for the next major release.
+Status: Accepted 2026-10-20. Shipped in 5.0.0 (2026-10-28).
 
 ## Context
 

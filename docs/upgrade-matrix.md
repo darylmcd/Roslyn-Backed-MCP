@@ -4,7 +4,8 @@ This document maps **upgrade axes** for Roslyn-Backed MCP: what moves together, 
 
 Related: [Release policy](release-policy.md) (product version and gates),
 [SDK 2.x wire-compatibility decision](decisions/0003-sdk-2x-wire-compatibility.md),
-[SDK 2.2 servicing decision](decisions/0006-modelcontextprotocol-2-2-servicing.md), and
+[SDK 2.2 servicing decision](decisions/0006-modelcontextprotocol-2-2-servicing.md),
+[SDK 2.3 servicing decision](decisions/0031-modelcontextprotocol-2-3-servicing.md), and
 [CI policy](../CI_POLICY.md) (merge validation).
 
 ---
