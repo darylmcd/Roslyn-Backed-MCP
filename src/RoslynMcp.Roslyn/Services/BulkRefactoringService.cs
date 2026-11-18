@@ -118,7 +118,8 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         if (string.IsNullOrWhiteSpace(namespaceName) || root is not CompilationUnitSyntax compilationUnit)
             return root;
 
-        if (compilationUnit.Usings.Any(u => u.Name?.ToString() == namespaceName))
+        var namespaceKey = NamespaceNameIdentity.Of(namespaceName);
+        if (compilationUnit.Usings.Any(u => NamespaceNameIdentity.ImportsNamespace(u, namespaceKey)))
             return root;
 
         var newUsing = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName))

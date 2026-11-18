@@ -129,7 +129,12 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
                 continue;
             }
 
-            var target = importName.ToString();
+            // Key the edge exactly like the declared nodes (the symbol's display name), so an escaped or
+            // interior-trivia spelling of a declared namespace joins its node. An unresolved namespace
+            // falls back to its identity key.
+            var target = semanticModel.GetSymbolInfo(importName, ct).Symbol is INamespaceSymbol { IsGlobalNamespace: false } imported
+                ? imported.ToDisplayString()
+                : NamespaceNameIdentity.Of(importName);
             if (import.Parent is CompilationUnitSyntax)
             {
                 foreach (var ownerName in fileImportOwners)

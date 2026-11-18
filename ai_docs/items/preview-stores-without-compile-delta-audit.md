@@ -10,7 +10,7 @@
 - `src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs:133`
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:137`
 - `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:428`
-- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:133,687`
+- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:133` (the shared-expression Store, formerly :687, now at :690, is gated by SharedExpressionProjectionVerifier since PR 2142 and is no longer a candidate)
 
 ## Acceptance
 

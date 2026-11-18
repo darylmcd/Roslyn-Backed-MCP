@@ -62,17 +62,17 @@ internal static class NamespaceMemberClassifier
     /// </summary>
     internal static bool DeclaresTypeLikeMemberIn(SyntaxNode root, string namespaceName)
     {
-        var namespaceValue = GetNameText(SyntaxFactory.ParseName(namespaceName), static token => token.ValueText);
+        var namespaceValue = NamespaceNameIdentity.Of(namespaceName);
         return root.DescendantNodes().Any(n => IsDirectNamespaceMember(n) &&
-            string.Equals(GetContainingNamespaceName(n, static token => token.ValueText), namespaceValue, StringComparison.Ordinal));
+            string.Equals(
+                string.Join(".", n.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse()
+                    .Select(declaration => NamespaceNameIdentity.Of(declaration.Name))),
+                namespaceValue, StringComparison.Ordinal));
     }
 
     private static string GetContainingNamespaceName(SyntaxNode node, Func<SyntaxToken, string> getTokenText) =>
         string.Join(".", node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse()
-            .Select(n => GetNameText(n.Name, getTokenText)));
-
-    private static string GetNameText(NameSyntax name, Func<SyntaxToken, string> getTokenText) =>
-        string.Concat(name.DescendantTokens().Select(getTokenText));
+            .Select(n => string.Concat(n.Name.DescendantTokens().Select(getTokenText))));
 
     /// <summary>
     /// True when a source file whose declaration was just removed must still be kept, i.e. it holds
