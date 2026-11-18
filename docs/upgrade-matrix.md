@@ -56,7 +56,7 @@ The SDK floor follows the Roslyn API family: the repository's release analyzer i
 | `NuGet.Frameworks` | `6.3.4` | `Directory.Packages.props` | Direct test pin required by MSBuildLocator asset policy |
 | `Microsoft.CodeAnalysis.BannedApiAnalyzers` | `5.6.0` | `Directory.Packages.props` | Independently versioned analyzer |
 | `Nito.AsyncEx` | `5.1.2` | `Directory.Packages.props` | Independent |
-| `Microsoft.SourceLink.GitHub` | `10.0.404` | `Directory.Packages.props` | Routine SDK-wave servicing |
+| `Microsoft.SourceLink.GitHub` | `11.0.100` | `Directory.Packages.props` | Routine SDK-wave servicing |
 | `System.Security.Cryptography.Xml` | `10.0.15` | `Directory.Packages.props` | Security override; update central rationale and notices together |
 
 **Samples:** `samples/GeneratedDocumentSolution/ConsumerLib.Generators` uses `VersionOverride="5.0.0"` for `Microsoft.CodeAnalysis.CSharp` intentionally; it is outside central-package parity and moves only when that sample scenario requires it.
