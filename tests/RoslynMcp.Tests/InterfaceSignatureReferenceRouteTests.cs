@@ -360,7 +360,7 @@ public sealed class InterfaceSignatureReferenceRouteTests : InterfaceRouteTestBa
         StringAssert.Contains(generated, scenario == "attribute" ? "[StringSyntax(AttrOwner.Consts.Fmt)]" : "string value = AttrOwner.Consts.Fmt");
     }
 
-    private static readonly string[] SignatureOwners =["Shared", "GenericArg", "Constraint", "PropertyOwner", "EventOwner"];
+    private static readonly string[] SignatureOwners = ["Shared", "GenericArg", "Constraint", "PropertyOwner", "EventOwner"];
 
     private static void AssertOwnerReferences(Solution pending, IEnumerable<string> ownerNames)
     {
