@@ -702,7 +702,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
     /// <summary>
     /// The one finishing step both cross-project producers share: decorate and language-check the generated interface document
-    /// against the receiving project (before any token is stored), then spell the source type's base list against it.
+    /// against the receiving project (before any token is stored), pin every reference the new interface's name would capture
+    /// (<see cref="SiblingInterfaceRepin"/>), then spell the source type's base list against it.
     /// </summary>
     private static async Task<Solution> ApplyGeneratedInterfaceAsync(
         Solution solution, InterfaceNullableProjection nullableProjection, DocumentId interfaceDocumentId,
