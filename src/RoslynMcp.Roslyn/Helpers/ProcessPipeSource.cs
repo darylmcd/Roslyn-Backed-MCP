@@ -2,8 +2,8 @@ using System.ComponentModel;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using RoslynMcp.Core.Services;
 using Microsoft.Win32.SafeHandles;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
