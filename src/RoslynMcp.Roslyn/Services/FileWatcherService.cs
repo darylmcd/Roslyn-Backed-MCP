@@ -5,33 +5,7 @@ using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
-/// <summary>
-/// FileSystemWatcher-backed implementation of <see cref="IFileWatcherService"/>.
-/// Flags a workspace as stale when a tracked <c>.cs</c>/<c>.csproj</c>/<c>.props</c>/
-/// <c>.targets</c>/<c>.sln</c>/<c>.slnx</c>/<c>.editorconfig</c> file changes, and records a reason so
-/// <c>workspace_status</c> can distinguish server-generated writes (<c>apply</c> /
-/// <c>restore</c>) from genuinely external edits (<c>external-edit</c>).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <strong>Attribution rule</strong> (<c>workspace-stale-after-external-edit-feedback</c>):
-/// watcher-driven marks record <see cref="StaleReasons.ExternalEdit"/> except delayed events
-/// whose .editorconfig bytes match a committed server write. Those preserve Apply. Other
-/// server apply / restore paths call <see cref="MarkStale"/> explicitly. That method is
-/// <em>last-writer-wins</em> inside a single stale window
-/// (<see cref="ClearStale"/> resets to a clean slate); two independent events do not
-/// compose. Callers that need to refuse on genuine external drift
-/// (<c>change_signature_preview</c> and friends) query <see cref="GetStaleReason"/>; server
-/// apply paths must coordinate their own watcher events when attribution matters.
-/// </para>
-/// <para>
-/// <strong>CPU cost</strong>: purely event-driven; no periodic scans. <c>FileSystemWatcher</c>
-/// can miss rapid-fire batched edits (buffer overflow), but the dominant risk is <em>over</em>-
-/// firing (e.g. during <c>dotnet restore</c>'s <c>obj/</c> churn). We filter out <c>obj/</c>,
-/// <c>bin/</c>, and <c>.git/</c> at ingress so a restore does not churn the flag for every file
-/// it touches; the flag is a single <see langword="volatile"/> read on the hot path.
-/// </para>
-/// </remarks>
+/// <summary>Runs an <c>.editorconfig</c> write for a watched workspace so the watcher can attribute it to the server.</summary>
 internal interface IEditorConfigWriteCoordinator
 {
     T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write);
@@ -151,6 +125,43 @@ internal sealed class EditorConfigUnrecoveredWriteException : IOException
         : base("The .editorconfig write failed and its changed bytes could not be restored.", inner) { }
 }
 
+/// <summary>
+/// FileSystemWatcher-backed implementation of <see cref="IFileWatcherService"/>.
+/// Flags a workspace as stale when a tracked <c>.cs</c>/<c>.csproj</c>/<c>.props</c>/
+/// <c>.targets</c>/<c>.sln</c>/<c>.slnx</c>/<c>.editorconfig</c> file changes, and records a reason so
+/// <c>workspace_status</c> can distinguish server-generated writes (<c>apply</c> /
+/// <c>restore</c>) from genuinely external edits (<c>external-edit</c>).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>Topology</strong>: each workspace owns ONE recursive tree watcher on the directory of its
+/// solution or project file. It serves source, project, solution and <c>.editorconfig</c> changes under
+/// the root and detects deletion or rename of the loaded solution or project file itself. A config above
+/// the root also applies to its documents, and removal of the root directory is only visible from its
+/// parent, so every ancestor directory carries one non-recursive watcher that is shared by all workspaces
+/// beneath it and reference counted: each additional workspace under the same parent costs one watcher.
+/// A failed <see cref="Watch"/> releases everything it acquired. Every watcher is created through an
+/// internal factory so tests can inject faults and raise events.
+/// </para>
+/// <para>
+/// <strong>Attribution rule</strong> (<c>workspace-stale-after-external-edit-feedback</c>):
+/// watcher-driven marks record <see cref="StaleReasons.ExternalEdit"/> except delayed events
+/// whose .editorconfig bytes match a committed server write. Those preserve Apply. Other
+/// server apply / restore paths call <see cref="MarkStale"/> explicitly. That method is
+/// <em>last-writer-wins</em> inside a single stale window
+/// (<see cref="ClearStale"/> resets to a clean slate); two independent events do not
+/// compose. Callers that need to refuse on genuine external drift
+/// (<c>change_signature_preview</c> and friends) query <see cref="GetStaleReason"/>; server
+/// apply paths must coordinate their own watcher events when attribution matters.
+/// </para>
+/// <para>
+/// <strong>CPU cost</strong>: purely event-driven; no periodic scans. <c>FileSystemWatcher</c>
+/// can miss rapid-fire batched edits (buffer overflow), but the dominant risk is <em>over</em>-
+/// firing (e.g. during <c>dotnet restore</c>'s <c>obj/</c> churn). We filter out <c>obj/</c>,
+/// <c>bin/</c>, and <c>.git/</c> at ingress so a restore does not churn the flag for every file
+/// it touches; the flag is a single <see langword="volatile"/> read on the hot path.
+/// </para>
+/// </remarks>
 public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFileWatcherService, IEditorConfigWriteCoordinator
 {
     // A watcher comparison can overlap an undo that deletes a newly created config.
