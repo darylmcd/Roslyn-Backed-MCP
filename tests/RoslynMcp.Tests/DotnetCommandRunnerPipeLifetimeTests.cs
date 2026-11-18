@@ -1,3 +1,6 @@
+using System.IO.Pipes;
+using System.Text;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -106,40 +109,214 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     [TestMethod]
-    public async Task Bounded_Drain_Returns_Buffered_Output_When_Pipe_Never_Reaches_EOF()
+    public async Task Pump_GraceAlreadyExpiredBeforeItRuns_StillReturnsEverythingInThePipe()
     {
-        // Deterministic stand-in for the inherited-handle case: the stream yields the
-        // child's output, then never EOFs (a descendant still holds the pipe write end).
-        // The drain token must unblock the read and return everything read so far.
-        using var stream = new NeverEndingStream("Build succeeded."u8.ToArray());
-        using var reader = new StreamReader(stream);
-        using var drainCts = new CancellationTokenSource();
+        // The hosted failure shape: the child wrote one short line and exited, and the capture
+        // only got to run after the post-exit grace had already expired. Everything the child
+        // wrote is still in the pipe at that point and must be returned.
+        var source = new ScriptedSource(heldOpen: true, "parent-"u8.ToArray(), "output"u8.ToArray());
 
-        var readTask = DotnetCommandRunner.ReadBoundedAsync(
-            reader, 12_000, drainCts.Token, callerCt: CancellationToken.None);
+        var result = await ProcessOutputPump.ReadAsync(
+            source, Encoding.UTF8, 12_000, onDecodedChunk: null, hasExited: () => true,
+            postExitGracePeriod: TimeSpan.Zero, ProcessOutputPump.DefaultPollInterval, TimeProvider.System,
+            CancellationToken.None);
 
-        drainCts.CancelAfter(TimeSpan.FromMilliseconds(250));
-        var result = await readTask;
-
-        Assert.AreEqual("Build succeeded.", result);
+        Assert.AreEqual("parent-output", result);
     }
 
     [TestMethod]
-    public async Task Caller_Cancellation_Still_Propagates_From_The_Reader()
+    public async Task Pump_DescendantHoldsThePipeOpen_ReturnsBufferedOutputWhenGraceExpires()
     {
-        // The drain-expiry swallow must not also swallow real caller cancellation —
-        // GatedCommandExecutor's timeout semantics depend on the OCE escaping.
-        using var stream = new NeverEndingStream([]);
-        using var reader = new StreamReader(stream);
+        // The pipe yields the child's output and then never ends: a descendant still holds the
+        // write end. The grace period bounds the wait and nothing already read is dropped.
+        var source = new ScriptedSource(heldOpen: true, "Build succeeded."u8.ToArray());
+        var grace = TimeSpan.FromMilliseconds(250);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await ProcessOutputPump.ReadAsync(
+            source, Encoding.UTF8, 12_000, onDecodedChunk: null, hasExited: () => true,
+            grace, TimeSpan.FromMilliseconds(5), TimeProvider.System, CancellationToken.None);
+
+        Assert.AreEqual("Build succeeded.", result);
+        Assert.IsTrue(elapsed.Elapsed >= grace, "The pump must keep listening for the whole grace period.");
+    }
+
+    [TestMethod]
+    public async Task Pump_ChildStillRunning_DoesNotStopOnAnEmptyPipe()
+    {
+        var exited = false;
+        var source = new ScriptedSource(heldOpen: true, "first"u8.ToArray());
+        var pump = ProcessOutputPump.ReadAsync(
+            source, Encoding.UTF8, 12_000, onDecodedChunk: null, hasExited: () => Volatile.Read(ref exited),
+            postExitGracePeriod: TimeSpan.Zero, TimeSpan.FromMilliseconds(5), TimeProvider.System,
+            CancellationToken.None);
+
+        await Task.Delay(100);
+        Assert.IsFalse(pump.IsCompleted, "An empty pipe is not the end of output while the child runs.");
+        source.Enqueue(" second"u8.ToArray());
+        Volatile.Write(ref exited, true);
+
+        Assert.AreEqual("first second", await pump);
+    }
+
+    [TestMethod]
+    public async Task Pump_EveryWriterClosed_ReturnsWithoutWaitingForTheGracePeriod()
+    {
+        var source = new ScriptedSource(heldOpen: false, "done"u8.ToArray());
+
+        var result = await ProcessOutputPump.ReadAsync(
+            source, Encoding.UTF8, 12_000, onDecodedChunk: null, hasExited: () => false,
+            postExitGracePeriod: Timeout.InfiniteTimeSpan, ProcessOutputPump.DefaultPollInterval,
+            TimeProvider.System, CancellationToken.None);
+
+        Assert.AreEqual("done", result);
+    }
+
+    [TestMethod]
+    public async Task Pump_DescendantNeverStopsWriting_IsBoundedAfterTheGracePeriod()
+    {
+        var source = new EndlessSource();
+
+        var result = await ProcessOutputPump.ReadAsync(
+            source, Encoding.UTF8, 100, onDecodedChunk: null, hasExited: () => true,
+            postExitGracePeriod: TimeSpan.Zero, ProcessOutputPump.DefaultPollInterval, TimeProvider.System,
+            CancellationToken.None);
+
+        Assert.AreEqual(100, result.Length, "Output stays bounded to its final characters.");
+        Assert.IsTrue(source.BytesRead >= ProcessOutputPump.PostGraceByteLimit);
+        Assert.IsTrue(source.BytesRead < ProcessOutputPump.PostGraceByteLimit + 8192,
+            "The post-grace drain must stop at its byte limit.");
+    }
+
+    [TestMethod]
+    public async Task Pump_CallerCancellation_Propagates()
+    {
+        // GatedCommandExecutor's timeout semantics depend on the cancellation escaping.
+        var source = new ScriptedSource(heldOpen: true);
         using var callerCts = new CancellationTokenSource();
+        var pump = ProcessOutputPump.ReadAsync(
+            source, Encoding.UTF8, 12_000, onDecodedChunk: null, hasExited: () => false,
+            DotnetCommandRunner.PostExitDrainGracePeriod, TimeSpan.FromMilliseconds(5), TimeProvider.System,
+            callerCts.Token);
 
-        var readTask = DotnetCommandRunner.ReadBoundedAsync(
-            reader, 12_000, callerCts.Token, callerCt: callerCts.Token);
+        callerCts.CancelAfter(TimeSpan.FromMilliseconds(100));
 
-        callerCts.CancelAfter(TimeSpan.FromMilliseconds(250));
-        // Derived-type match: the fabricated stream surfaces TaskCanceledException; a real
-        // pipe surfaces OperationCanceledException. Both must escape the drain swallow.
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => await readTask);
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await pump);
+    }
+
+    [TestMethod]
+    public async Task Pump_ReportsEachDecodedChunkOnce()
+    {
+        var chunks = new List<string>();
+        var source = new ScriptedSource(heldOpen: false, "one "u8.ToArray(), "two"u8.ToArray());
+
+        await ProcessOutputPump.ReadAsync(
+            source, Encoding.UTF8, 12_000, chunks.Add, hasExited: () => false,
+            postExitGracePeriod: Timeout.InfiniteTimeSpan, ProcessOutputPump.DefaultPollInterval,
+            TimeProvider.System, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "one ", "two" }, chunks);
+    }
+
+    [TestMethod]
+    public void PipeSource_ReadsOnlyWhatIsAlreadyInARealPipe_AndReportsItsEnd()
+    {
+        using var readEnd = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.None);
+        using var writeEnd = new AnonymousPipeClientStream(PipeDirection.Out, readEnd.ClientSafePipeHandle);
+        using var reader = new StreamReader(readEnd, Encoding.UTF8);
+        var source = ProcessPipeSource.Create(reader);
+        var buffer = new byte[64];
+
+        Assert.AreEqual(AvailableReadStatus.Empty, source.ReadAvailable(buffer, out var read));
+        Assert.AreEqual(0, read);
+
+        writeEnd.Write("parent-output"u8);
+        writeEnd.Flush();
+        Assert.AreEqual(AvailableReadStatus.Data, source.ReadAvailable(buffer, out read));
+        Assert.AreEqual("parent-output", Encoding.UTF8.GetString(buffer, 0, read));
+        Assert.AreEqual(AvailableReadStatus.Empty, source.ReadAvailable(buffer, out read));
+
+        // Bytes written before the last writer closed are still delivered before the end.
+        writeEnd.Write("tail"u8);
+        writeEnd.Dispose();
+        readEnd.DisposeLocalCopyOfClientHandle();
+        Assert.AreEqual(AvailableReadStatus.Data, source.ReadAvailable(buffer, out read));
+        Assert.AreEqual("tail", Encoding.UTF8.GetString(buffer, 0, read));
+        Assert.AreEqual(AvailableReadStatus.End, source.ReadAvailable(buffer, out read));
+    }
+
+    [TestMethod]
+    public void PipeSource_ReadIsCappedByTheDestination()
+    {
+        using var readEnd = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.None);
+        using var writeEnd = new AnonymousPipeClientStream(PipeDirection.Out, readEnd.ClientSafePipeHandle);
+        using var reader = new StreamReader(readEnd, Encoding.UTF8);
+        var source = ProcessPipeSource.Create(reader);
+        writeEnd.Write("abcdef"u8);
+        writeEnd.Flush();
+        var buffer = new byte[4];
+
+        Assert.AreEqual(AvailableReadStatus.Data, source.ReadAvailable(buffer, out var read));
+        Assert.AreEqual("abcd", Encoding.UTF8.GetString(buffer, 0, read));
+        Assert.AreEqual(AvailableReadStatus.Data, source.ReadAvailable(buffer, out read));
+        Assert.AreEqual("ef", Encoding.UTF8.GetString(buffer, 0, read));
+    }
+
+    [TestMethod]
+    public void Decoder_MultiByteCharacterSplitAcrossReads_IsNotCorruptedOrDropped()
+    {
+        var bytes = Encoding.UTF8.GetBytes("naïve ✓");
+        var decoder = new ProcessOutputDecoder(Encoding.UTF8);
+        var text = new StringBuilder();
+
+        foreach (var value in bytes)
+        {
+            text.Append(decoder.Decode([value], flush: false));
+        }
+        text.Append(decoder.Decode([], flush: true));
+
+        Assert.AreEqual("naïve ✓", text.ToString());
+    }
+
+    [TestMethod]
+    [DataRow("utf-8")]
+    [DataRow("utf-16")]
+    [DataRow("utf-16BE")]
+    [DataRow("utf-32")]
+    [DataRow("utf-32BE")]
+    public void Decoder_LeadingByteOrderMark_SelectsThatEncodingAndIsNotEmitted(string encodingName)
+    {
+        // Process creates its redirected readers with byte-order-mark detection enabled.
+        var encoding = Encoding.GetEncoding(encodingName);
+        byte[] bytes = [.. encoding.GetPreamble(), .. encoding.GetBytes("ok ✓")];
+        Assert.AreNotEqual(0, encoding.GetPreamble().Length);
+
+        foreach (var chunkSize in new[] { 1, 2, 3, bytes.Length })
+        {
+            var decoder = new ProcessOutputDecoder(Encoding.Latin1);
+            var text = new StringBuilder();
+            for (var offset = 0; offset < bytes.Length; offset += chunkSize)
+            {
+                text.Append(decoder.Decode(bytes.AsSpan(offset, Math.Min(chunkSize, bytes.Length - offset)), flush: false));
+            }
+            text.Append(decoder.Decode([], flush: true));
+
+            Assert.AreEqual("ok ✓", text.ToString(), $"{encodingName}, chunk size {chunkSize}");
+        }
+    }
+
+    [TestMethod]
+    [DataRow(new byte[] { }, "")]
+    [DataRow(new byte[] { 0x61 }, "a")]
+    [DataRow(new byte[] { 0xEF, 0xBB }, "ï»")]
+    [DataRow(new byte[] { 0xFF, 0x41, 0x42 }, "ÿAB")]
+    public void Decoder_OutputWithoutAByteOrderMark_UsesTheConfiguredEncoding(byte[] bytes, string expected)
+    {
+        var decoder = new ProcessOutputDecoder(Encoding.Latin1);
+
+        var text = decoder.Decode(bytes, flush: false) + decoder.Decode([], flush: true);
+
+        Assert.AreEqual(expected, text);
     }
 
     [TestMethod]
@@ -256,43 +433,40 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     /// <summary>
-    /// Yields its initial payload, then blocks every subsequent read until the supplied
-    /// token cancels — modelling a pipe whose write end is still held by a descendant
-    /// process after the direct child exited.
+    /// Hands over queued chunks one read at a time, then reports an empty pipe (a descendant
+    /// still holds it open) or its end.
     /// </summary>
-    private sealed class NeverEndingStream(byte[] initialData) : Stream
+    private sealed class ScriptedSource(bool heldOpen, params byte[][] chunks) : IAvailableByteSource
     {
-        private bool _drained;
+        private readonly System.Collections.Concurrent.ConcurrentQueue<byte[]> _chunks = new(chunks);
 
-        public override bool CanRead => true;
-        public override bool CanSeek => false;
-        public override bool CanWrite => false;
-        public override long Length => throw new NotSupportedException();
-        public override long Position
-        {
-            get => throw new NotSupportedException();
-            set => throw new NotSupportedException();
-        }
+        public void Enqueue(byte[] chunk) => _chunks.Enqueue(chunk);
 
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        public AvailableReadStatus ReadAvailable(Span<byte> destination, out int bytesRead)
         {
-            if (!_drained && initialData.Length > 0)
+            if (_chunks.TryDequeue(out var chunk))
             {
-                _drained = true;
-                initialData.CopyTo(buffer);
-                return initialData.Length;
+                chunk.CopyTo(destination);
+                bytesRead = chunk.Length;
+                return AvailableReadStatus.Data;
             }
 
-            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
-            return 0;
+            bytesRead = 0;
+            return heldOpen ? AvailableReadStatus.Empty : AvailableReadStatus.End;
         }
+    }
 
-        public override int Read(byte[] buffer, int offset, int count)
-            => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+    /// <summary>A descendant that never stops writing.</summary>
+    private sealed class EndlessSource : IAvailableByteSource
+    {
+        public long BytesRead { get; private set; }
 
-        public override void Flush() { }
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public AvailableReadStatus ReadAvailable(Span<byte> destination, out int bytesRead)
+        {
+            destination.Fill((byte)'x');
+            bytesRead = destination.Length;
+            BytesRead += bytesRead;
+            return AvailableReadStatus.Data;
+        }
     }
 }

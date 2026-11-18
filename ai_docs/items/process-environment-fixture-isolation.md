@@ -1,6 +1,6 @@
 # process-environment-fixture-isolation — Isolate shared process environment fixture actors
 
-**row:** `process-environment-fixture-isolation` · **pri:** `Medium` · **size:** `M` · **deps:** `dotnet-runner-concurrent-descendant-stdout-loss`
+**row:** `process-environment-fixture-isolation` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
