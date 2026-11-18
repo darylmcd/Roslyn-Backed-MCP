@@ -132,7 +132,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
         updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(solution, updatedSolution,
             InterfaceLinkedDocumentReconciler.ResolveGeneratedInterfaceProjectId(solution, updatedSolution, resolvedInterfaceName), ct).ConfigureAwait(false);
-        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, InterfacePreviewCompilationGate.ReceivingProjectRemedy, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
@@ -330,7 +330,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
 
         updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(solution, updatedSolution, interfaceProjectId, ct).ConfigureAwait(false);
-        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, InterfacePreviewCompilationGate.ReceivingProjectRemedy, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and update constructor dependencies";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);

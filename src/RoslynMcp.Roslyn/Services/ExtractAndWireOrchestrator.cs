@@ -92,7 +92,7 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         }
 
         modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId.ProjectId, ct).ConfigureAwait(false);
-        await InterfacePreviewCompilationGate.ValidateAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(currentSolution, modifiedSolution, InterfacePreviewCompilationGate.ReceivingProjectRemedy, ct).ConfigureAwait(false);
         var edits = await BuildEditsFromSolutionAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId, ct).ConfigureAwait(false);
         var changes = CompositeSolutionMutationPlanner.RenderReview(edits, ct);
 

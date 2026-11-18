@@ -42,7 +42,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
     /// <summary>
     /// Previews extracting an interface from the specified type, optionally replacing usages of
-    /// the concrete type with the new interface in parameter and field declarations.
+    /// the concrete type with the new interface in declaration positions (parameters, fields, locals, return types, generic arguments).
     /// </summary>
     public async Task<RefactoringPreviewDto> PreviewExtractInterfaceAsync(
         string workspaceId, string filePath, string typeName, string interfaceName,
@@ -124,6 +124,10 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             {
                 newSolution = await ReplaceConcreteUsagesAsync(
                     newSolution, sourceDocument.Project.Id, typeSymbol, interfaceDoc.Id, ct).ConfigureAwait(false);
+                // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override):
+                // refuse that preview rather than publish a token whose apply does not compile.
+                await InterfacePreviewCompilationGate.ValidateAsync(
+                    solution, newSolution, InterfacePreviewCompilationGate.ReplaceUsagesRemedy, ct).ConfigureAwait(false);
             }
         }
         else
@@ -314,16 +318,10 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
                 ?? throw InvalidOperationErrors.Internal($"Semantic model for reference document '{document.Name}' is unavailable.");
 
-            // Only a bare identifier directly under a parameter or field declaration is rewritten; a
-            // qualified or aliased spelling of the concrete type is left typed at the concrete class.
-            var targets = documentLocations
-                .Select(l => root.FindNode(l.Location.SourceSpan))
-                .OfType<IdentifierNameSyntax>()
-                .Where(identifier => identifier.Parent is ParameterSyntax ||
-                    (identifier.Parent is VariableDeclarationSyntax { Parent: FieldDeclarationSyntax }))
-                .Distinct()
-                .ToArray();
-            if (targets.Length == 0) continue;
+            // Every spelling that types a declaration (bare, qualified, aliased, return type, local, generic argument, ...)
+            // is retyped; positions that are not usages of the type (construction, static access, typeof, casts) stay concrete.
+            var targets = ConcreteUsageRewriter.FindReplaceableSpellings(root, documentLocations.Select(l => l.Location.SourceSpan));
+            if (targets.Count == 0) continue;
 
             var updatedRoot = root.ReplaceNodes(
                 targets,
