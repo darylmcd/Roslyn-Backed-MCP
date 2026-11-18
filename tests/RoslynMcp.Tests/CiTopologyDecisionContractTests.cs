@@ -32,13 +32,13 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsFalse(decision.DocsOnly);
-        Assert.AreEqual("Code PR: four hosted Windows and four hosted Linux shards.", decision.Reason);
+        Assert.AreEqual("Code PR: six hosted Windows and five hosted Linux shards.", decision.Reason);
         AssertExactCodePullRequestMatrix(decision.RunnerMatrix);
     }
 
     [TestMethod]
     [TestCategory("Process")]
-    public async Task DocsOnlyPullRequest_PureMarkdownAndAiDocsJson_RoutesTwoLinuxShardsAsync()
+    public async Task DocsOnlyPullRequest_PureMarkdownAndAiDocsJson_RoutesOneDocsConsumerLegAsync()
     {
         var result = await RunTopologyAsync(
             "pull_request",
@@ -49,8 +49,96 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsTrue(decision.DocsOnly);
-        Assert.AreEqual("Policy-only docs PR: four hosted Linux test shards.", decision.Reason);
+        Assert.AreEqual(
+            "Policy-only docs PR: one hosted Linux leg; every release gate and the docs-tier consumer test classes.",
+            decision.Reason);
         AssertExactDocsOnlyPullRequestMatrix(decision.RunnerMatrix);
+    }
+
+    /// <summary>
+    /// Markdown inside a source root is a build, pack or fixture input, not documentation: the
+    /// analyzer release-tracking files feed the analyzer build, the host project packs its README
+    /// into the NuGet package, and sample/test Markdown is fixture content. None of them may take
+    /// the docs route, which runs only the docs-tier consumer classes.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("analyzers/ServerSurfaceCatalogAnalyzer/AnalyzerReleases.Shipped.md")]
+    [DataRow("analyzers/ServerSurfaceCatalogAnalyzer/AnalyzerReleases.Unshipped.md")]
+    [DataRow("src/RoslynMcp.Host.Stdio/README.md")]
+    [DataRow("src/RoslynMcp.Roslyn/Notes/design.md")]
+    [DataRow("samples/SampleSolution/README.md")]
+    [DataRow("tests/RoslynMcp.Tests/Fixtures/expected-report.md")]
+    public async Task MarkdownInsideASourceRoot_ForcesFullValidationEvenAsTheSoleChangeAsync(string path)
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage((path, null)),
+            reportedChangedFileCount: 1);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsFalse(decision.DocsOnly, $"'{path}' is a build, pack or fixture input and must force full validation.");
+        Assert.IsFalse(decision.EvidenceOnly);
+        AssertExactCodePullRequestMatrix(decision.RunnerMatrix);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("docs/src/overview.md")]
+    [DataRow("ai_docs/tests/coverage-notes.md")]
+    [DataRow("srcdocs.md")]
+    public async Task MarkdownOutsideASourceRoot_WithASourceLikeName_StaysDocsOnlyAsync(string path)
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage((path, null)),
+            reportedChangedFileCount: 1);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsTrue(decision.DocsOnly, $"'{path}' is not under a source root; only a leading src/, analyzers/, samples/ or tests/ segment is code tier.");
+        AssertExactDocsOnlyPullRequestMatrix(decision.RunnerMatrix);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Rename_SourceRootMarkdownToDocsPath_ForcesFullValidationAsync()
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage(("docs/host-readme.md", "src/RoslynMcp.Host.Stdio/README.md")),
+            reportedChangedFileCount: 1);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsFalse(decision.DocsOnly, "Removing the packed README is a pack-input change even when its new path is documentation.");
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task OnlyTheDocsRoute_SelectsTheDocsConsumerTestScopeAsync()
+    {
+        var code = ParseDecision((await RunTopologyAsync(
+            "pull_request", changedFilesJson: SinglePage(("src/Foo.cs", null)), reportedChangedFileCount: 1)).StdOut);
+        var mergeGroup = ParseDecision((await RunTopologyAsync("merge_group")).StdOut);
+        var dispatch = ParseDecision((await RunTopologyAsync("workflow_dispatch")).StdOut);
+        var schedule = ParseDecision((await RunTopologyAsync("schedule")).StdOut);
+        var failedEnumeration = ParseDecision((await RunTopologyAsync("pull_request", enumerationFailed: true)).StdOut);
+        var docs = ParseDecision((await RunTopologyAsync(
+            "pull_request", changedFilesJson: SinglePage(("docs/setup.md", null)), reportedChangedFileCount: 1)).StdOut);
+
+        foreach (var decision in new[] { code, mergeGroup, dispatch, schedule, failedEnumeration })
+        {
+            Assert.IsTrue(
+                decision.RunnerMatrix.All(leg => leg.TestScope == "full"),
+                $"Every leg outside the docs route runs its share of the whole suite. Route: {decision.Reason}");
+        }
+
+        Assert.IsTrue(docs.RunnerMatrix.All(leg => leg.TestScope == "docs-consumers"), docs.Reason);
     }
 
     [TestMethod]
@@ -71,7 +159,7 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsFalse(decision.DocsOnly, $"'{path}' is behavior-bearing and must force full validation.");
-        Assert.AreEqual("Code PR: four hosted Windows and four hosted Linux shards.", decision.Reason);
+        Assert.AreEqual("Code PR: six hosted Windows and five hosted Linux shards.", decision.Reason);
     }
 
     [TestMethod]
@@ -324,6 +412,7 @@ public sealed class CiTopologyDecisionContractTests
         Assert.AreEqual(90, leg.TimeoutMinutes);
         Assert.AreEqual(0, leg.TestShardIndex);
         Assert.AreEqual(1, leg.TestShardCount);
+        Assert.AreEqual("full", leg.TestScope);
     }
 
     [TestMethod]
@@ -378,43 +467,51 @@ public sealed class CiTopologyDecisionContractTests
     {
         var expected = new (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[]
         {
-            ("windows-hosted-1-of-4", "windows-latest", false, 45, 0, 4),
-            ("windows-hosted-2-of-4", "windows-latest", false, 45, 1, 4),
-            ("windows-hosted-3-of-4", "windows-latest", false, 45, 2, 4),
-            ("windows-hosted-4-of-4", "windows-latest", false, 45, 3, 4),
+            ("windows-hosted-1-of-6", "windows-latest", false, 45, 0, 6),
+            ("windows-hosted-2-of-6", "windows-latest", false, 45, 1, 6),
+            ("windows-hosted-3-of-6", "windows-latest", false, 45, 2, 6),
+            ("windows-hosted-4-of-6", "windows-latest", false, 45, 3, 6),
+            ("windows-hosted-5-of-6", "windows-latest", false, 45, 4, 6),
+            ("windows-hosted-6-of-6", "windows-latest", false, 45, 5, 6),
             // TEMPORARY 45: see eng/resolve-ci-topology.ps1 and row ci-restore-linux-leg-timeout-30-after-rebalance.
-            ("linux-1-of-4", "ubuntu-latest", false, 45, 0, 4),
-            ("linux-2-of-4", "ubuntu-latest", false, 45, 1, 4),
-            ("linux-3-of-4", "ubuntu-latest", false, 45, 2, 4),
-            ("linux-4-of-4", "ubuntu-latest", true, 45, 3, 4),
+            ("linux-1-of-5", "ubuntu-latest", false, 45, 0, 5),
+            ("linux-2-of-5", "ubuntu-latest", false, 45, 1, 5),
+            ("linux-3-of-5", "ubuntu-latest", false, 45, 2, 5),
+            ("linux-4-of-5", "ubuntu-latest", false, 45, 3, 5),
+            ("linux-5-of-5", "ubuntu-latest", true, 45, 4, 5),
         };
 
-        AssertExactMatrix(matrix, expected);
-        AssertCompleteShardUnion(matrix, "windows-latest", expectedShardCount: 4);
-        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 4);
+        AssertExactMatrix(matrix, expected, expectedTestScope: "full");
+        // A missing or duplicated index would silently drop or double-run one slice of the suite.
+        AssertCompleteShardUnion(matrix, "windows-latest", expectedShardCount: 6);
+        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 5);
         AssertSoleArtifactOwner(matrix);
     }
 
     private static void AssertExactDocsOnlyPullRequestMatrix(CiTopologyLeg[] matrix)
     {
+        // One leg: the artifact owner, so every release gate runs, with the docs-tier consumer
+        // class list as its test scope (CI_POLICY.md § Docs Route Test Selection).
         var expected = new (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[]
         {
-            ("docs-linux-1-of-4", "ubuntu-latest", false, 45, 0, 4),
-            ("docs-linux-2-of-4", "ubuntu-latest", false, 45, 1, 4),
-            ("docs-linux-3-of-4", "ubuntu-latest", false, 45, 2, 4),
-            ("docs-linux-4-of-4", "ubuntu-latest", true, 45, 3, 4),
+            ("docs-linux-1-of-1", "ubuntu-latest", true, 30, 0, 1),
         };
 
-        AssertExactMatrix(matrix, expected);
-        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 4);
+        AssertExactMatrix(matrix, expected, expectedTestScope: "docs-consumers");
+        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 1);
         AssertSoleArtifactOwner(matrix);
     }
 
     private static void AssertExactMatrix(
         CiTopologyLeg[] matrix,
-        (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[] expected)
+        (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[] expected,
+        string expectedTestScope)
     {
         Assert.AreEqual(expected.Length, matrix.Length, "Leg count must match exactly -- no extra or missing legs.");
+        Assert.AreEqual(
+            matrix.Length,
+            matrix.Select(leg => leg.Name).Distinct(StringComparer.Ordinal).Count(),
+            "Leg names must be unique: they key the job name and the test-results artifact.");
         for (var index = 0; index < expected.Length; index++)
         {
             var leg = matrix.SingleOrDefault(candidate => candidate.Name == expected[index].Name)
@@ -424,6 +521,7 @@ public sealed class CiTopologyDecisionContractTests
             Assert.AreEqual(expected[index].TimeoutMinutes, leg.TimeoutMinutes, $"{leg.Name}.timeout_minutes");
             Assert.AreEqual(expected[index].ShardIndex, leg.TestShardIndex, $"{leg.Name}.test_shard_index");
             Assert.AreEqual(expected[index].ShardCount, leg.TestShardCount, $"{leg.Name}.test_shard_count");
+            Assert.AreEqual(expectedTestScope, leg.TestScope, $"{leg.Name}.test_scope");
         }
     }
 
@@ -445,10 +543,16 @@ public sealed class CiTopologyDecisionContractTests
     }
 
     private static void AssertSoleArtifactOwner(CiTopologyLeg[] matrix)
-        => Assert.AreEqual(
-            1,
-            matrix.Count(leg => leg.ArtifactOwner),
-            "Exactly one leg in the matrix must own policy/release artifacts.");
+    {
+        var owners = matrix.Where(leg => leg.ArtifactOwner).ToArray();
+        Assert.AreEqual(1, owners.Length, "Exactly one leg in the matrix must own policy/release artifacts.");
+        // Publish/hash and the release policy gates run on Linux because NuGet publication does.
+        Assert.AreEqual("ubuntu-latest", owners[0].RunsOn, "The sole artifact owner must be a hosted Linux leg.");
+        Assert.AreEqual(
+            owners[0].TestShardCount - 1,
+            owners[0].TestShardIndex,
+            "The artifact owner is the last Linux shard.");
+    }
 
     private static void AssertSucceeded(PwshScriptResult result)
         => Assert.AreEqual(
@@ -536,5 +640,6 @@ public sealed class CiTopologyDecisionContractTests
         [property: JsonPropertyName("artifact_owner")] bool ArtifactOwner,
         [property: JsonPropertyName("timeout_minutes")] int TimeoutMinutes,
         [property: JsonPropertyName("test_shard_index")] int TestShardIndex,
-        [property: JsonPropertyName("test_shard_count")] int TestShardCount);
+        [property: JsonPropertyName("test_shard_count")] int TestShardCount,
+        [property: JsonPropertyName("test_scope")] string? TestScope);
 }

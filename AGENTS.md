@@ -17,7 +17,7 @@ Restated verbatim from `~/.claude/CLAUDE.md` for agents that run without the glo
 
 ## Canonical Rule Sources
 
-- Validation and merge gating: `CI_POLICY.md`
+- Validation and merge gating: `CI_POLICY.md`; CI workflow, shard-planner and profile edits: `ai_docs/references/ci-internals.md`
 - AI-doc routing and task-specific reads: `ai_docs/README.md`
 - Git, branch, worktree, and PR workflow: `ai_docs/workflow.md`
 - Runtime assumptions, runner commands, and MCP client policy: `ai_docs/runtime.md`
@@ -25,7 +25,7 @@ Restated verbatim from `~/.claude/CLAUDE.md` for agents that run without the glo
 - Planning and unfinished work routing: `ai_docs/planning_index.md`, `ai_docs/backlog.md`
 - Implementation quality and safety: `.github/copilot-instructions.md`
 - Cursor reminder layer: `.cursor/rules/operational-essentials.md`
-- Skill packaging: shipped skills live in `./skills/` (bundled by `plugin.json` and distributed to every installer); repo-only maintainer skills live in `.claude/skills/` (auto-discovered by Claude Code in this checkout, never shipped). `./skills/**/*.md` (every shipped markdown file — SKILL.md, prompt bodies, READMEs) must not reference `ai_docs/`, `state.json`, `backlog-sweep`, `backlog.md`, `eng/`, `just verify-`, `Directory.Build.props`, or `BannedSymbols.txt` — GitHub URLs pointing at this repo's public docs are allowed, as are placeholder-rooted paths (`<audited-repo-root>/…`, `<Roslyn-Backed-MCP-root>/…`), which are deliberate cross-repo pointers rather than repo coupling. Enforced by `eng/verify-skills-are-generic.ps1` (run via `just verify-skills`; gates `just ci` and `verify-release.ps1`).
+- Skill packaging: shipped skills live in `./skills/` (bundled by `plugin.json` and distributed to every installer); repo-only maintainer skills live in `.claude/skills/` (auto-discovered by Claude Code in this checkout, never shipped). `./skills/**/*.md` (every shipped markdown file — SKILL.md, prompt bodies, READMEs) must not reference repo-internal paths or maintainer-only markers (canonical list: `eng/banned-skill-markers.json`) — GitHub URLs pointing at this repo's public docs are allowed, as are placeholder-rooted paths (`<audited-repo-root>/…`, `<Roslyn-Backed-MCP-root>/…`), which are deliberate cross-repo pointers rather than repo coupling. Enforced by `eng/verify-skills-are-generic.ps1` (run via `just verify-skills`; gates `just ci` and `verify-release.ps1`).
 - Third-party attribution, only when packaging or legal-notice work touches shipped artifacts: `THIRD-PARTY-NOTICES.md`
 
 ## Session Start (Required)

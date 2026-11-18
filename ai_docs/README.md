@@ -29,6 +29,8 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 |------|---------|
 | `ai_docs/references/testing.md` | Test patterns, commands, and coverage guidance |
 | `known-flakes.md` | Registry of known/quarantined test flakes (currently holds no active flakes) |
+| `ai_docs/references/ci-topology-decision-log.md` | Dated CI shard-topology and docs-route decisions with hosted measurements (history only; rules live in `../CI_POLICY.md`) |
+| `ai_docs/references/ci-internals.md` | Read when editing `ci.yml`, the shard planner, the duration profile or the NuGet/pwsh caches: refresh checklists and invariants |
 | `ai_docs/references/environment-variables.md` | `ROSLYNMCP_*` environment variable reference |
 | `ai_docs/references/tooling/mcp-clients.md` | MCP client integration notes |
 | `ai_docs/references/mcp-server-best-practices.md` | MCP error-model, filter pipeline, and protocol hygiene guidance |
@@ -43,7 +45,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `ai_docs/prompts/profile-large-solution.md` | Runbook for collecting 50+ project Roslyn MCP profiling evidence |
 | `ai_docs/prompts/stress-test-external-repo.md` | Performance and correctness stress-test protocol for large external solutions |
 | `ai_docs/prompts/roslyn-mcp-multisession-retro.md` | Cross-repo retrospective prompt that scans Claude Code and Codex session transcripts for Roslyn MCP issues, missing-tool gaps, and recommendations |
-| `ai_docs/prompts/backlog-sweep-addenda.md` | Repo-specific `/backlog-remediate` addenda; historical filename retained for compatibility |
+| `ai_docs/prompts/backlog-sweep-addenda.md` | Repo-specific backlog-sweep addenda read by global scripts and gated by `eng/verify-ai-docs.ps1`; historical filename retained (the `/backlog-remediate` engine was retired 2026-10-19) |
 
 ## Reports And Archive
 
@@ -51,7 +53,9 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 |------|---------|
 | `ai_docs/items/` | Per-row backlog detail (`items/<id>.md`); owned by `backlog.md` |
 | `ai_docs/plans/` | Plan trees routed via `planning_index.md`; timestamped `*_backlog-remediate/` trees are generated |
-| `ai_docs/audits/20260825-1440/` | Logging-audit run output (1 of 3 retention slots) |
+| `ai_docs/audits/20260924-1305/` | MCP surface audit run (`report.md`, `findings.json`; 1 of 3 retention slots) |
+| `ai_docs/audits/20260930-1340/` | Logging and diagnostics audit run with live checks (1 of 3 retention slots) |
+| `ai_docs/audits/20261028-1500/` | Refactor audit run over `.github`, tests and `eng` (1 of 3 retention slots) |
 | `ai_docs/audit-reports/README.md` | Raw MCP audit outputs and `ai_docs/audit-reports/deep-review-session-checklist.md` |
 | `ai_docs/reports/README.md` | Synthesized rollups and cross-cutting audit reports |
 | `ai_docs/archive/README.md` | Archive policy |

@@ -19,7 +19,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$leg = [regex]::Match($LegName, '^(?<prefix>(docs-)?linux)-(?<index>[1-9][0-9]*)-of-(?<count>[1-9][0-9]*)$')
+# Only the sharded code route calibrates; the policy-docs leg is a single unsharded leg.
+$leg = [regex]::Match($LegName, '^linux-(?<index>[1-9][0-9]*)-of-(?<count>[1-9][0-9]*)$')
 if (-not $leg.Success -or [int]$leg.Groups['count'].Value -ne $ShardCount -or
     [int]$leg.Groups['index'].Value -gt $ShardCount -or
     $env:GITHUB_REPOSITORY -notmatch '^[\w.-]+/[\w.-]+$' -or
@@ -32,7 +33,7 @@ $attemptsEndpoint = "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_I
 $buildStep = 'Measure Linux Release build'
 $expectedJobs = [System.Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
 for ($index = 1; $index -le $ShardCount; $index++) {
-    $expectedJobs.Add("validate-leg ($($leg.Groups['prefix'].Value)-$index-of-$ShardCount)", $index - 1)
+    $expectedJobs.Add("validate-leg (linux-$index-of-$ShardCount)", $index - 1)
 }
 $firstBuilds = [System.Collections.Generic.Dictionary[int, double]]::new()
 

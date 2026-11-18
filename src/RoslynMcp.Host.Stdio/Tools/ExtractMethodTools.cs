@@ -62,7 +62,9 @@ public static class ExtractMethodTools
     /// The preview is intentionally distinct from <c>extract_method_preview</c>: it replaces
     /// matching sub-expressions with calls to a synthesized helper. It refuses fewer than two
     /// occurrences, incompatible free-variable types, and cross-type matches unless explicitly
-    /// allowed.
+    /// allowed. It also refuses occurrences that need a variable or a compile-time constant, leaves
+    /// occurrences inside expression trees unchanged, and refuses a rewrite that would introduce
+    /// compiler errors or re-bind the surrounding expression.
     /// </remarks>
     [McpServerTool(Name = "extract_shared_expression_to_helper_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("refactoring", "experimental", true, false,

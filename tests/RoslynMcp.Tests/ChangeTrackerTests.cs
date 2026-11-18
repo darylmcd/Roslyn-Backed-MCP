@@ -27,7 +27,7 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
     public void RecordChange_IsolatesEachSubscriberFailureInRegistrationOrder()
     {
         var logger = new CaptureLogger<ChangeTracker>();
-        using var tracker = new ChangeTracker(new Helpers.FailClosedWorkspaceManagerStub(), logger);
+        using var tracker = new ChangeTracker(new Helpers.FailClosedWorkspaceManagerStub { ContainsWorkspaceHandler = _ => true }, logger);
         var calls = new List<int>();
         tracker.ChangeRecorded += _ => { calls.Add(1); throw new InvalidOperationException("first"); };
         tracker.ChangeRecorded += args =>
@@ -310,5 +310,77 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
     {
         var changes = ChangeTracker.GetChanges("nonexistent-workspace-id");
         Assert.AreEqual(0, changes.Count);
+    }
+
+    // ---- undo-b: record vs workspace close ----
+
+    private sealed class LiveFlag
+    {
+        public volatile bool Live = true;
+    }
+
+    private static ChangeTracker CreateTracker(LiveFlag live) =>
+        new(new Helpers.FailClosedWorkspaceManagerStub { ContainsWorkspaceHandler = _ => live.Live });
+
+    [TestMethod]
+    public void RecordChange_AfterWorkspaceClosed_RecreatesNoLedgerAndFiresNothing()
+    {
+        var live = new LiveFlag();
+        using var tracker = CreateTracker(live);
+        var fired = 0;
+        tracker.ChangeRecorded += _ => fired++;
+        tracker.RecordChange("ws", "while open", ["a.cs"], "test", UndoCaptureId.None);
+        Assert.AreEqual(1, fired);
+
+        live.Live = false;
+        tracker.Clear("ws");
+        tracker.RecordChange("ws", "after close", ["a.cs"], "test", UndoCaptureId.None);
+
+        Assert.AreEqual(1, fired, "A closed workspace's record must not fire ChangeRecorded (it would re-run the undo commit).");
+        Assert.AreEqual(0, tracker.GetChanges("ws").Count);
+        Assert.AreEqual(0, tracker.TrackedWorkspaceCount, "Clear must not be followed by a re-created ledger.");
+    }
+
+    [TestMethod]
+    public void RecordChange_WorkspaceClosesAfterStateAcquired_DropsRecordAndRemovesOrphanState()
+    {
+        // The workspace closes between the liveness pre-check and the lock, before Clear has run: the
+        // ledger state RecordChange just created is an orphan Clear will never see; it must remove
+        // exactly that state and record/fire nothing.
+        var live = new LiveFlag();
+        using var tracker = CreateTracker(live);
+        var fired = 0;
+        tracker.ChangeRecorded += _ => fired++;
+        tracker.AfterStateAcquired = () => live.Live = false;
+
+        tracker.RecordChange("ws", "racing close", ["a.cs"], "test", UndoCaptureId.None);
+
+        Assert.AreEqual(0, fired);
+        Assert.AreEqual(0, tracker.GetChanges("ws").Count);
+        Assert.AreEqual(0, tracker.TrackedWorkspaceCount, "No orphan ledger state may stay registered.");
+    }
+
+    [TestMethod]
+    public void RecordChange_ClearBetweenStateAcquireAndLock_ReacquiresAndRecordsOnce()
+    {
+        // Clear detaches the state RecordChange already holds (workspace still open: e.g. an explicit
+        // Clear). The record must not be appended to the detached ledger and lost.
+        var live = new LiveFlag();
+        using var tracker = CreateTracker(live);
+        var fired = 0;
+        tracker.ChangeRecorded += _ => fired++;
+        var first = true;
+        tracker.AfterStateAcquired = () =>
+        {
+            if (!first) return;
+            first = false;
+            tracker.Clear("ws");
+        };
+
+        tracker.RecordChange("ws", "racing clear", ["a.cs"], "test", UndoCaptureId.None);
+
+        Assert.AreEqual(1, fired);
+        Assert.AreEqual(1, tracker.GetChanges("ws").Count, "The record must land in the live ledger, not a detached one.");
+        Assert.AreEqual(1, tracker.TrackedWorkspaceCount);
     }
 }

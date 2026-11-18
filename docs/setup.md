@@ -6,6 +6,8 @@
 |---------------|--------|
 | [.NET 10 SDK](https://dotnet.microsoft.com/download) | Repository build floor: `10.0.400` in `global.json` (rollForward `latestFeature`); CI also verifies that exact floor. |
 | Git | For clone and CI artifact workflows. |
+| [PowerShell 7+](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (`pwsh`) | Required for the `eng/*.ps1` gates (`verify-release.ps1`, `verify-ai-docs.ps1`) and the plugin refresh script. |
+| [`just`](https://github.com/casey/just) (optional) | Task runner for the local CI mirror (`just ci`). |
 | Docker (optional) | Only if you build or run the container image (`Dockerfile`). |
 
 ## Packaging / distribution inventory
@@ -20,7 +22,7 @@
 | NuGet global tool | `src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj` (`PackAsTool`, `ToolCommandName`: `roslynmcp`) | `dotnet pack src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj -c Release -o ./nupkg` then `dotnet tool install -g Darylmcd.RoslynMcp --add-source ./nupkg` | Package id `Darylmcd.RoslynMcp` (the unprefixed `RoslynMcp` is owned by another publisher on nuget.org). CLI command name remains `roslynmcp`. |
 | Zero-install (`dnx`) | NuGet package `Darylmcd.RoslynMcp` | `dnx Darylmcd.RoslynMcp` (.NET 10 SDK 10.0.100+) | Resolves the package from NuGet on demand; starts and then appears to hang, waiting for MCP frames on stdin. See [Zero-install via `dnx`](#zero-install-via-dnx). |
 | Publish + reinstall local tool | MSBuild target `PackAndReinstallGlobalTool` | `dotnet publish -c Release -p:ReinstallTool=true` (Windows; use `-p:` rather than `/p:` under Git Bash) | Uninstalls the prior global install, packs to `nupkg/`, reinstalls. Stops only an explicitly identified, owned `roslynmcp` process (never a name-wide kill); see [reinstall.md](reinstall.md). |
-| Docker image | `Dockerfile` | `docker build -t roslynmcp .` then `docker run ...` | Runtime stage uses full SDK (MSBuild workspace). See comments in `Dockerfile` for read-only/volume hints. |
+| Docker image | `Dockerfile` | `docker build -t roslynmcp .` then `docker run --rm -i --read-only --tmpfs /tmp:mode=1777 -v /path/to/workspace:/workspace -e ROSLYNMCP_SANCTIONED_ROOTS=/workspace roslynmcp` | Runtime stage uses the full SDK (MSBuild workspace). The mounted workspace must be writable by the non-root `mcpuser` and `ROSLYNMCP_SANCTIONED_ROOTS` must name the mount point. A healthy container prints nothing and waits on stdin until an MCP client completes the handshake (use `docker run -i`, never `-d`). |
 | Sample solutions | `samples/*/` | `dotnet build` per sample `.slnx` | Used for integration tests and manual scenarios. |
 
 ## Configure the filesystem boundary
@@ -126,7 +128,7 @@ are optional literal `env` overrides. Copy-ready examples live in
 | `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENT_BYTES` | `5242880` | With `file`: rotation threshold in bytes for one JSON-lines segment (minimum 8192); a larger record is replaced by a bounded truncation marker |
 | `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENTS` | `3` | With `file`: rotated numbered segments kept beside the active file per process (1 to 100); rotation deletes only the oldest |
 
-The packaged NuGet README lists further script, rate-limit, and preview-store variables. For log
+The complete variable list (script, rate-limit, preview-store, validation-timeout, and fork settings) is [ai_docs/references/environment-variables.md](../ai_docs/references/environment-variables.md). For log
 destinations, verbosity controls, correlation identifiers, and health probes, see the
 [stdio observability contract](stdio-client-integration.md#operator-observability).
 
@@ -192,15 +194,16 @@ GitHub Actions `ci` workflow uploads:
 
 | Artifact name | Contents |
 |-----------------|----------|
-| `host-stdio-publish` | `artifacts/publish/host-stdio` — published host output. |
-| `release-manifests` | `artifacts/manifests` — e.g. SHA256 manifest from `verify-release.ps1`. |
-| `code-coverage` | `artifacts/coverage` — Cobertura XML from tests; CI also generates `artifacts/coverage/report` (HtmlSummary) via ReportGenerator. |
+| `test-results-<leg>` | `artifacts/test-results` — TRX files, one artifact per matrix leg; uploaded on every run even when a step fails; kept 14 days. |
+| `host-stdio-publish` | `artifacts/publish/host-stdio` — published host output; code-bearing runs only, from the artifact-owner leg; kept 14 days. |
+| `release-manifests` | `artifacts/manifests` — e.g. SHA256 manifest from `verify-release.ps1`; same conditions as `host-stdio-publish`; kept 14 days. |
+| `code-coverage` | `artifacts/coverage` — Cobertura XML from tests; CI also generates `artifacts/coverage/report` (HtmlSummary) via ReportGenerator. Dispatch and scheduled runs only (not pull requests or merge groups); kept 30 days. |
 
 Download from the workflow run’s **Artifacts** section. Requires a GitHub account with access to the repository.
 
 ## Claude Code Plugin
 
-The server is also packaged as a **Claude Code plugin** with bundled skills and safety hooks plus a release-pinned `dnx` launch configuration.
+The server is also packaged as a **Claude Code plugin** with bundled skills and advisory reminder hooks plus a release-pinned `dnx` launch configuration.
 
 | Form | Config or source | Command(s) | Notes |
 |------|------------------|------------|-------|
@@ -214,6 +217,7 @@ Plugin components:
 |-----------|----------|
 | `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
 | `skills/` | 32 SKILL.md files. Analysis/review: analyze, review, complexity, security, test-coverage, dead-code, explain-error, architecture-review, impact-assessment, trace-flow, di-audit, inheritance-explorer, exception-audit. Refactor: refactor, refactor-loop, extract-method, code-actions, migrate-package, modernize. Search: semantic-find. Tests: test-triage, generate-tests. Session / workspace: session-undo, snippet-eval, project-inspection, workspace-health, format-sweep. Documentation: document. Release: update, version-bump, nuget-preflight, mcp-server-surface-test. |
+| `agents/` | `audit-phase-runner`, the subagent that the `mcp-server-surface-test` skill delegates context-heavy audit phases to. |
 | `hooks/` | `hooks.json` with PostToolUse prompt hooks only: a compile-check reminder after structural `*_apply` calls and a server-update notice after `server_info`. Preview-before-apply is enforced server-side by required preview tokens, not by a hook. |
 
 The skill families above are the full skill list (one `SKILL.md` per skill under `skills/`).

@@ -1,14 +1,13 @@
 # Known flakes
 
-<!-- purpose: Authoritative list of pre-existing flaky tests that remediation executors and the orchestrator consult when judging "is the build green?". -->
+<!-- purpose: Registry of investigated flaky tests, each with base-commit proof and a tracking row; never an override for red CI. -->
 
-Pre-existing flaky tests that subagents and the orchestrator should ignore when judging "is the build green?". When all failing tests match a registered pattern, the validation step treats the result as success and surfaces the count via `known flakes encountered: N` in the report.
+Registry of flaky tests that have been investigated and are tracked as defects. An entry never turns a red check green: CI stays red until the test is fixed or the failure is reproduced on the base commit and a root-cause row exists (Standing Directives #1, #7).
 
-**Discipline** (per `/backlog-remediate`):
+**Discipline:**
 
-- Subagents MUST NOT add new entries themselves — flakes go in via a dedicated PR after triage so the registry reflects real, investigated flakes, not noise.
-- The orchestrator may consult this registry to override a subagent's failure verdict, but MUST NOT add entries during a sweep.
-- Each entry should name the *symptom*, the *evidence*, and a *fix-or-track* disposition so future readers can decide whether to attempt the underlying fix.
+- Add an entry only in a dedicated PR after triage, with: the *symptom*, the *evidence* (base-commit reproduction), and the tracking backlog row id.
+- Remediation sessions MUST NOT add entries on their own during a run.
 - Delete an entry in the PR that de-flakes its test.
 
 ## Registered flakes

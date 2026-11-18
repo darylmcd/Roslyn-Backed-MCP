@@ -6,6 +6,8 @@ Thank you for your interest in contributing. This guide covers the essentials.
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) — `10.0.400` per [`global.json`](global.json) (`rollForward` is `latestFeature`; any compatible later 10.0.x feature band works)
 - Git
+- [PowerShell 7+](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (`pwsh`) — required for the `eng/*.ps1` gates such as `verify-release.ps1`
+- [`just`](https://github.com/casey/just) — optional, for the local CI mirror (`just ci`)
 
 ## Build and Test
 
@@ -32,7 +34,7 @@ See `ai_docs/workflow.md` for the canonical branch, worktree, and pull-request p
 
 - All existing tests must pass.
 - New features and bug fixes should include test coverage.
-- Run the local CI mirror before opening the PR: `just ci` (requires [`just`](https://github.com/casey/just)), which runs the doc, skill, format, workflow-lint, release-PR, and vulnerability-audit gates. `./eng/verify-release.ps1` runs the full build/test/publish verification.
+- The merge proof is the hosted `validate` check on the pull request's head commit (see [`CI_POLICY.md`](CI_POLICY.md), Merge Proof). Running the local CI mirror first is optional: `just ci` (requires [`just`](https://github.com/casey/just)) runs the doc, skill, format, workflow-lint, release-PR, and vulnerability-audit gates. `./eng/verify-release.ps1` runs the full build/test/publish verification.
 - Add a changelog fragment at `changelog.d/<row-id>.md` for any shipped, test, build, workflow, skill, or public-documentation change (CI enforces this). Use the YAML-frontmatter format described in [`changelog.d/README.md`](changelog.d/README.md); do not edit `CHANGELOG.md` directly.
 - Follow the existing code style and patterns.
 

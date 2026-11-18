@@ -1,6 +1,6 @@
 # ADR 0012: Bound editorconfig writes to the loaded workspace
 
-Status: Proposed, 2026-09-29; pending the operator's release decision.
+Status: Accepted; proposed 2026-09-29, shipped in 5.0.0 (2026-10-28) as a breaking change (see [ADR 0011](0011-v5-major-release-contract.md) and the 5.0.0 `CHANGELOG.md` entry).
 
 ## Context
 
