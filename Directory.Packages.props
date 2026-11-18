@@ -21,14 +21,14 @@
          (timeout-budget reset verified on a virtual clock, no wall-clock Task.Delay races). -->
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.0" />
     <PackageVersion Include="DiffPlex" Version="1.9.0" />
-    <PackageVersion Include="Microsoft.Build.Framework" Version="18.7.1" />
-    <PackageVersion Include="Microsoft.Build" Version="18.7.1" />
-    <PackageVersion Include="Microsoft.Build.Tasks.Core" Version="18.7.1" />
-    <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="18.7.1" />
+    <PackageVersion Include="Microsoft.Build.Framework" Version="18.12.2" />
+    <PackageVersion Include="Microsoft.Build" Version="18.9.6" />
+    <PackageVersion Include="Microsoft.Build.Tasks.Core" Version="18.12.2" />
+    <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="18.12.2" />
     <!-- Transitive runtime dependency of Microsoft.Build 18.x. Pinned and referenced directly with
          ExcludeAssets="runtime" PrivateAssets="all" so Microsoft.Build.Locator MSBL001 stays satisfied;
          keep it on the Microsoft.Build compile-family version. -->
-    <PackageVersion Include="Microsoft.NET.StringTools" Version="18.7.1" />
+    <PackageVersion Include="Microsoft.NET.StringTools" Version="18.12.2" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageVersion Include="MSTest.TestAdapter" Version="4.5.3" />
     <PackageVersion Include="MSTest.TestFramework" Version="4.5.3" />
