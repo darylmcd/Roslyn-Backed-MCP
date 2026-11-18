@@ -155,19 +155,35 @@ internal static class MovedDeclarationFileWriter
             {
                 if (import.Alias is { } alias)
                     result.RemoveAll(u => u.Alias?.Name.Identifier.ValueText == alias.Name.Identifier.ValueText);
-                var copied = import;
-                if (import.Name is { } name &&
-                    semanticModel.GetSymbolInfo(name, ct).Symbol is INamespaceOrTypeSymbol symbol)
-                {
-                    // Namespace-local imports bind relative to their old namespace. Make that
-                    // binding explicit before placing them in the destination namespace.
-                    copied = import.WithName(SyntaxFactory.ParseName(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-                        .WithTriviaFrom(name));
-                }
-                result.Add(copied);
+                // Namespace-local imports bind relative to their old namespace. Make that
+                // binding explicit before placing them in the destination namespace.
+                result.Add(QualifyImport(import, semanticModel, ct, onlyWhenRelative: false));
             }
         }
         return SyntaxFactory.List(result);
+    }
+
+    /// <summary>
+    /// Makes the namespace-scoped imports of a declaration whose namespace NAME is about to change
+    /// keep their meaning: an import written relative to the old namespace (<c>using Sub;</c>
+    /// meaning <c>Old.Sub</c>) would otherwise rebind to the new one. Only imports whose written
+    /// name differs from the symbol they bind to are rewritten, so ordinary imports keep their text.
+    /// </summary>
+    internal static SyntaxList<UsingDirectiveSyntax> PreserveImportBindings(
+        SyntaxList<UsingDirectiveSyntax> imports, SemanticModel semanticModel, CancellationToken ct) =>
+        SyntaxFactory.List(imports.Select(import => QualifyImport(import, semanticModel, ct, onlyWhenRelative: true)));
+
+    private static UsingDirectiveSyntax QualifyImport(
+        UsingDirectiveSyntax import, SemanticModel semanticModel, CancellationToken ct, bool onlyWhenRelative)
+    {
+        if (import.Name is not { } name ||
+            semanticModel.GetSymbolInfo(name, ct).Symbol is not INamespaceOrTypeSymbol symbol)
+            return import;
+        if (onlyWhenRelative &&
+            string.Equals(name.WithoutTrivia().ToString(), symbol.ToDisplayString(), StringComparison.Ordinal))
+            return import;
+        return import.WithName(SyntaxFactory.ParseName(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+            .WithTriviaFrom(name));
     }
 
     private static (SyntaxTriviaList Before, SyntaxTriviaList After) GetSurroundingDirectives(

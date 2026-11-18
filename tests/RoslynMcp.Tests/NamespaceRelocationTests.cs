@@ -986,6 +986,71 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         return compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(trees);
     }
 
+    /// <summary>
+    /// Regression (relocation-same-file-preserve-declaration-imports): the sibling-preserving
+    /// branch moved only the selected type into a new namespace block; the namespace-scoped
+    /// imports (aliases included) stayed behind, so the moved type lost its bindings. The retained
+    /// sibling keeps its own binding.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    using Alias = System.Text.StringBuilder;\n    using System.Globalization;\n\n    public class Keep { public Alias Builder = new Alias(); }\n\n    public class Selected\n    {\n        public Alias Builder = new Alias();\n        public CultureInfo Culture = CultureInfo.InvariantCulture;\n    }\n}\n",
+        "Old", DisplayName = "block namespace")]
+    [DataRow("namespace Old;\n\nusing Alias = System.Text.StringBuilder;\nusing System.Globalization;\n\npublic class Keep { public Alias Builder = new Alias(); }\n\npublic class Selected\n{\n    public Alias Builder = new Alias();\n    public CultureInfo Culture = CultureInfo.InvariantCulture;\n}\n",
+        "Old", DisplayName = "file-scoped namespace")]
+    [DataRow("namespace Outer\n{\n    using Alias = System.Text.StringBuilder;\n\n    namespace Inner\n    {\n        using System.Globalization;\n\n        public class Keep { public Alias Builder = new Alias(); }\n\n        public class Selected\n        {\n            public Alias Builder = new Alias();\n            public CultureInfo Culture = CultureInfo.InvariantCulture;\n        }\n    }\n}\n",
+        "Outer.Inner", DisplayName = "imports on two nested scopes")]
+    public async Task Preview_SameFile_Moved_Type_Keeps_Its_Namespace_Scoped_Imports_And_Siblings_Keep_Theirs(
+        string source, string fromNamespace)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, sourcePath, _, preview) = await PreviewRelocationAsync(
+            workspace, source, relocate: false, fromNamespace: fromNamespace);
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"), $"Selected must arrive in New:\n{text}");
+        Assert.IsNotNull(compilation.GetTypeByMetadataName(fromNamespace + ".Keep"), $"Keep must stay:\n{text}");
+        Assert.AreEqual(2, System.Text.RegularExpressions.Regex.Matches(text, "Alias =").Count,
+            $"The retained block keeps its alias and the moved declaration gets its own:\n{text}");
+
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "same_file_imports", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await workspace.ReloadAsync();
+        var reloaded = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.AreEqual(text, await File.ReadAllTextAsync(sourcePath), "the applied file must equal the previewed text");
+        var reloadedErrors = await CompileErrorsInAsync(reloaded, sourcePath);
+        Assert.AreEqual(0, reloadedErrors.Count, $"The applied solution must compile. Errors:\n{string.Join("\n", reloadedErrors)}");
+    }
+
+    /// <summary>
+    /// Same mechanism as the sibling branch: renaming the declaration in place changes what a
+    /// namespace-scoped import written relative to the old namespace (<c>using Sub;</c> meaning
+    /// <c>Old.Sub</c>) binds to.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_InPlace_Rename_Keeps_Relative_Namespace_Scoped_Imports_Bound()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string source = "namespace Old\n{\n    using Sub;\n\n    public class Selected { public Marker Value = new Marker(); }\n}\n";
+        const string other = "namespace Old.Sub\n{\n    public class Marker { }\n}\n";
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(
+            workspace, source, otherFile: ("SampleLib", other), relocate: false);
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"), text);
+    }
+
     [TestMethod]
     public async Task ArgumentRefusals_NamespaceMalformedDestinationIsNamedAndRedacted()
     {

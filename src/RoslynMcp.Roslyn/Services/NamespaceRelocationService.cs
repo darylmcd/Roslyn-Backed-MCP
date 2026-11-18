@@ -318,7 +318,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         {
             var movedType = new SyntaxAnnotation();
             var updatedRoot = canRenameInPlace
-                ? RewriteNamespaceName(sourceRoot, containingNs, typeDecl, toNamespace, movedType)
+                ? RewriteNamespaceName(sourceRoot, containingNs, typeDecl, toNamespace, movedType, semanticModel, ct)
                 : MoveTypeIntoNewNamespaceInSameFile(sourceRoot, typeDecl, toNamespace, movedType, semanticModel, ct);
             siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(updatedRoot, fromNamespace);
             var updatedDocument = sourceDocument.WithSyntaxRoot(updatedRoot);
@@ -371,10 +371,15 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         BaseNamespaceDeclarationSyntax ns,
         TypeDeclarationSyntax typeDecl,
         string toNamespace,
-        SyntaxAnnotation movedType)
+        SyntaxAnnotation movedType,
+        SemanticModel semanticModel,
+        CancellationToken ct)
     {
         var newName = SyntaxFactory.ParseName(toNamespace).WithTriviaFrom(ns.Name);
-        var renamed = ns.ReplaceNode(typeDecl, typeDecl.WithAdditionalAnnotations(movedType)).WithName(newName);
+        // Imports written relative to the old namespace would rebind to the new one.
+        var imports = MovedDeclarationFileWriter.PreserveImportBindings(ns.Usings, semanticModel, ct);
+        var renamed = ns.ReplaceNode(typeDecl, typeDecl.WithAdditionalAnnotations(movedType))
+            .WithName(newName).WithUsings(imports);
         return root.ReplaceNode(ns, renamed);
     }
 
@@ -408,7 +413,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         // The moved copy keeps the type's own trivia (doc comments included), so none is left
         // behind in the retained file; the end-of-file trivia stays in the retained file.
-        var (movedMember, _) = MovedDeclarationFileWriter.PrepareMovedMember(
+        var (movedMember, namespaceUsings) = MovedDeclarationFileWriter.PrepareMovedMember(
             root, typeDecl, SyntaxFactory.List<UsingDirectiveSyntax>(), SyntaxFactory.TriviaList(),
             endOfFileTravelsWithMember: false, semanticModel, ct);
 
@@ -469,6 +474,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             .WithLeadingTrivia(movedMember.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine))
             .WithAdditionalAnnotations(movedType);
         var appended = SyntaxFactory.NamespaceDeclaration(ReceivingNamespaceFactory.CreateName(toNamespace))
+            // The enclosing namespace scopes' imports stay with the retained declarations; the
+            // moved copy gets its own so it keeps the bindings it was written against.
+            .WithUsings(namespaceUsings)
             .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(relocatedType))
             .WithCloseBraceToken(SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithTrailingTrivia(endOfLine))
             .WithLeadingTrivia(newBlockLeadingTrivia)
