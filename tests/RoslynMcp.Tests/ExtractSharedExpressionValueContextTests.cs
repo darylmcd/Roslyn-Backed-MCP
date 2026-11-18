@@ -65,6 +65,13 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
     // whether it mutates is not decided here and the helper would pass a copy.
     [DataRow("non-readonly struct member receiver", "ValueContextTarget.Count",
         "public static ValueCounter Read() { return ValueContextTarget.Count; }\n    public static int Write() { return ValueContextTarget.Count.Peek(); }")]
+    // Each increment/decrement kind is its own RawKind in the classifier arm: one row per kind.
+    [DataRow("pre-increment", "ValueContextTarget.Value",
+        "public static int Read() { return ValueContextTarget.Value; }\n    public static void Write() { ++ValueContextTarget.Value; }")]
+    [DataRow("post-decrement", "ValueContextTarget.Value",
+        "public static int Read() { return ValueContextTarget.Value; }\n    public static void Write() { ValueContextTarget.Value--; }")]
+    [DataRow("parenthesized assignment target", "ValueContextTarget.Value",
+        "public static int Read() { return ValueContextTarget.Value; }\n    public static void Write() { (ValueContextTarget.Value) = 5; }")]
     [DataRow("pre-decrement", "ValueContextTarget.Value",
         "public static int Read() { return ValueContextTarget.Value; }\n    public static void Write() { --ValueContextTarget.Value; }")]
     [DataRow("address-of", "ValueContextTarget.Field",
@@ -142,8 +149,13 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
             """;
         await WithWorkspaceAsync(source, async (workspaceId, path) =>
         {
-            var error = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => PreviewAsync(workspaceId, path, source, "6 * 7", exampleOccurrence));
+            // Example 0 is refused by the binding-equivalence check (public message); example 1 has no inferable
+            // return type, which the extraction reports with a plain InvalidOperationException.
+            var error = exampleOccurrence == 0
+                ? await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
+                    () => PreviewAsync(workspaceId, path, source, "6 * 7", exampleOccurrence))
+                : await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                    () => PreviewAsync(workspaceId, path, source, "6 * 7", exampleOccurrence));
             StringAssert.Contains(error.Message, exampleOccurrence == 0 ? "bindings" : "return type");
             FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
         });
