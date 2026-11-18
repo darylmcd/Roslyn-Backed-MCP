@@ -1136,6 +1136,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     [DataRow("using @Old.Sub;\n", DisplayName = "escaped first segment")]
     [DataRow("using Old . Sub ;\n", DisplayName = "dotted name with interior trivia")]
+    [DataRow("using global::Old.Sub;\n", DisplayName = "global-qualified")]
     public async Task Preview_Removes_Obsolete_Import_Written_In_An_Equivalent_Spelling(string oldImport)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
@@ -1158,6 +1159,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
     /// </summary>
     [TestMethod]
     [DataRow("New", "using @New;\n", "@New", DisplayName = "escaped destination import")]
+    [DataRow("New", "using global::New;\n", "global::New", DisplayName = "global-qualified destination import")]
     [DataRow("Target.Sub", "using Target . Sub ;\n", "Target . Sub ", DisplayName = "destination import with interior trivia")]
     public async Task Preview_Does_Not_Duplicate_A_Destination_Import_Written_In_An_Equivalent_Spelling(
         string destination, string existingImport, string existingSpelling)

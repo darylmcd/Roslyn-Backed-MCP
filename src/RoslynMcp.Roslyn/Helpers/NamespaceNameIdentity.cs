@@ -12,9 +12,19 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 internal static class NamespaceNameIdentity
 {
-    /// <summary>Identity key of a syntax name; empty for <see langword="null"/>.</summary>
-    internal static string Of(NameSyntax? name) =>
-        name is null ? string.Empty : string.Concat(name.DescendantTokens().Select(static token => token.ValueText));
+    private const string GlobalAliasPrefix = "global::";
+
+    /// <summary>
+    /// Identity key of a syntax name; empty for <see langword="null"/>. A leading <c>global::</c>
+    /// qualifier does not change which namespace is named, so it is dropped.
+    /// </summary>
+    internal static string Of(NameSyntax? name)
+    {
+        if (name is null)
+            return string.Empty;
+        var key = string.Concat(name.DescendantTokens().Select(static token => token.ValueText));
+        return key.StartsWith(GlobalAliasPrefix, StringComparison.Ordinal) ? key[GlobalAliasPrefix.Length..] : key;
+    }
 
     /// <summary>
     /// Compilable source spelling of a syntax name: token texts (so <c>@</c> escapes stay) without
@@ -31,7 +41,10 @@ internal static class NamespaceNameIdentity
     {
         if (string.IsNullOrWhiteSpace(dottedName))
             return string.Empty;
-        return string.Join('.', dottedName.Split('.').Select(static segment =>
+        var trimmedName = dottedName.Trim();
+        if (trimmedName.StartsWith(GlobalAliasPrefix, StringComparison.Ordinal))
+            trimmedName = trimmedName[GlobalAliasPrefix.Length..];
+        return string.Join('.', trimmedName.Split('.').Select(static segment =>
         {
             var trimmed = segment.Trim();
             return trimmed.StartsWith('@') ? trimmed[1..] : trimmed;

@@ -18,6 +18,8 @@ public sealed class NamespaceNameIdentityTests
     [DataRow("Target.@class", "Target.class")]
     [DataRow("Target.class", "Target.class")]
     [DataRow("@a.@b", "a.b")]
+    [DataRow("global::Old.Sub", "Old.Sub")]
+    [DataRow(" global::@Old ", "Old")]
     [DataRow("", "")]
     [DataRow("  ", "")]
     public void Of_String_Drops_Escapes_And_Whitespace(string spelling, string expected) =>
@@ -28,6 +30,7 @@ public sealed class NamespaceNameIdentityTests
     [DataRow("using Old . Sub ;")]
     [DataRow("using Old.Sub;")]
     [DataRow("global using Old.Sub;")]
+    [DataRow("using global::Old.Sub;")]
     public void Of_Name_Is_The_Same_For_Every_Spelling_Of_A_Namespace(string import)
     {
         var directive = Parse(import).Usings.Single();
