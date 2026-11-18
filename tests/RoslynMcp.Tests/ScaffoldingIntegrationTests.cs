@@ -1603,6 +1603,50 @@ namespace @Beta
         Assert.IsFalse(ambiguous.Message.Contains("@Beta", StringComparison.Ordinal), ambiguous.Message);
     }
 
+    // relocation-using-semantic-identity copy site (TrimUsingsToReferencedNamespaces): the sibling
+    // import was compared as text with the resolved namespace, so an equivalent spelling was
+    // trimmed away although the captured constructor parameter needs it.
+    [TestMethod]
+    public async Task Scaffold_Test_With_ReferenceTestFile_Keeps_A_Needed_Using_Written_In_An_Equivalent_Spelling()
+    {
+        await using var workspace = CreateLibraryTestsWorkspace();
+        var siblingPath = workspace.GetPath("SampleLib.Tests", "SpelledShapeRendererTests.cs");
+        await File.WriteAllTextAsync(siblingPath, """
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SampleLib . Hierarchy ;
+
+namespace SampleLib.Tests;
+
+[TestClass]
+public class SpelledShapeRendererTests
+{
+    private readonly Shape _shape;
+
+    public SpelledShapeRendererTests(Shape shape)
+    {
+        _shape = shape;
+    }
+
+    [TestMethod]
+    public void Render_Returns_Ok() { }
+}
+""", CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto("SampleLib.Tests", "AnimalService", ReferenceTestFile: siblingPath),
+            CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var contents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib.Tests", "AnimalServiceGeneratedTests.cs"), CancellationToken.None);
+        StringAssert.Contains(contents, "using SampleLib.Hierarchy;");
+        StringAssert.Contains(contents, "public AnimalServiceGeneratedTests(Shape shape)");
+    }
+
     private static async Task AddDuplicateWidgetFixtureAsync(IsolatedWorkspaceTestBase.IsolatedWorkspaceScope workspace)
     {
         var fixturePath = workspace.GetPath("SampleLib", "DuplicateWidgetFixture.cs");

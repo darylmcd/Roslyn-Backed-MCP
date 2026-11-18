@@ -38,6 +38,13 @@ public sealed class NamespaceNameIdentityTests
     }
 
     [TestMethod]
+    [DataRow("using @Old.Sub;", "@Old.Sub")]
+    [DataRow("using Old . Sub ;", "Old.Sub")]
+    [DataRow("using Old.Sub;", "Old.Sub")]
+    public void SourceSpelling_Keeps_Escapes_And_Drops_All_Trivia(string import, string expected) =>
+        Assert.AreEqual(expected, NamespaceNameIdentity.SourceSpelling(Parse(import).Usings.Single().Name));
+
+    [TestMethod]
     [DataRow("using A = Old.Sub;")]
     [DataRow("using static Old.Sub.Type;")]
     public void ImportsNamespace_Ignores_Alias_And_Static_Imports(string import)

@@ -17,6 +17,13 @@ internal static class NamespaceNameIdentity
         name is null ? string.Empty : string.Concat(name.DescendantTokens().Select(static token => token.ValueText));
 
     /// <summary>
+    /// Compilable source spelling of a syntax name: token texts (so <c>@</c> escapes stay) without
+    /// any trivia, including trivia between the segments. Empty for <see langword="null"/>.
+    /// </summary>
+    internal static string SourceSpelling(NameSyntax? name) =>
+        name is null ? string.Empty : string.Concat(name.DescendantTokens().Select(static token => token.Text));
+
+    /// <summary>
     /// Identity key of a dotted spelling such as <c>Target.@class</c> or <c>Target.class</c>:
     /// one leading <c>@</c> is dropped per segment; blank input is the global namespace.
     /// </summary>

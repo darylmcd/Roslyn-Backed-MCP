@@ -1127,7 +1127,7 @@ internal static class TestScaffoldRenderer
         // replicate the sibling's namespace declaration — the scaffolder already picks the
         // correct namespace for the new file from the target test project.
         var allUsings = root.Usings
-            .Select(u => u.Name?.ToString().Trim() ?? string.Empty)
+            .Select(u => NamespaceNameIdentity.SourceSpelling(u.Name))
             .Where(s => s.Length > 0)
             .ToList();
 
@@ -1183,7 +1183,7 @@ internal static class TestScaffoldRenderer
         // Keep only usings whose name matches one of the referenced namespaces. Framework
         // usings are also filtered downstream in BuildSiblingFragments — the trim here just
         // narrows the set to namespaces semantic resolution proved are needed.
-        return allUsings.Where(u => referencedNamespaces.Contains(u)).ToList();
+        return allUsings.Where(u => referencedNamespaces.Contains(NamespaceNameIdentity.Of(u))).ToList();
     }
 
     /// <summary>
@@ -1252,7 +1252,7 @@ internal static class TestScaffoldRenderer
                 var ns = typeInfo.ContainingNamespace;
                 if (ns is null || ns.IsGlobalNamespace)
                     continue;
-                var nsString = ns.ToDisplayString();
+                var nsString = NamespaceNameIdentity.Of(ns);
                 if (!string.IsNullOrEmpty(nsString))
                     referencedNamespaces.Add(nsString);
             }
