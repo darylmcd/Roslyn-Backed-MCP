@@ -196,6 +196,19 @@ public class TestDiscoverFqdnDriftTests
         Assert.AreEqual("/*/Repro.Tests/Outer+Inner/NestedTest", treeNodeFilter);
     }
 
+    // relocation-using-semantic-identity copy site: the namespace prefix came from the declaration's
+    // syntax Name.ToString(), so interior trivia and @ escapes leaked into the name that the test
+    // runner filter must match, which registers the identifier values.
+    [TestMethod]
+    [DataRow("namespace Repro . Tests\n{\n    public class T\n    {\n        public void M() { }\n    }\n}\n", "Repro.Tests.T.M")]
+    [DataRow("namespace @Repro.@class\n{\n    public class T\n    {\n        public void M() { }\n    }\n}\n", "Repro.class.T.M")]
+    [DataRow("namespace Outer { namespace Inner . Deep { public class T { public void M() { } } } }", "Outer.Inner.Deep.T.M")]
+    public void BuildFullyQualifiedTestName_UsesNamespaceIdentityNotDeclarationSpelling(string source, string expected)
+    {
+        Assert.AreEqual(expected,
+            TestDiscoveryService.BuildFullyQualifiedTestName("Project", ParseTestMethod(source)));
+    }
+
     private static MethodDeclarationSyntax ParseTestMethod(string source)
     {
         var root = CSharpSyntaxTree.ParseText(source).GetRoot();
