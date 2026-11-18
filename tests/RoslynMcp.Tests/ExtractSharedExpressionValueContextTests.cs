@@ -29,6 +29,7 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
         {
             public int N;
             public void Increment() { N++; }
+            public int Peek() => N;
         }
 
         public static class ValueContextTarget
@@ -60,6 +61,10 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
     // Compiles and silently mutates a copy: a non-readonly mutating member on a struct storage receiver.
     [DataRow("mutating struct receiver", "ValueContextTarget.Count",
         "public static ValueCounter Read() { return ValueContextTarget.Count; }\n    public static void Write() { ValueContextTarget.Count.Increment(); }")]
+    // Deliberate: a non-readonly struct member is refused as a receiver even when it does not mutate, because
+    // whether it mutates is not decided here and the helper would pass a copy.
+    [DataRow("non-readonly struct member receiver", "ValueContextTarget.Count",
+        "public static ValueCounter Read() { return ValueContextTarget.Count; }\n    public static int Write() { return ValueContextTarget.Count.Peek(); }")]
     public async Task WritableTarget_RefusesBeforeToken_ForExampleOnEitherSide(string label, string expression, string members)
     {
         var source = TargetSource + "public static class WritableCase\n{\n    " + members + "\n}\n";
@@ -356,6 +361,65 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
             using var preview = JsonDocument.Parse(json);
             var token = preview.RootElement.GetProperty("previewToken").GetString()!;
             await GetCleanCompilationAsync(PreviewStore.Retrieve(token)!.Value.ModifiedSolution);
+            var appliedJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate, ApplyUndoWorkflowService, PreviewStore, token);
+            using var applied = JsonDocument.Parse(appliedJson);
+            Assert.AreEqual("applied", applied.RootElement.GetProperty("status").GetString(), appliedJson);
+            await GetCleanCompilationAsync(WorkspaceManager.GetCurrentSolution(workspaceId));
+        });
+    }
+
+    // The example occurrence sits in an expression tree and stays unchanged; the only rewritten sites are in another
+    // document. The helper is still inserted, exactly once, into the example's type.
+    [TestMethod]
+    public async Task ExampleLeftUnchangedInExpressionTree_HelperIsInsertedOnceIntoExampleType()
+    {
+        const string exampleSource = """
+            using System;
+            using System.Linq.Expressions;
+
+            public static class TreeTarget
+            {
+                public static int GetValue(int offset) => offset + 42;
+            }
+
+            public static class ExampleHost
+            {
+                public static Expression<Func<int>> Tree() => () => TreeTarget.GetValue(7);
+            }
+            """;
+        const string otherSource = """
+            public static class DelegateUser
+            {
+                public static int A() => TreeTarget.GetValue(7);
+                public static int B() => TreeTarget.GetValue(7);
+            }
+            """;
+        await WithTwoDocumentsAsync(exampleSource, otherSource, async (workspaceId, examplePath) =>
+        {
+            var json = await PreviewAsync(workspaceId, examplePath, exampleSource, "TreeTarget.GetValue(7)", 0);
+            using var preview = JsonDocument.Parse(json);
+            var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+            var projected = PreviewStore.Retrieve(token)!.Value.ModifiedSolution;
+
+            var helpers = new List<MethodDeclarationSyntax>();
+            foreach (var document in projected.Projects.Single(project => project.Name == "SampleLib").Documents)
+            {
+                var root = await document.GetSyntaxRootAsync();
+                helpers.AddRange(root!.DescendantNodes().OfType<MethodDeclarationSyntax>()
+                    .Where(method => method.Identifier.ValueText == "SharedValue"));
+            }
+
+            Assert.HasCount(1, helpers, "The helper must be declared exactly once.");
+            Assert.AreEqual("ExampleHost", ((TypeDeclarationSyntax)helpers[0].Parent!).Identifier.ValueText);
+
+            var exampleText = await GetDocumentTextAsync(projected, examplePath);
+            StringAssert.Contains(exampleText, "Tree() => () => TreeTarget.GetValue(7);");
+            var otherText = await GetDocumentTextAsync(projected, examplePath.Replace("HelperOwner.cs", "HelperCaller.cs"));
+            StringAssert.Contains(otherText, "A() => global::ExampleHost.SharedValue();");
+            StringAssert.Contains(otherText, "B() => global::ExampleHost.SharedValue();");
+            await GetCleanCompilationAsync(projected);
+
             var appliedJson = await ApplyWithVerifyTool.ApplyWithVerify(
                 WorkspaceExecutionGate, ApplyUndoWorkflowService, PreviewStore, token);
             using var applied = JsonDocument.Parse(appliedJson);
