@@ -244,25 +244,39 @@ internal sealed class InterfaceMemberProjector
     /// <summary>An override inherits its constraints from the base method, so its syntax has none: rebuild them from the symbol.</summary>
     private static SyntaxList<TypeParameterConstraintClauseSyntax> InheritedConstraints(IMethodSymbol method)
     {
-        static string Escape(string name) => SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name;
-        var clauses = new List<string>();
+        var clauses = new List<TypeParameterConstraintClauseSyntax>();
         foreach (var parameter in method.TypeParameters)
         {
-            var constraints = new List<string>();
+            // Source order: class/struct/unmanaged, notnull, type constraints, new(), allows ref struct.
+            var constraints = new List<TypeParameterConstraintSyntax>();
             if (parameter.HasReferenceTypeConstraint)
-                constraints.Add(parameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated ? "class?" : "class");
-            if (parameter.HasUnmanagedTypeConstraint) constraints.Add("unmanaged");
-            else if (parameter.HasValueTypeConstraint) constraints.Add("struct");
-            if (parameter.HasNotNullConstraint) constraints.Add("notnull");
-            constraints.AddRange(parameter.ConstraintTypes.Select(t => t.ToDisplayString(_containingTypeFormat)));
-            if (parameter.HasConstructorConstraint && !parameter.HasValueTypeConstraint && !parameter.HasUnmanagedTypeConstraint) constraints.Add("new()");
-            if (constraints.Count > 0) clauses.Add($"where {Escape(parameter.Name)} : {string.Join(", ", constraints)}");
+            {
+                var reference = SyntaxFactory.ClassOrStructConstraint(SyntaxKind.ClassConstraint);
+                constraints.Add(parameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated
+                    ? reference.WithQuestionToken(SyntaxFactory.Token(SyntaxKind.QuestionToken))
+                    : reference);
+            }
+
+            if (parameter.HasUnmanagedTypeConstraint) constraints.Add(SyntaxFactory.TypeConstraint(SyntaxFactory.IdentifierName("unmanaged")));
+            else if (parameter.HasValueTypeConstraint) constraints.Add(SyntaxFactory.ClassOrStructConstraint(SyntaxKind.StructConstraint));
+            if (parameter.HasNotNullConstraint) constraints.Add(SyntaxFactory.TypeConstraint(SyntaxFactory.IdentifierName("notnull")));
+            constraints.AddRange(parameter.ConstraintTypes.Select(type =>
+                SyntaxFactory.TypeConstraint(SyntaxFactory.ParseTypeName(type.ToDisplayString(_containingTypeFormat)))));
+            if (parameter.HasConstructorConstraint && !parameter.HasValueTypeConstraint && !parameter.HasUnmanagedTypeConstraint)
+                constraints.Add(SyntaxFactory.ConstructorConstraint());
+            if (parameter.AllowsRefLikeType)
+                constraints.Add(SyntaxFactory.AllowsConstraintClause(SyntaxFactory.SingletonSeparatedList<AllowsConstraintSyntax>(SyntaxFactory.RefStructConstraint())));
+            if (constraints.Count > 0)
+            {
+                clauses.Add(SyntaxFactory.TypeParameterConstraintClause(SyntaxFactory.IdentifierName(EscapedIdentifier(parameter.Name)))
+                    .WithConstraints(SyntaxFactory.SeparatedList(constraints)));
+            }
         }
 
-        var names = string.Join(", ", method.TypeParameters.Select(p => Escape(p.Name)));
-        var parsed = (MethodDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"void M<{names}>() {string.Join(" ", clauses)};")!;
-        return parsed.ConstraintClauses;
+        return SyntaxFactory.List(clauses);
     }
+
+    private static string EscapedIdentifier(string name) => SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name;
 
     private static EventFieldDeclarationSyntax EventField(SyntaxList<AttributeListSyntax> attributes, TypeSyntax type, SyntaxToken identifier) =>
         SyntaxFactory.EventFieldDeclaration(
@@ -517,7 +531,7 @@ internal sealed class InterfaceMemberProjector
                     return SyntaxFactory.MemberAccessExpression(
                         SyntaxKind.SimpleMemberAccessExpression,
                         SyntaxFactory.ParseName(member.ContainingType.ToDisplayString(_containingTypeFormat)),
-                        SyntaxFactory.IdentifierName(SyntaxFacts.GetKeywordKind(member.Name) == SyntaxKind.None ? member.Name : "@" + member.Name)).WithTriviaFrom(node);
+                        SyntaxFactory.IdentifierName(EscapedIdentifier(member.Name))).WithTriviaFrom(node);
                 default:
                     if (model!.GetAliasInfo(node) is { } emittedAlias) referencedUsingAliases.Add(emittedAlias.Name);
                     else if (model.GetSymbolInfo(node).Symbol is INamedTypeSymbol type) referencedUnqualifiedTypes.Add(type);
