@@ -162,6 +162,18 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
         }
     }
 
+    /// <summary>
+    /// Waits until the tree watcher has dispatched every event queued before this call. An unwatched
+    /// file's Created event is reported after the service's handlers for earlier events, and a watcher
+    /// dispatches serially, so no delayed event from the preceding writes can still be pending.
+    /// </summary>
+    private static async Task FenceAsync(RaisableWatcherFactory.RaisableWatcher tree, string root, string fenceName)
+    {
+        var seen = tree.ArmCreatedFence(fenceName, TimeSpan.FromSeconds(30));
+        await File.WriteAllTextAsync(Path.Combine(root, fenceName), "fence");
+        await seen();
+    }
+
     [TestMethod]
     public async Task FailedOwnedEditorConfigWrite_TracksOnlyActualByteChanges()
     {
@@ -171,12 +183,14 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
         var configPath = Path.Combine(root, ".editorconfig");
         await File.WriteAllTextAsync(solutionPath, "<Solution />");
         await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
         var coordinator = (IEditorConfigWriteCoordinator)watcher;
         var workspaceId = Guid.NewGuid().ToString("N");
         try
         {
             watcher.Watch(workspaceId, solutionPath);
+            var tree = factory.Tree(root);
             Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
                 transaction =>
                 {
@@ -184,7 +198,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
                     throw new IOException("after identical bytes");
                 }));
             Assert.IsFalse(watcher.IsStale(workspaceId));
-            await Task.Delay(300);
+            await FenceAsync(tree, root, "Fence1.txt");
             Assert.IsFalse(watcher.IsStale(workspaceId), "A delayed event for unchanged bytes must also be ignored.");
 
             Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
@@ -195,7 +209,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
                 }));
             Assert.AreEqual("[*.cs]\nindent_size = 4\n", await File.ReadAllTextAsync(configPath));
             Assert.IsFalse(watcher.IsStale(workspaceId), "A restored failed write has no lasting mutation.");
-            await Task.Delay(300);
+            await FenceAsync(tree, root, "Fence2.txt");
             Assert.IsFalse(watcher.IsStale(workspaceId));
 
             Assert.ThrowsExactly<EditorConfigUnrecoveredWriteException>(() =>
