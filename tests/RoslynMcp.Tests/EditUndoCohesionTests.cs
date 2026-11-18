@@ -13,7 +13,8 @@ namespace RoslynMcp.Tests;
 ///     or diff generation so the caller never sees a corrupt unified diff.
 ///   * <c>revert-last-apply-disk-consistency</c> — <see cref="IUndoService.RevertAsync"/> must restore
 ///     disk even when the Roslyn Solution diff is empty, using either the explicit file-snapshot fast
-///     path or the disk-walk safety net in the legacy solution-based path.
+///     path or, for a committed snapshot's own files only, the disk-walk safety net in the legacy
+///     solution-based path.
 ///   * <c>set-editorconfig-option-not-undoable</c> — <see cref="IEditorConfigService.SetOptionAsync"/>
 ///     now participates in the undo stack; revert must restore the pre-write .editorconfig content
 ///     (or delete the file if the set operation created it).

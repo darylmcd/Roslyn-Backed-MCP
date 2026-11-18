@@ -35,6 +35,7 @@ public sealed class MethodDescriptionDietUndoWorkspaceLifecycleTests
             [
                 new("revert_last_apply", "SINGLE-SLOT LIFO"),
                 new("revert_last_apply", "revert_apply_by_sequence"),
+                new("revert_last_apply", "Deletes files"),
                 new("revert_apply_by_sequence", "blocking sequences"),
                 new("workspace_warm", "first read-side call"),
                 new("apply_with_verify", "auto-revert"),
