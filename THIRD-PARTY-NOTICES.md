@@ -20,7 +20,7 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.Extensions.Logging.Console | 10.0.14 | MIT | https://github.com/dotnet/runtime |
 | ModelContextProtocol | 2.3.0 | Apache-2.0 | https://github.com/modelcontextprotocol/csharp-sdk |
 | Nito.AsyncEx | 5.1.2 | MIT | https://github.com/StephenCleary/AsyncEx |
-| System.Security.Cryptography.Xml | 10.0.14 | MIT | https://github.com/dotnet/runtime |
+| System.Security.Cryptography.Xml | 10.0.15 | MIT | https://github.com/dotnet/runtime |
 
 ## Build-Time Dependencies
 
@@ -38,12 +38,12 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 
 | Package | Version | License | Project |
 |---|---:|---|---|
-| coverlet.collector | 10.1.0 | MIT | https://github.com/coverlet-coverage/coverlet |
+| coverlet.collector | 10.1.1 | MIT | https://github.com/coverlet-coverage/coverlet |
 | Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest | 1.1.2 | MIT | https://github.com/dotnet/roslyn-sdk |
-| Microsoft.Extensions.TimeProvider.Testing | 10.11.0 | MIT | https://github.com/dotnet/extensions |
-| Microsoft.NET.Test.Sdk | 18.11.0 | MIT | https://github.com/microsoft/vstest |
-| MSTest.TestAdapter | 4.5.2 | MIT | https://github.com/microsoft/testfx |
-| MSTest.TestFramework | 4.5.2 | MIT | https://github.com/microsoft/testfx |
+| Microsoft.Extensions.TimeProvider.Testing | 11.0.0 | MIT | https://github.com/dotnet/extensions |
+| Microsoft.NET.Test.Sdk | 18.12.0 | MIT | https://github.com/microsoft/vstest |
+| MSTest.TestAdapter | 4.5.3 | MIT | https://github.com/microsoft/testfx |
+| MSTest.TestFramework | 4.5.3 | MIT | https://github.com/microsoft/testfx |
 | NuGet.Frameworks | 6.3.4 | Apache-2.0 | https://github.com/NuGet/NuGet.Client |
 
 ---
