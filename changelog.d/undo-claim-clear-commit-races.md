@@ -1,0 +1,7 @@
+---
+category: Fixed
+---
+
+- **Fixed:** An interrupted revert (`revert_last_apply`, `revert_apply_by_sequence`) no longer revives an undo slot or history entry for a workspace that was closed while the restore was in flight (`undo-unclaim-resurrects-slot-after-clear`). Workspace close, the claim, the commit and the pending-slot capture now run under one ordering gate, so a stale commit, a `CaptureBeforeApply` or a change-ledger record that races or follows a close no longer re-creates history, a pending slot or a ledger for the closed workspace; `CaptureBeforeApply` on a workspace that closes mid-capture now throws `KeyNotFoundException`, and a change recorded for a workspace that is not open is dropped without firing `ChangeRecorded`.
+- **Fixed:** A commit that races an unclaim of a sequence-0 undo slot keeps its history entry (`undo-seq0-history-entry-lost-on-commit-unclaim-race`): the recorded sequence stays revertable by `revert_apply_by_sequence` after a failed or cancelled `revert_last_apply`.
+- **Fixed:** `revert_apply_by_sequence` on a sequence that was already reverted in this session, or is being reverted by a competing call, now returns `reason=already-reverted` with its own message instead of `reason=unknown-sequence` ("from before this session") (`revert-by-sequence-already-reverted-indistinct`). Public behavior change: clients that matched `unknown-sequence` to detect a repeated revert must also handle `already-reverted`; `unknown-sequence` is now returned only for sequences that never had a revertable snapshot in the workspace.

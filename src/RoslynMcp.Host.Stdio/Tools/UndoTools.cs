@@ -123,6 +123,7 @@ public static class UndoTools
                         {
                             "unknown-sequence" => "No revert snapshot exists for that sequence number. " +
                                                   "Either the sequence is from before this session, or the apply did not produce a revertable snapshot.",
+                            "already-reverted" => "That sequence was already reverted in this session (or a revert of it is in progress); nothing to restore.",
                             "revert-failed" => "The snapshot was located but disk/workspace mechanics rejected the revert.",
                             _ => "Revert failed."
                         }
