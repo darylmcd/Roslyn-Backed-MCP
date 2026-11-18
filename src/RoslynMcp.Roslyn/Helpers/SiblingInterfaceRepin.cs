@@ -59,9 +59,24 @@ internal static class SiblingInterfaceRepin
 
                 var rebound = FindRebound(root, after, before, generated, name, ct);
                 if (rebound.Count == 0) continue;
-                candidates.Add((document, rebound
-                    .Select(item => (item.Node.Span, GeneratedInterfaceReference.Create(item.Original!, after, item.Node.SpanStart).ToString(), item.Original!))
-                    .ToList()));
+                var documentText = await document.GetTextAsync(ct).ConfigureAwait(false);
+                var spelled = new List<(TextSpan Span, string Text, INamedTypeSymbol Original)>();
+                foreach (var (node, symbol) in rebound)
+                {
+                    // `Create` spells a non-generic, non-nested type by namespace: anything else (a generic or nested alias
+                    // target, a namespace alias) has no spelling it can produce, so refuse rather than leave the reference captured.
+                    if (symbol is not INamedTypeSymbol { Arity: 0, ContainingType: null } original)
+                    {
+                        throw new PublicInvalidOperationException(
+                            $"Generating interface '{name}' would rebind the reference to '{symbol!.ToDisplayString()}' on line " +
+                            $"{documentText.Lines.GetLinePosition(node.SpanStart).Line + 1} of '{document.FilePath ?? document.Name}', " +
+                            "which cannot be re-pinned (a generic or nested type, or a namespace alias); choose a different interface name.");
+                    }
+
+                    spelled.Add((node.Span, GeneratedInterfaceReference.Create(original, after, node.SpanStart).ToString(), original));
+                }
+
+                candidates.Add((document, spelled));
             }
 
             if (project.AnalyzerReferences.Count > 0)
@@ -214,13 +229,16 @@ internal static class SiblingInterfaceRepin
     }
 
     /// <summary>
-    /// Names that bound to a type called <paramref name="name"/> before the generated interface existed and do not bind to it
-    /// now (a different type, or ambiguity). With no <paramref name="before"/> model, names that now reach the generated interface.
+    /// Identifiers spelled <paramref name="name"/> that bound to a type or namespace before the generated interface existed and
+    /// do not bind to the same symbol now (a different type, or ambiguity). The earlier symbol need not be called
+    /// <paramref name="name"/>: a using alias spelled that way reaches a differently named (or generic, or nested) type, and the
+    /// namespace member the new interface becomes beats the alias. With no <paramref name="before"/> model, names that now reach
+    /// the generated interface.
     /// </summary>
-    private static List<(IdentifierNameSyntax Node, INamedTypeSymbol? Original)> FindRebound(
+    private static List<(IdentifierNameSyntax Node, ISymbol? Original)> FindRebound(
         SyntaxNode root, SemanticModel after, SemanticModel? before, INamedTypeSymbol generated, string name, CancellationToken ct)
     {
-        var rebound = new List<(IdentifierNameSyntax, INamedTypeSymbol?)>();
+        var rebound = new List<(IdentifierNameSyntax, ISymbol?)>();
         foreach (var node in root.DescendantNodes().OfType<IdentifierNameSyntax>())
         {
             if (!string.Equals(node.Identifier.ValueText, name, StringComparison.Ordinal)) continue;
@@ -236,14 +254,14 @@ internal static class SiblingInterfaceRepin
                 continue;
             }
 
-            if (before.GetSymbolInfo(node, ct).Symbol is not INamedTypeSymbol { Arity: 0 } original ||
-                !string.Equals(original.Name, name, StringComparison.Ordinal) ||
-                GeneratedInterfaceReference.IsSame(current.Symbol, original))
+            var earlier = before.GetSymbolInfo(node, ct).Symbol;
+            var unchanged = earlier switch
             {
-                continue;
-            }
-
-            rebound.Add((node, original));
+                INamedTypeSymbol type => GeneratedInterfaceReference.IsSame(current.Symbol, type),
+                INamespaceSymbol ns => SymbolEqualityComparer.Default.Equals(current.Symbol, ns),
+                _ => true,
+            };
+            if (!unchanged) rebound.Add((node, earlier));
         }
 
         return rebound;

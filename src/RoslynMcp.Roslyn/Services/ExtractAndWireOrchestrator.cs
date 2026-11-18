@@ -40,10 +40,12 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
         await DetectDuplicateInterfaceAsync(currentSolution, filePath, typeName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
-        var modifiedSolution = await _crossProjectRefactoringService.BuildExtractInterfaceSolutionAsync(
+        var (modifiedSolution, afterRepin) = await _crossProjectRefactoringService.BuildExtractInterfaceSolutionAsync(
             workspaceId, currentSolution, filePath, typeName, resolvedInterfaceName, targetProjectName, ct).ConfigureAwait(false);
         var generatedInterface = await ResolveGeneratedInterfaceAsync(currentSolution, modifiedSolution, resolvedInterfaceName, ct).ConfigureAwait(false);
-        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId.ProjectId, ct).ConfigureAwait(false);
+        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(currentSolution, modifiedSolution,
+            InterfaceLinkedDocumentReconciler.DocumentsChangedSince(afterRepin, modifiedSolution), generatedInterface.DocumentId.ProjectId,
+            InterfaceLinkedDocumentReconciler.CrossProjectRemedy, ct).ConfigureAwait(false);
 
         if (updateDiRegistrations)
         {
@@ -91,7 +93,9 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
             }
         }
 
-        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId.ProjectId, ct).ConfigureAwait(false);
+        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(currentSolution, modifiedSolution,
+            InterfaceLinkedDocumentReconciler.DocumentsChangedSince(afterRepin, modifiedSolution), generatedInterface.DocumentId.ProjectId,
+            InterfaceLinkedDocumentReconciler.CrossProjectRemedy, ct).ConfigureAwait(false);
         await InterfacePreviewCompilationGate.ValidateAsync(currentSolution, modifiedSolution, InterfacePreviewCompilationGate.ReceivingProjectRemedy, ct).ConfigureAwait(false);
         var edits = await BuildEditsFromSolutionAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId, ct).ConfigureAwait(false);
         var changes = CompositeSolutionMutationPlanner.RenderReview(edits, ct);

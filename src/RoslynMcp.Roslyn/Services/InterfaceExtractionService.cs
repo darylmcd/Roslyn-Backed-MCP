@@ -133,20 +133,22 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                 reconcile.AddRange(newSolution.GetChanges(beforeReplace).GetProjectChanges().SelectMany(change => change.GetChangedDocuments()));
             }
 
+            var beforeReconcile = newSolution;
             newSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(
-                solution, newSolution, reconcile, sourceDocument.Project.Id, ct).ConfigureAwait(false);
+                solution, newSolution, reconcile, sourceDocument.Project.Id,
+                InterfaceLinkedDocumentReconciler.StandaloneRemedy, ct).ConfigureAwait(false);
+            var linkedCopyChanged = newSolution.GetChanges(beforeReconcile).GetProjectChanges().Any();
 
             // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override), re-pinning
             // edits documents the caller did not name, and a linked copy of an edited file compiles in another project (the
             // type may be internal there): refuse any of them rather than publish a token whose apply does not compile.
-            // The remedy names every cause that could apply to this request.
+            // The remedy names exactly the causes that applied to this request.
             var sameNamedType = sameNamed.Count > 0 || repin.Repinned;
-            var otherProjectsChanged = newSolution.GetChanges(solution).GetProjectChanges()
-                .Any(change => change.ProjectId != sourceDocument.Project.Id);
-            if (replaceUsages || sameNamedType || otherProjectsChanged)
+            if (replaceUsages || sameNamedType || linkedCopyChanged)
             {
                 await InterfacePreviewCompilationGate.ValidateAsync(
-                    solution, newSolution, InterfacePreviewCompilationGate.RemedyFor(sameNamedType, replaceUsages), ct).ConfigureAwait(false);
+                    solution, newSolution,
+                    InterfacePreviewCompilationGate.RemedyFor(sameNamedType, replaceUsages, linkedCopyChanged), ct).ConfigureAwait(false);
             }
         }
         else
