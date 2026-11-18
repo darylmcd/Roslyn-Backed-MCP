@@ -689,6 +689,12 @@ public sealed class ExtractMethodService : IExtractMethodService
             fileChanges.Add(fallbackChange);
         }
 
+        // Verify the projected solution before any token exists (see SharedExpressionProjectionVerifier).
+        var refusal = await SharedExpressionProjectionVerifier.VerifyAsync(
+            accumulator, hits.Select(h => new ProjectedHit(h.Document, h.Expression, h.Index)).ToList(), ct)
+            .ConfigureAwait(false);
+        if (refusal is not null) throw new PublicInvalidOperationException(refusal);
+
         var description =
             $"Extract shared expression into helper '{helperName}' and rewrite {hits.Count} site(s) across {fileChanges.Count} file(s)";
         var token = _previewStore.Store(
@@ -759,6 +765,14 @@ public sealed class ExtractMethodService : IExtractMethodService
                     continue;
                 }
 
+                if (useSite == SharedExpressionUseSiteKind.ConstantRequired)
+                {
+                    throw new PublicInvalidOperationException(
+                        $"The expression at {doc.Name}:{candidate.GetLocation().GetLineSpan().StartLinePosition.Line + 1} sits in a position that " +
+                        "requires a compile-time constant, which a helper call is not. " +
+                        "Select a different example or narrow the extraction scope.");
+                }
+
                 if (useSite == SharedExpressionUseSiteKind.StorageRequired)
                 {
                     throw new PublicInvalidOperationException(
@@ -815,7 +829,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                         "Select a different example or narrow the extraction scope.");
                 }
 
-                hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, needsQualifiedOwner));
+                hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, needsQualifiedOwner, hits.Count));
             }
         }
         return (hits, expressionTreeOccurrences);
@@ -857,7 +871,8 @@ public sealed class ExtractMethodService : IExtractMethodService
                     helperName,
                     h.FreeVariables,
                     h.NeedsQualifiedOwner ? ownerExpression : null,
-                    h.Expression));
+                    h.Expression,
+                    h.Index));
 
             // Rewrite the exact declaration together with its descendants. An earlier
             // replacement can shift its span, and another declaration can share its name.
@@ -1048,7 +1063,8 @@ public sealed class ExtractMethodService : IExtractMethodService
         string helperName,
         IReadOnlyList<FreeVariable> freeVariables,
         ExpressionSyntax? owner,
-        ExpressionSyntax occurrence)
+        ExpressionSyntax occurrence,
+        int hitIndex)
     {
         var argumentList = SyntaxFactory.ArgumentList(
             SyntaxFactory.SeparatedList(
@@ -1061,8 +1077,9 @@ public sealed class ExtractMethodService : IExtractMethodService
 
         // Formatter.Annotation lets `Formatter.FormatAsync` re-flow spacing around commas,
         // parentheses, and (when fully-qualified) dotted member-access chains per editorconfig.
+        // The hit annotation lets SharedExpressionProjectionVerifier find the call again after formatting.
         var invocation = SyntaxFactory.InvocationExpression(target, argumentList)
-            .WithAdditionalAnnotations(Formatter.Annotation);
+            .WithAdditionalAnnotations(Formatter.Annotation, SharedExpressionProjectionVerifier.CreateHitAnnotation(hitIndex));
 
         // In an interpolation, the first colon of global:: can be parsed as
         // a format separator when the generated source is read back.
@@ -1077,5 +1094,6 @@ public sealed class ExtractMethodService : IExtractMethodService
         Document Document,
         ExpressionSyntax Expression,
         IReadOnlyList<FreeVariable> FreeVariables,
-        bool NeedsQualifiedOwner);
+        bool NeedsQualifiedOwner,
+        int Index);
 }

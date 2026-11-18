@@ -213,6 +213,84 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
         });
     }
 
+    // Occurrences of `6 * 7`: 0 is the constant-only interpolation alignment, 1 and 2 are ordinary expressions.
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    public async Task ConstantOnlyAlignment_IsRefusedBeforeToken(int exampleOccurrence)
+    {
+        const string source = """
+            public static class ConstantCase
+            {
+                public static string Aligned() => $"{1,6 * 7}|";
+                public static int Plain() { var q = 6 * 7; return q; }
+                public static int Plain2() { var q = 6 * 7; return q; }
+            }
+            """;
+        await WithWorkspaceAsync(source, async (workspaceId, path) =>
+        {
+            var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
+                () => PreviewAsync(workspaceId, path, source, "6 * 7", exampleOccurrence));
+            StringAssert.Contains(error.PublicMessage, "compile-time constant");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
+        });
+    }
+
+    // Replacing a constant keeps working where its ancestors merely lose constness (`int x = 6 * 7 + 1;`).
+    [TestMethod]
+    public async Task OrdinaryConstantArithmetic_PreviewAndApplyKeepBehavior()
+    {
+        const string source = """
+            public static class OrdinaryConstants
+            {
+                public static int A() { int x = 6 * 7 + 1; return x; }
+                public static int B() { int y = 6 * 7 + 1; return y; }
+                public static int Run() => A() + B();
+            }
+            """;
+        await WithWorkspaceAsync(source, async (workspaceId, path) =>
+        {
+            Assert.AreEqual(86, await RunAsync(WorkspaceManager.GetCurrentSolution(workspaceId), "OrdinaryConstants"));
+            var json = await PreviewAsync(workspaceId, path, source, "6 * 7", 0);
+            using var preview = JsonDocument.Parse(json);
+            var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+            var pending = PreviewStore.Retrieve(token);
+            Assert.IsNotNull(pending);
+            StringAssert.Contains(await GetDocumentTextAsync(pending.Value.ModifiedSolution, path), "int x = SharedValue() + 1;");
+            Assert.AreEqual(86, await RunAsync(pending.Value.ModifiedSolution, "OrdinaryConstants"));
+            var appliedJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate, ApplyUndoWorkflowService, PreviewStore, token);
+            using var applied = JsonDocument.Parse(appliedJson);
+            Assert.AreEqual("applied", applied.RootElement.GetProperty("status").GetString(), appliedJson);
+            Assert.AreEqual(86, await RunAsync(WorkspaceManager.GetCurrentSolution(workspaceId), "OrdinaryConstants"));
+        });
+    }
+
+    // The enclosing constant `(6 * 7) + 1` converts to byte; with the helper call it stops being constant and the
+    // call silently re-binds to Bind(long), which still compiles.
+    [TestMethod]
+    public async Task LostConstantConversion_ThatReBindsAnOverload_IsRefusedBeforeToken()
+    {
+        const string source = """
+            public static class OverloadCase
+            {
+                private static int Bind(byte value) => 1;
+                private static int Bind(long value) => 2;
+                public static int A() => Bind((6 * 7) + 1);
+                public static int B() => Bind((6 * 7) + 1);
+                public static int Run() => A() + B();
+            }
+            """;
+        await WithWorkspaceAsync(source, async (workspaceId, path) =>
+        {
+            Assert.AreEqual(2, await RunAsync(WorkspaceManager.GetCurrentSolution(workspaceId), "OverloadCase"));
+            var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
+                () => PreviewAsync(workspaceId, path, source, "6 * 7", 0));
+            StringAssert.Contains(error.PublicMessage, "changes how the surrounding expression binds");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
+        });
+    }
+
     private static async Task WithWorkspaceAsync(string source, Func<string, string, Task> body)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

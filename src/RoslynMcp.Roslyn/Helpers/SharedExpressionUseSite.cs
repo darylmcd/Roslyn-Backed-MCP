@@ -19,6 +19,9 @@ internal enum SharedExpressionUseSiteKind
     /// lambdas over <c>IQueryable</c>): a helper call would change the tree a provider receives.
     /// </summary>
     ExpressionTree,
+
+    /// <summary>The occurrence, or the constant expression it belongs to, sits in a slot that only accepts a compile-time constant.</summary>
+    ConstantRequired,
 }
 
 /// <summary>
@@ -31,7 +34,37 @@ internal static class SharedExpressionUseSite
     public static SharedExpressionUseSiteKind Classify(ExpressionSyntax expression, SemanticModel model, CancellationToken ct)
     {
         if (IsInExpressionTree(expression, model, ct)) return SharedExpressionUseSiteKind.ExpressionTree;
-        return RequiresStorage(expression, model, ct) ? SharedExpressionUseSiteKind.StorageRequired : SharedExpressionUseSiteKind.Eligible;
+        if (RequiresStorage(expression, model, ct)) return SharedExpressionUseSiteKind.StorageRequired;
+        return RequiresConstant(expression, model, ct) ? SharedExpressionUseSiteKind.ConstantRequired : SharedExpressionUseSiteKind.Eligible;
+    }
+
+    /// <summary>
+    /// A constant occurrence is only replaceable where nothing above it needs the constant. Its enclosing constant
+    /// expression (`6 * 7 + 1` around `6 * 7`) decides: ancestors merely losing constness is fine
+    /// (`int x = 6 * 7 + 1;`), a constant-only slot is not.
+    /// </summary>
+    private static bool RequiresConstant(ExpressionSyntax expression, SemanticModel model, CancellationToken ct)
+    {
+        if (!model.GetConstantValue(expression, ct).HasValue) return false;
+
+        SyntaxNode top = expression;
+        while (top.Parent is ExpressionSyntax parent && model.GetConstantValue(parent, ct).HasValue) top = parent;
+
+        return top.Parent switch
+        {
+            InterpolationAlignmentClauseSyntax => true,
+            CaseSwitchLabelSyntax => true,
+            ConstantPatternSyntax => true,
+            RelationalPatternSyntax => true,
+            GotoStatementSyntax { RawKind: (int)SyntaxKind.GotoCaseStatement } => true,
+            AttributeArgumentSyntax => true,
+            // Fixed-size buffer length: `fixed int Buffer[6 * 7];`
+            ArgumentSyntax { Parent: BracketedArgumentListSyntax { Parent: VariableDeclaratorSyntax } } => true,
+            EqualsValueClauseSyntax { Parent: ParameterSyntax or EnumMemberDeclarationSyntax } => true,
+            EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } =>
+                model.GetDeclaredSymbol(declarator, ct) is ILocalSymbol { IsConst: true } or IFieldSymbol { IsConst: true },
+            _ => false,
+        };
     }
 
     private static bool IsInExpressionTree(ExpressionSyntax expression, SemanticModel model, CancellationToken ct)
