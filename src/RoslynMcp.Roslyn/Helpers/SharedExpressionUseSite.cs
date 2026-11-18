@@ -58,9 +58,11 @@ internal static class SharedExpressionUseSite
             RelationalPatternSyntax => true,
             GotoStatementSyntax { RawKind: (int)SyntaxKind.GotoCaseStatement } => true,
             AttributeArgumentSyntax => true,
-            // Fixed-size buffer length: `fixed int Buffer[6 * 7];`
-            ArgumentSyntax { Parent: BracketedArgumentListSyntax { Parent: VariableDeclaratorSyntax } } => true,
-            EqualsValueClauseSyntax { Parent: ParameterSyntax or EnumMemberDeclarationSyntax } => true,
+            // Not listed, because they never reach this check: enum member values (an enum declaration is not a
+            // type declaration, so the shared extraction never treats an occurrence in it as a candidate) and
+            // fixed-size buffer lengths (the semantic model reports no constant for them, so their binding cannot
+            // be proven equivalent and the extraction is refused by the binding check).
+            EqualsValueClauseSyntax { Parent: ParameterSyntax } => true,
             EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } =>
                 model.GetDeclaredSymbol(declarator, ct) is ILocalSymbol { IsConst: true } or IFieldSymbol { IsConst: true },
             _ => false,

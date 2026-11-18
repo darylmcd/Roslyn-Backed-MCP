@@ -65,6 +65,18 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
     // whether it mutates is not decided here and the helper would pass a copy.
     [DataRow("non-readonly struct member receiver", "ValueContextTarget.Count",
         "public static ValueCounter Read() { return ValueContextTarget.Count; }\n    public static int Write() { return ValueContextTarget.Count.Peek(); }")]
+    [DataRow("pre-decrement", "ValueContextTarget.Value",
+        "public static int Read() { return ValueContextTarget.Value; }\n    public static void Write() { --ValueContextTarget.Value; }")]
+    [DataRow("address-of", "ValueContextTarget.Field",
+        "public static int Read() { return ValueContextTarget.Field; }\n    public static unsafe int* Write() { return &ValueContextTarget.Field; }")]
+    [DataRow("ref expression", "ValueContextTarget.Field",
+        "public static int Read() { return ValueContextTarget.Field; }\n    public static ref int Write() { return ref ValueContextTarget.Field; }")]
+    [DataRow("deconstruction target", "ValueContextTarget.Field",
+        "public static int Read() { return ValueContextTarget.Field; }\n    public static void Write() { (ValueContextTarget.Field, ValueContextTarget.Value) = (1, 2); }")]
+    [DataRow("nested deconstruction target", "ValueContextTarget.Field",
+        "public static int Read() { return ValueContextTarget.Field; }\n    public static void Write() { ((ValueContextTarget.Field, ValueContextTarget.Value), _) = ((1, 2), 3); }")]
+    [DataRow("foreach deconstruction variable", "ValueContextTarget.Field",
+        "public static int Read() { return ValueContextTarget.Field; }\n    public static void Write() { foreach ((ValueContextTarget.Field, ValueContextTarget.Value) in new[] { (1, 2) }) { } }")]
     public async Task WritableTarget_RefusesBeforeToken_ForExampleOnEitherSide(string label, string expression, string members)
     {
         var source = TargetSource + "public static class WritableCase\n{\n    " + members + "\n}\n";
@@ -77,6 +89,132 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
                 StringAssert.Contains(error.PublicMessage, WritableMessage,
                     $"{label}, example occurrence {exampleOccurrence}: {error.PublicMessage}");
                 FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
+            });
+        }
+    }
+
+    // One row per constant-only slot the classifier knows. Each row's slot syntax is reached by exactly one
+    // classifier arm, so deleting that arm turns the row red. Occurrence 0 is an ordinary `var q = 6 * 7;`.
+    [TestMethod]
+    [DataRow("case label",
+        "public static int Switch(int x) { switch (x) { case 6 * 7: return 1; default: return 0; } }", "")]
+    [DataRow("constant pattern", "public static bool Is(int x) => x is 6 * 7;", "")]
+    [DataRow("relational pattern", "public static bool Rel(int x) => x is > 6 * 7;", "")]
+    [DataRow("goto case",
+        "public static int Goto(int x) { switch (x) { case 1: goto case 6 * 7; case 42: return 1; default: return 0; } }", "")]
+    [DataRow("attribute argument", "[Slot(6 * 7)] public static void Marked() { }",
+        "public sealed class SlotAttribute : System.Attribute { public SlotAttribute(int value) { } }")]
+    [DataRow("parameter default value", "public static int Default(int p = 6 * 7) => p;", "")]
+    [DataRow("const local", "public static int ConstLocal() { const int c = 6 * 7; return c; }", "")]
+    [DataRow("const field", "public const int ConstField = 6 * 7;", "")]
+    public async Task ConstantOnlySlots_AreRefusedBeforeToken_ForExampleOnEitherSide(string label, string members, string extra)
+    {
+        var source = "public static class ConstantSlots\n{\n    public static int Plain() { var q = 6 * 7; return q; }\n    " +
+            members + "\n}\n" + extra + "\n";
+        foreach (var exampleOccurrence in new[] { 0, 1 })
+        {
+            await WithWorkspaceAsync(source, async (workspaceId, path) =>
+            {
+                var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
+                    () => PreviewAsync(workspaceId, path, source, "6 * 7", exampleOccurrence));
+                StringAssert.Contains(error.PublicMessage, "compile-time constant",
+                    $"{label}, example occurrence {exampleOccurrence}: {error.PublicMessage}");
+                FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
+            });
+        }
+    }
+
+    // The semantic model reports no type or constant for a fixed-size buffer length: as the example it has no
+    // inferable return type, as a candidate it is not provably equivalent to the others. Either way the
+    // extraction is refused before a token and the occurrence is never rewritten.
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    public async Task FixedBufferLength_IsRefusedBeforeToken_ByTheBindingCheck(int exampleOccurrence)
+    {
+        const string source = """
+            public static class FixedSlots
+            {
+                public static int Plain() { var q = 6 * 7; return q; }
+            }
+
+            public unsafe struct FixedHolder { public fixed int Buffer[6 * 7]; }
+            """;
+        await WithWorkspaceAsync(source, async (workspaceId, path) =>
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => PreviewAsync(workspaceId, path, source, "6 * 7", exampleOccurrence));
+            StringAssert.Contains(error.Message, exampleOccurrence == 0 ? "bindings" : "return type");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
+        });
+    }
+
+    // An enum declaration is not a type declaration, so its member values are never candidates (and need no
+    // constant-slot rule): they stay as written while the other two occurrences are extracted.
+    [TestMethod]
+    public async Task EnumMemberInitializer_IsNeverACandidate_AndStaysUnchanged()
+    {
+        const string source = """
+            public static class EnumSlots
+            {
+                public static int Plain() { var q = 6 * 7; return q; }
+                public static int Plain2() { var q = 6 * 7; return q; }
+            }
+
+            public enum SlottedEnum { A = 6 * 7 }
+            """;
+        await WithWorkspaceAsync(source, async (workspaceId, path) =>
+        {
+            var json = await PreviewAsync(workspaceId, path, source, "6 * 7", 0);
+            using var preview = JsonDocument.Parse(json);
+            var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+            var text = await GetDocumentTextAsync(PreviewStore.Retrieve(token)!.Value.ModifiedSolution, path);
+            StringAssert.Contains(text, "SlottedEnum { A = 6 * 7 }");
+            StringAssert.Contains(text, "var q = SharedValue();");
+        });
+    }
+
+    // One row per query clause that becomes an Expression<> lambda over IQueryable. The clause occurrence stays
+    // unchanged while the two delegate occurrences are extracted.
+    [TestMethod]
+    [DataRow("let", "from x in S let y = TreeTarget.GetValue(7) select x + y")]
+    [DataRow("orderby", "from x in S orderby x + TreeTarget.GetValue(7) select x")]
+    [DataRow("select", "from x in S select x + TreeTarget.GetValue(7)")]
+    [DataRow("join left key", "from x in S join y in S on x + TreeTarget.GetValue(7) equals y select x")]
+    [DataRow("join right key", "from x in S join y in S on x equals y + TreeTarget.GetValue(7) select x")]
+    [DataRow("group by key", "from x in S group x by x + TreeTarget.GetValue(7)")]
+    [DataRow("group element", "from x in S group x + TreeTarget.GetValue(7) by x")]
+    [DataRow("from selector", "from x in S from y in new[] { TreeTarget.GetValue(7) } select x + y")]
+    public async Task QueryClauseLambdas_StayUnrewritten_ForExampleOnEitherSide(string label, string query)
+    {
+        var member = "public static object Q() => " + query + ";";
+        var source = """
+            using System;
+            using System.Linq;
+
+            public static class TreeTarget { public static int GetValue(int offset) => offset + 42; }
+
+            public static class QueryArms
+            {
+                private static IQueryable<int> S => new[] { 1, 2 }.AsQueryable();
+
+            """ + "    " + member + """
+
+                public static Func<int> DelegateA() => () => TreeTarget.GetValue(7);
+                public static Func<int> DelegateB() => () => TreeTarget.GetValue(7);
+            }
+            """;
+        foreach (var exampleOccurrence in new[] { 0, 1 })
+        {
+            await WithWorkspaceAsync(source, async (workspaceId, path) =>
+            {
+                var json = await PreviewAsync(workspaceId, path, source, "TreeTarget.GetValue(7)", exampleOccurrence);
+                using var preview = JsonDocument.Parse(json);
+                var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+                var text = await GetDocumentTextAsync(PreviewStore.Retrieve(token)!.Value.ModifiedSolution, path);
+                StringAssert.Contains(text, member, $"{label}, example occurrence {exampleOccurrence}: query clause was rewritten");
+                StringAssert.Contains(text, "DelegateA() => () => SharedValue();", label);
+                StringAssert.Contains(text, "DelegateB() => () => SharedValue();", label);
             });
         }
     }
@@ -443,6 +581,11 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var path = workspace.GetPath("SampleLib", "ValueContextProbe.cs");
         await File.WriteAllTextAsync(path, source);
+        // Some rows need `unsafe` code (address-of, fixed-size buffers).
+        var project = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        await File.WriteAllTextAsync(project, (await File.ReadAllTextAsync(project)).Replace(
+            "<TargetFramework>net10.0</TargetFramework>",
+            "<TargetFramework>net10.0</TargetFramework><AllowUnsafeBlocks>true</AllowUnsafeBlocks>", StringComparison.Ordinal));
         var workspaceId = await workspace.LoadAsync();
         await body(workspaceId, path);
     }

@@ -720,6 +720,12 @@ public sealed class ExtractMethodService : IExtractMethodService
         var scope = allowCrossFile
             ? exampleDocument.Project.Documents
             : new[] { exampleDocument };
+        // Refuse the example's own use site first. Candidates are scanned in document order and are compared with
+        // the example's bindings, which an example in a write, address-of or constant-only position can fail before
+        // the scan reaches it, hiding the use-site reason.
+        ThrowIfUseSiteRefused(
+            SharedExpressionUseSite.Classify(exampleExpression, exampleBindings.Context.Model, ct), exampleDocument, exampleExpression);
+
         var hits = new List<ExpressionHit>();
         var expressionTreeOccurrences = 0;
         foreach (var doc in scope)
@@ -757,21 +763,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                     continue;
                 }
 
-                if (useSite == SharedExpressionUseSiteKind.ConstantRequired)
-                {
-                    throw new PublicInvalidOperationException(
-                        $"The expression at {doc.Name}:{candidate.GetLocation().GetLineSpan().StartLinePosition.Line + 1} sits in a position that " +
-                        "requires a compile-time constant, which a helper call is not. " +
-                        "Select a different example or narrow the extraction scope.");
-                }
-
-                if (useSite == SharedExpressionUseSiteKind.StorageRequired)
-                {
-                    throw new PublicInvalidOperationException(
-                        $"The expression at {doc.Name}:{candidate.GetLocation().GetLineSpan().StartLinePosition.Line + 1} is used where a " +
-                        "writable variable or by-reference storage is required, which a value-returning helper cannot provide. " +
-                        "Select a different example or narrow the extraction scope.");
-                }
+                ThrowIfUseSiteRefused(useSite, doc, candidate);
 
                 // Semantic-type guard: every free variable must have the same ITypeSymbol as the
                 // example. Matches by position (structural equivalence aligns them 1:1).
@@ -825,6 +817,26 @@ public sealed class ExtractMethodService : IExtractMethodService
             }
         }
         return (hits, expressionTreeOccurrences);
+    }
+
+    /// <summary>
+    /// Refuses an occurrence whose use site a value-returning helper call cannot satisfy: a position that needs a
+    /// variable (assignment target, ref/out/in argument, mutated struct receiver) or a compile-time constant.
+    /// </summary>
+    private static void ThrowIfUseSiteRefused(SharedExpressionUseSiteKind useSite, Document document, ExpressionSyntax occurrence)
+    {
+        var location = $"{document.Name}:{occurrence.GetLocation().GetLineSpan().StartLinePosition.Line + 1}";
+        switch (useSite)
+        {
+            case SharedExpressionUseSiteKind.ConstantRequired:
+                throw new PublicInvalidOperationException(
+                    $"The expression at {location} sits in a position that requires a compile-time constant, " +
+                    "which a helper call is not. Select a different example or narrow the extraction scope.");
+            case SharedExpressionUseSiteKind.StorageRequired:
+                throw new PublicInvalidOperationException(
+                    $"The expression at {location} is used where a writable variable or by-reference storage is required, " +
+                    "which a value-returning helper cannot provide. Select a different example or narrow the extraction scope.");
+        }
     }
 
     /// <summary>
