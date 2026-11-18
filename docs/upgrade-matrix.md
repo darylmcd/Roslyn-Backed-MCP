@@ -41,15 +41,15 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 | `Microsoft.Extensions.Http` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.Logging` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.Logging.Console` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.TimeProvider.Testing` | `10.11.0` | `Directory.Packages.props` | Test-only; routine servicing group |
+| `Microsoft.Extensions.TimeProvider.Testing` | `11.0.0` | `Directory.Packages.props` | Test-only; routine servicing group |
 | `DiffPlex` | `1.9.0` | `Directory.Packages.props` | Independent |
 | `Microsoft.Build.Framework` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Tasks.Core` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Utilities.Core` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.NET.Test.Sdk` | `18.12.0` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
-| `MSTest.TestAdapter` | `4.5.2` | `Directory.Packages.props` | MSTest family; move with framework including majors |
-| `MSTest.TestFramework` | `4.5.2` | `Directory.Packages.props` | MSTest family; move with adapter including majors |
+| `MSTest.TestAdapter` | `4.5.3` | `Directory.Packages.props` | MSTest family; move with framework including majors |
+| `MSTest.TestFramework` | `4.5.3` | `Directory.Packages.props` | MSTest family; move with adapter including majors |
 | `coverlet.collector` | `10.1.1` | `Directory.Packages.props` | Coverage-only |
 | `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest` | `1.1.2` | `Directory.Packages.props` | Analyzer test harness; review Roslyn ABI |
 | `NuGet.Frameworks` | `6.3.4` | `Directory.Packages.props` | Direct test pin required by MSBuildLocator asset policy |
