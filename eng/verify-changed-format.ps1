@@ -195,6 +195,11 @@ try {
         Write-Host "Changed-file formatter gate: verifying $($changedFiles.Count) changed C# file(s) against '$BaseRef'."
     }
 
+    # The restore and format children below inherit this process's environment.
+    foreach ($variable in $formatInheritedMsBuildLocationVariables) {
+        Remove-Item -LiteralPath "Env:$variable" -ErrorAction Ignore
+    }
+
     if (-not $NoRestore) {
         $global:LASTEXITCODE = 0
         $restoreOutput = @(& $DotnetCommand restore $resolvedSolutionPath 2>&1 | ForEach-Object { $_.ToString() })

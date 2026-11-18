@@ -196,6 +196,7 @@ public sealed class PackageFamilyContractTests
                     "Microsoft.Build.Framework",
                     "Microsoft.Build.Tasks.Core",
                     "Microsoft.Build.Utilities.Core",
+                    "Microsoft.NET.StringTools",
                 }),
             (
                 Block: GetYamlBlock(dependabot, "      roslyn-api-family:", "      extensions-runtime-family:"),
