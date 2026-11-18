@@ -160,6 +160,16 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
     private readonly ConcurrentDictionary<string, WatcherEntry> _watchers = new(StringComparer.Ordinal);
 
+    // Test seam: every OS watcher (tree and shared ancestor) is created here so a test can inject a
+    // faulting or event-raising FileSystemWatcher. Production always uses the plain constructor.
+    private readonly Func<string, FileSystemWatcher> _watcherFactory = static directory => new FileSystemWatcher(directory);
+
+    internal FileWatcherService(ILogger<FileWatcherService> logger, Func<string, FileSystemWatcher> watcherFactory)
+        : this(logger)
+    {
+        _watcherFactory = watcherFactory ?? throw new ArgumentNullException(nameof(watcherFactory));
+    }
+
     public event Action<string>? WorkspaceRootMissing;
 
     // Each FileSystemWatcher owns one inotify instance on Linux, and the default per-user cap is 128.
@@ -204,11 +214,11 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             // One recursive watcher covers source, project, solution and .editorconfig files under the
             // root, plus deletion/rename of the loaded solution/project file itself.
             var workspaceFilePath = Path.Combine(directory, Path.GetFileName(workspacePath));
-            var tree = new FileSystemWatcher(directory)
-            {
-                IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
-            };
+            var tree = _watcherFactory(directory);
+            // Owned by the entry before it is configured, so a failure below cannot leak it.
+            entry.AddWatcher(tree);
+            tree.IncludeSubdirectories = true;
+            tree.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
             // Changed/Created carry the file's own write time; Deleted/Renamed do not (a rename keeps
             // the old times), so those are timed by arrival.
             tree.Changed += (_, args) => MarkTreeChange(entry, args.FullPath, contentEvent: true);
@@ -229,7 +239,6 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     FileSystemPath.Comparer.Equals(args.OldFullPath, workspaceFilePath))
                     RaiseWorkspaceRootMissing(workspaceId);
             };
-            entry.AddWatcher(tree);
             tree.EnableRaisingEvents = true;
 
             // A config above the solution directory also applies to its documents, and the root
@@ -254,18 +263,39 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             }
 
             entry.Dispose();
-            if (ex is IOException && OperatingSystem.IsLinux())
+            if (DescribeStartFailure(ex, workspaceId, OperatingSystem.IsLinux()) is { } described)
             {
-                throw new IOException(
-                    $"Could not start file watchers for workspace '{workspaceId}': {ex.Message} " +
-                    "On Linux raise fs.inotify.max_user_instances (and fs.inotify.max_user_watches), " +
-                    "or close unused workspaces.", ex);
+                throw described;
             }
 
             throw;
         }
 
         logger.LogInformation("Started file watcher for workspace {WorkspaceId} at {Directory}", workspaceId, directory);
+    }
+
+    /// <summary>
+    /// The exception to throw instead of <paramref name="failure"/> when a watcher start fails, or
+    /// <see langword="null"/> to rethrow it unchanged. An <see cref="IOException"/> on Linux is the inotify
+    /// limit, so the replacement names the settings that raise it.
+    /// </summary>
+    internal static IOException? DescribeStartFailure(Exception failure, string workspaceId, bool isLinux) =>
+        failure is IOException && isLinux
+            ? new IOException(
+                $"Could not start file watchers for workspace '{workspaceId}': {failure.Message} " +
+                "On Linux raise fs.inotify.max_user_instances (and fs.inotify.max_user_watches), " +
+                "or close unused workspaces.", failure)
+            : null;
+
+    internal bool IsWatchedForTesting(string workspaceId) => _watchers.ContainsKey(workspaceId);
+
+    internal int SharedWatcherCountForTesting
+    {
+        get
+        {
+            lock (_sharedSync)
+                return _sharedWatchers.Count;
+        }
     }
 
     private static bool IsWatchedName(string path)
@@ -287,7 +317,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         {
             if (!_sharedWatchers.TryGetValue(directory, out var shared))
             {
-                shared = new SharedDirectoryWatcher(directory, RaiseWorkspaceRootMissing);
+                shared = new SharedDirectoryWatcher(directory, RaiseWorkspaceRootMissing, _watcherFactory);
                 _sharedWatchers[directory] = shared;
             }
 
@@ -336,29 +366,28 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         private readonly Action<string> _raiseRootMissing;
         private volatile Subscription[] _subscribers = [];
 
-        public SharedDirectoryWatcher(string directory, Action<string> raiseRootMissing)
+        public SharedDirectoryWatcher(
+            string directory, Action<string> raiseRootMissing, Func<string, FileSystemWatcher> watcherFactory)
         {
             _raiseRootMissing = raiseRootMissing;
-            _watcher = new FileSystemWatcher(directory)
-            {
-                IncludeSubdirectories = false,
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
-            };
-            _watcher.Changed += (_, args) => MarkConfig(args.FullPath, contentEvent: true);
-            _watcher.Created += (_, args) => MarkConfig(args.FullPath, contentEvent: true);
-            _watcher.Deleted += (_, args) =>
-            {
-                MarkConfig(args.FullPath, contentEvent: false);
-                RootRemoved(args.FullPath);
-            };
-            _watcher.Renamed += (_, args) =>
-            {
-                MarkConfig(args.FullPath, contentEvent: false);
-                MarkConfig(args.OldFullPath, contentEvent: false);
-                RootRemoved(args.OldFullPath);
-            };
+            _watcher = watcherFactory(directory);
             try
             {
+                _watcher.IncludeSubdirectories = false;
+                _watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
+                _watcher.Changed += (_, args) => MarkConfig(args.FullPath, contentEvent: true);
+                _watcher.Created += (_, args) => MarkConfig(args.FullPath, contentEvent: true);
+                _watcher.Deleted += (_, args) =>
+                {
+                    MarkConfig(args.FullPath, contentEvent: false);
+                    RootRemoved(args.FullPath);
+                };
+                _watcher.Renamed += (_, args) =>
+                {
+                    MarkConfig(args.FullPath, contentEvent: false);
+                    MarkConfig(args.OldFullPath, contentEvent: false);
+                    RootRemoved(args.OldFullPath);
+                };
                 _watcher.EnableRaisingEvents = true;
             }
             catch
