@@ -242,16 +242,25 @@ public sealed class FileWatcherSharedWatcherTests
         var root = Path.Combine(parent, "ws");
         Directory.CreateDirectory(root);
         // Creation 1 is the tree watcher, 2 the first ancestor's shared watcher, 3 the failing ancestor.
-        var factory = new RaisableWatcherFactory((ordinal, _) => ordinal == 3
-            ? new IOException("The configured user limit (128) on the number of inotify instances has been reached.")
-            : null);
+        var injected = new IOException("The configured user limit (128) on the number of instances has been reached.");
+        var factory = new RaisableWatcherFactory((ordinal, _) => ordinal == 3 ? injected : null);
         using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
         var id = Guid.NewGuid().ToString("N");
         try
         {
             var failure = Assert.ThrowsExactly<IOException>(() => watcher.Watch(id, Path.Combine(root, "Sample.slnx")));
 
-            StringAssert.Contains(failure.Message, "inotify");
+            if (OperatingSystem.IsLinux())
+            {
+                // Linux wraps the limit failure with the settings that raise it.
+                StringAssert.Contains(failure.Message, "fs.inotify.max_user_instances");
+                Assert.AreSame(injected, failure.InnerException);
+            }
+            else
+            {
+                Assert.AreSame(injected, failure);
+            }
+
             Assert.IsFalse(watcher.IsWatchedForTesting(id));
             Assert.AreEqual(0, watcher.SharedWatcherCountForTesting);
             Assert.AreEqual(2, factory.Created.Count);
