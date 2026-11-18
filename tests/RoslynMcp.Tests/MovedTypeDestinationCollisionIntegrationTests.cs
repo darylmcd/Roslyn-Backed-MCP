@@ -227,7 +227,7 @@ public sealed class MovedTypeDestinationCollisionIntegrationTests : IsolatedWork
     }
 
     [TestMethod]
-    [DataRow("Original", "@Original", "Original", "namespace Elsewhere; public partial class MoveProbe { }")]
+    [DataRow("Original", "@Moved", "Moved", "namespace Elsewhere; public partial class MoveProbe { }")]
     [DataRow("Outer.Original", "Destination", "Destination", "namespace Outer.Destination; public partial class MoveProbe { }")]
     [DataRow("Original", "Destination", "Destination", "namespace Destination; public partial class MoveProbe<T> { }")]
     public async Task ChangeNamespace_AllowsAnUnoccupiedIdentity(
