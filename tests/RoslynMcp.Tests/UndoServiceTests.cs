@@ -1279,7 +1279,10 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             "Fixture precondition: a reload must mint new ProjectIds.");
 
         using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
-        undo.CaptureBeforeApply(workspaceId, "post-reload", preApply, fileSnapshots: null);
+        var capture = undo.CaptureBeforeApply(workspaceId, "post-reload", preApply, fileSnapshots: null);
+        // The disk walk only restores a committed apply's own files (an uncommitted snapshot has no
+        // file attribution), so commit the capture the way ChangeTracker.RecordChange does.
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
 
         Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None),
             "Identical projects under new ProjectIds are not an added/removed project.");
@@ -1347,6 +1350,200 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
     }
 
+    // ---- undo-solution-diff-reverts-sibling-document-edits / undo-disk-walk-fallback-restores-drifted-sibling-docs ----
+    //
+    // A solution-snapshot revert may rewrite only documents the reverted apply changed. A committed
+    // snapshot attributes by AffectedFiles; an uncommitted one is the single pending apply, so its
+    // own solution diff is its attribution and there is no file-level fallback walk.
+
+    private sealed record SiblingFixture(
+        string DogPath,
+        string CatPath,
+        byte[] DogOriginalBytes,
+        byte[] CatOriginalBytes,
+        Solution PreApply);
+
+    private async Task<SiblingFixture> SeedSiblingFixtureAsync(IsolatedWorkspaceScope workspace)
+    {
+        var dogPath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catPath = workspace.GetPath("SampleLib", "Cat.cs");
+        var preApply = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogPath);
+        await MaterializeDocumentTextAsync(preApply, catPath);
+        return new SiblingFixture(
+            dogPath,
+            catPath,
+            await File.ReadAllBytesAsync(dogPath, CancellationToken.None),
+            await File.ReadAllBytesAsync(catPath, CancellationToken.None),
+            preApply);
+    }
+
+    private static Solution WithText(Solution solution, string filePath, string text) =>
+        solution.WithDocumentText(
+            solution.GetDocumentIdsWithFilePath(filePath).Single(),
+            Microsoft.CodeAnalysis.Text.SourceText.From(text));
+
+    [TestMethod]
+    public async Task RevertBySequence_SolutionSnapshot_FileDisjointSiblingEdit_LeavesSiblingIntact()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var f = await SeedSiblingFixtureAsync(workspace);
+        var current = WithText(WithText(f.PreApply, f.DogPath, "// applied A\n"), f.CatPath, "// applied B\n");
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, current);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var first = undo.CaptureBeforeApply(workspaceId, "edit dog", f.PreApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [f.DogPath], first);
+        var second = undo.CaptureBeforeApply(
+            workspaceId, "edit cat", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(f.CatPath, f.CatOriginalBytes)]);
+        undo.CommitPendingCapture(workspaceId, 2, [f.CatPath], second);
+        await File.WriteAllTextAsync(f.DogPath, "// applied A\n", CancellationToken.None);
+        await File.WriteAllTextAsync(f.CatPath, "// applied B\n", CancellationToken.None);
+
+        var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+
+        Assert.IsTrue(result.Reverted, $"reason={result.Reason}");
+        CollectionAssert.AreEqual(f.DogOriginalBytes, await File.ReadAllBytesAsync(f.DogPath, CancellationToken.None));
+        Assert.AreEqual("// applied B\n", await File.ReadAllTextAsync(f.CatPath, CancellationToken.None),
+            "The file-disjoint sibling apply's disk edit must survive the earlier revert.");
+        Assert.IsNotNull(manager.AppliedSolution);
+        Assert.AreEqual("// applied B\n",
+            (await manager.AppliedSolution.GetDocument(
+                manager.AppliedSolution.GetDocumentIdsWithFilePath(f.CatPath).Single())!
+                .GetTextAsync(CancellationToken.None)).ToString(),
+            "The solution handed to TryApplyChanges must keep the sibling's text.");
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_SolutionSnapshot_CommittedDiskWalk_RestoresOnlyAffectedFiles()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var f = await SeedSiblingFixtureAsync(workspace);
+        // The workspace never registered the apply (empty solution diff); disk drifted for the apply's
+        // own file and, independently, for a sibling.
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, f.PreApply);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var capture = undo.CaptureBeforeApply(workspaceId, "edit dog", f.PreApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [f.DogPath], capture);
+        await File.WriteAllTextAsync(f.DogPath, "// drift A\n", CancellationToken.None);
+        await File.WriteAllTextAsync(f.CatPath, "// drift B\n", CancellationToken.None);
+
+        var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+
+        Assert.IsTrue(result.Reverted, $"reason={result.Reason}");
+        CollectionAssert.AreEqual(f.DogOriginalBytes, await File.ReadAllBytesAsync(f.DogPath, CancellationToken.None));
+        Assert.AreEqual("// drift B\n", await File.ReadAllTextAsync(f.CatPath, CancellationToken.None),
+            "The disk-walk fallback must not rewrite a document the apply did not change.");
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_SolutionSnapshot_CommittedScopedNothingToRestore_ReturnsFalseAndRetains(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var f = await SeedSiblingFixtureAsync(workspace);
+        var version = WorkspaceManager.GetCurrentVersion(workspaceId);
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, f.PreApply);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var capture = undo.CaptureBeforeApply(workspaceId, "edit dog", f.PreApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [f.DogPath], capture);
+        await File.WriteAllTextAsync(f.CatPath, "// drift B\n", CancellationToken.None);
+
+        if (bySequence)
+        {
+            var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+            Assert.IsFalse(result.Reverted);
+            Assert.AreEqual("revert-failed", result.Reason);
+        }
+        else
+        {
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None),
+                "A scoped revert that restored nothing must not report success.");
+        }
+
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId), "A failed revert must retain the snapshot.");
+        Assert.AreEqual("// drift B\n", await File.ReadAllTextAsync(f.CatPath, CancellationToken.None));
+        Assert.IsNull(manager.AppliedSolution, "Nothing was collected, so nothing may be applied.");
+        Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(workspaceId));
+    }
+
+    /// <summary>
+    /// Intended result, pinned: a committed solution-only snapshot that recorded no affected files
+    /// owns no document text (project-level changes are refused earlier by FindUnrestorableChange), so
+    /// with no diff there is nothing to restore and the revert reports failure. RefactoringService
+    /// reaches this shape when an apply has no file changes (null file snapshots, solution retained).
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_SolutionSnapshot_CommittedEmptyScopeNoDiff_ReturnsFalseAndRetains(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var f = await SeedSiblingFixtureAsync(workspace);
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, f.PreApply);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var capture = undo.CaptureBeforeApply(workspaceId, "no file changes", f.PreApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [], capture);
+        await File.WriteAllTextAsync(f.CatPath, "// drift B\n", CancellationToken.None);
+
+        if (bySequence)
+        {
+            var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+            Assert.IsFalse(result.Reverted);
+            Assert.AreEqual("revert-failed", result.Reason);
+        }
+        else
+        {
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        }
+
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+        Assert.AreEqual("// drift B\n", await File.ReadAllTextAsync(f.CatPath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_SolutionSnapshot_Uncommitted_DiskOnlyDrift_NothingRestored_ReturnsTrue()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var f = await SeedSiblingFixtureAsync(workspace);
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, f.PreApply);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "failed apply wrote nothing", f.PreApply, fileSnapshots: null);
+        await File.WriteAllTextAsync(f.DogPath, "// drift\n", CancellationToken.None);
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None),
+            "An uncommitted apply that changed nothing in the workspace has nothing to undo: success.");
+
+        Assert.AreEqual("// drift\n", await File.ReadAllTextAsync(f.DogPath, CancellationToken.None),
+            "Disk drift cannot be attributed to an uncommitted apply and must not be rewritten.");
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+    }
+
+    /// <summary>Green guard (passes before and after the fix): an uncommitted snapshot restores exactly its solution diff.</summary>
+    [TestMethod]
+    public async Task RevertAsync_SolutionSnapshot_Uncommitted_RestoresOnlyDiffDocuments()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var f = await SeedSiblingFixtureAsync(workspace);
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, WithText(f.PreApply, f.DogPath, "// applied\n"));
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "edit dog", f.PreApply, fileSnapshots: null);
+        await File.WriteAllTextAsync(f.DogPath, "// applied\n", CancellationToken.None);
+        await File.WriteAllTextAsync(f.CatPath, "// drift B\n", CancellationToken.None);
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        CollectionAssert.AreEqual(f.DogOriginalBytes, await File.ReadAllBytesAsync(f.DogPath, CancellationToken.None));
+        Assert.AreEqual("// drift B\n", await File.ReadAllTextAsync(f.CatPath, CancellationToken.None));
+    }
+
     private sealed class CapturingWorkspaceManager(IWorkspaceManager inner, Solution current)
         : Helpers.DelegatingWorkspaceManager(inner)
     {
@@ -1382,11 +1579,14 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
 
         var preApplySolution = WorkspaceManager.GetCurrentSolution(workspaceId);
         await MaterializeDocumentTextAsync(preApplySolution, dogFilePath);
-        UndoService.CaptureBeforeApply(
+        var capture = UndoService.CaptureBeforeApply(
             workspaceId,
             "disk-walk encoding round-trip",
             preApplySolution,
             fileSnapshots: null);
+        // The disk walk only restores a committed apply's own AffectedFiles (an uncommitted snapshot
+        // has no file attribution), so commit the capture the way ChangeTracker.RecordChange does.
+        UndoService.CommitPendingCapture(workspaceId, 1, [dogFilePath], capture);
 
         // Disk-only drift: the workspace solution is untouched, so phase 1 finds nothing.
         var originalText = encoding.GetString(originalBytes, preamble.Length, originalBytes.Length - preamble.Length);
