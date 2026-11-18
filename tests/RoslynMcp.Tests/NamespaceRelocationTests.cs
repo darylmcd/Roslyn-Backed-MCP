@@ -1051,6 +1051,30 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"), text);
     }
 
+    /// <summary>
+    /// The same-file paths built the destination name with an unescaped parse, so a keyword
+    /// segment produced a missing-identifier namespace; the new-file path already escapes it.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n", DisplayName = "sole member renamed in place")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public class Keep { }\n}\n", DisplayName = "extracted next to a sibling")]
+    public async Task Preview_SameFile_Escapes_Keyword_Segments_In_The_Destination_Namespace(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(
+            workspace, source, relocate: false, toNamespace: "Target.class");
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(text, "@class", text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Target.class.Selected"), text);
+    }
+
     [TestMethod]
     public async Task ArgumentRefusals_NamespaceMalformedDestinationIsNamedAndRedacted()
     {

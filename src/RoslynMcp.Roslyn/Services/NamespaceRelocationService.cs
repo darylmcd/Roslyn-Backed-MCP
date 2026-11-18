@@ -117,10 +117,11 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var warnings = new List<string>();
 
         // Rewrite the type's containing namespace, which may itself be nested:
-        //   (a) without file relocation or other members in that declaration, rename it in place;
-        //   (b) without file relocation but with other members (types, enums, delegates, nested
-        //       namespaces), move only the selected type into a new namespace declaration in the
-        //       same file;
+        //   (a) without file relocation, when that declaration is top-level and the selected type
+        //       is its only member, rename it in place;
+        //   (b) without file relocation otherwise (other members: types, enums, delegates, nested
+        //       namespaces; or a nested declaration), move only the selected type into a new
+        //       top-level namespace declaration in the same file;
         //   (c) with file relocation, write the selected type to the destination file and
         //       remove its declaration from the source file.
         var (destinationDocument, movedTypeIdentifier, siblingTypesRemaining) = await ApplyNamespaceRewriteAsync(
@@ -375,7 +376,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         SemanticModel semanticModel,
         CancellationToken ct)
     {
-        var newName = SyntaxFactory.ParseName(toNamespace).WithTriviaFrom(ns.Name);
+        var newName = ReceivingNamespaceFactory.CreateName(toNamespace).WithTriviaFrom(ns.Name);
         // Imports written relative to the old namespace would rebind to the new one.
         var imports = MovedDeclarationFileWriter.PreserveImportBindings(ns.Usings, semanticModel, ct);
         var renamed = ns.ReplaceNode(typeDecl, typeDecl.WithAdditionalAnnotations(movedType))
