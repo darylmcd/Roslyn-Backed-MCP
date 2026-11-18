@@ -261,28 +261,28 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // project dependency graph, including transitive project references) to visit just those
         // documents instead of building a semantic model for every document in the solution.
         var references = await SymbolFinder.FindReferencesAsync(updatedConcreteType, updatedSolution, ct).ConfigureAwait(false);
-        var referencingDocumentIds = references
+        var referencingDocuments = references
             .SelectMany(reference => reference.Locations)
-            .Select(location => location.Document.Id)
-            .Distinct();
+            .Select(location => location.Document)
+            .DistinctBy(located => located.Id);
 
         var generatedInterface = await GeneratedInterfaceReference.ResolveGeneratedAsync(updatedSolution, interfaceDocumentId, ct).ConfigureAwait(false);
         var interfaceProjectId = interfaceDocumentId.ProjectId;
 
-        foreach (var documentId in referencingDocumentIds)
+        foreach (var located in referencingDocuments)
         {
-            var document = updatedSolution.GetDocument(documentId);
+            // A source-generated document is not editable: the generator owns its text, so its constructors stay as emitted.
+            var document = ReferenceDocumentResolver.ResolveEditable(updatedSolution, located);
             if (document is null)
             {
                 continue;
             }
 
-            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-            if (root is null || model is null)
-            {
-                continue;
-            }
+            var documentId = document.Id;
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                ?? throw InvalidOperationErrors.Internal($"Syntax for reference document '{document.Name}' is unavailable.");
+            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                ?? throw InvalidOperationErrors.Internal($"Semantic model for reference document '{document.Name}' is unavailable.");
 
             var parameterSpans = root.DescendantNodes()
                 .OfType<ParameterSyntax>()
@@ -305,12 +305,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             {
                 updatedSolution = withReference;
                 document = updatedSolution.GetDocument(documentId)!;
-                root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (root is null || model is null)
-                {
-                    continue;
-                }
+                root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal($"Syntax for reference document '{document.Name}' is unavailable.");
+                model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal($"Semantic model for reference document '{document.Name}' is unavailable.");
             }
 
             var parameters = root.DescendantNodes().OfType<ParameterSyntax>()
