@@ -23,9 +23,28 @@ internal static class SharedExpressionProjectionVerifier
         new(HitAnnotationKind, index.ToString(CultureInfo.InvariantCulture));
 
     /// <returns>A refusal message, or null when every check passed.</returns>
-    public static async Task<string?> VerifyAsync(Solution projected, IReadOnlyList<ProjectedHit> hits, CancellationToken ct)
+    public static async Task<string?> VerifyAsync(
+        Solution baseline, Solution projected, ProjectId project, IReadOnlyList<ProjectedHit> hits, CancellationToken ct)
     {
-        return await VerifyCallSitesAsync(projected, hits, ct).ConfigureAwait(false);
+        // Compile errors first: the call-site comparison assumes the projection binds.
+        return await VerifyNoIntroducedErrorsAsync(baseline, projected, project, ct).ConfigureAwait(false)
+            ?? await VerifyCallSitesAsync(projected, hits, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The rewritten project and every project depending on it must not gain compiler errors, e.g. a private helper
+    /// called through the owner type from another type (CS0122) or a helper call in an expression-only position.
+    /// </summary>
+    private static async Task<string?> VerifyNoIntroducedErrorsAsync(
+        Solution baseline, Solution projected, ProjectId project, CancellationToken ct)
+    {
+        var introduced = await PreviewCompilationDelta.IntroducedErrorsAsync(
+            baseline, projected, [project], PreviewCompilationDelta.DocumentKey, ct).ConfigureAwait(false);
+        if (introduced.Count == 0) return null;
+
+        return "The shared helper rewrite would introduce compiler errors (" +
+            InterfaceNullableProjection.FormatIds(introduced.Select(error => error.Diagnostic)) +
+            "). Choose a helper accessibility every matching site can call, or narrow the extraction scope.";
     }
 
     /// <summary>

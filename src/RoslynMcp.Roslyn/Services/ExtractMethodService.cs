@@ -691,7 +691,8 @@ public sealed class ExtractMethodService : IExtractMethodService
 
         // Verify the projected solution before any token exists (see SharedExpressionProjectionVerifier).
         var refusal = await SharedExpressionProjectionVerifier.VerifyAsync(
-            accumulator, hits.Select(h => new ProjectedHit(h.Document, h.Expression, h.Index)).ToList(), ct)
+            solution, accumulator, exampleDocument.Project.Id,
+            hits.Select(h => new ProjectedHit(h.Document, h.Expression, h.Index)).ToList(), ct)
             .ConfigureAwait(false);
         if (refusal is not null) throw new PublicInvalidOperationException(refusal);
 

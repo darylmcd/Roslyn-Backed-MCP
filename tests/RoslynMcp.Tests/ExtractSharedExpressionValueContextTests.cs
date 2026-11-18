@@ -291,6 +291,89 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
         });
     }
 
+    private const string OwnerSource = """
+        public class HelperOwner
+        {
+            public int Read(int input) => input * 31;
+        }
+        """;
+
+    private const string CallerSource = """
+        public class HelperCaller
+        {
+            public int Read(int input) => input * 31;
+        }
+        """;
+
+    [TestMethod]
+    public async Task PrivateHelperAcrossTypes_IsRefusedBeforeToken()
+    {
+        await WithTwoDocumentsAsync(OwnerSource, CallerSource, async (workspaceId, ownerPath) =>
+        {
+            var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
+                () => PreviewAsync(workspaceId, ownerPath, OwnerSource, "input * 31", 0, accessibility: "private"));
+            StringAssert.Contains(error.PublicMessage, "introduce compiler errors");
+            StringAssert.Contains(error.PublicMessage, "CS0122");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
+        });
+    }
+
+    [TestMethod]
+    public async Task InternalHelperAcrossTypes_PreviewAndApplyCompile()
+    {
+        await WithTwoDocumentsAsync(OwnerSource, CallerSource, async (workspaceId, ownerPath) =>
+        {
+            var json = await PreviewAsync(workspaceId, ownerPath, OwnerSource, "input * 31", 0, accessibility: "internal");
+            using var preview = JsonDocument.Parse(json);
+            var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+            await GetCleanCompilationAsync(PreviewStore.Retrieve(token)!.Value.ModifiedSolution);
+            var appliedJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate, ApplyUndoWorkflowService, PreviewStore, token);
+            using var applied = JsonDocument.Parse(appliedJson);
+            Assert.AreEqual("applied", applied.RootElement.GetProperty("status").GetString(), appliedJson);
+            await GetCleanCompilationAsync(WorkspaceManager.GetCurrentSolution(workspaceId));
+        });
+    }
+
+    // The compiler, not a syntactic rule, decides private access: a type nested in the owner can call the helper.
+    [TestMethod]
+    public async Task PrivateHelper_CallerNestedInOwner_PreviewAndApplyCompile()
+    {
+        const string source = """
+            public class NestedOwner
+            {
+                public int Read(int input) => input * 31;
+
+                public class Inner
+                {
+                    public int Read(int input) => input * 31;
+                }
+            }
+            """;
+        await WithWorkspaceAsync(source, async (workspaceId, path) =>
+        {
+            var json = await PreviewAsync(workspaceId, path, source, "input * 31", 0, accessibility: "private");
+            using var preview = JsonDocument.Parse(json);
+            var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+            await GetCleanCompilationAsync(PreviewStore.Retrieve(token)!.Value.ModifiedSolution);
+            var appliedJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate, ApplyUndoWorkflowService, PreviewStore, token);
+            using var applied = JsonDocument.Parse(appliedJson);
+            Assert.AreEqual("applied", applied.RootElement.GetProperty("status").GetString(), appliedJson);
+            await GetCleanCompilationAsync(WorkspaceManager.GetCurrentSolution(workspaceId));
+        });
+    }
+
+    private static async Task WithTwoDocumentsAsync(string ownerSource, string callerSource, Func<string, string, Task> body)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var ownerPath = workspace.GetPath("SampleLib", "HelperOwner.cs");
+        await File.WriteAllTextAsync(ownerPath, ownerSource);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "HelperCaller.cs"), callerSource);
+        var workspaceId = await workspace.LoadAsync();
+        await body(workspaceId, ownerPath);
+    }
+
     private static async Task WithWorkspaceAsync(string source, Func<string, string, Task> body)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
