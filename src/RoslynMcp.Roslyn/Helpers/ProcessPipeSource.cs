@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using RoslynMcp.Core.Services;
 using Microsoft.Win32.SafeHandles;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -24,7 +25,7 @@ internal static class ProcessPipeSource
         {
             FileStream file => file.SafeFileHandle,
             PipeStream pipe => pipe.SafePipeHandle,
-            var other => throw new InvalidOperationException(
+            var other => throw InvalidOperationErrors.Internal(
                 $"Redirected process output uses an unsupported stream type '{other.GetType().FullName}'."),
         };
 
