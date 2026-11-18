@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
@@ -154,6 +155,23 @@ public sealed class InterfaceReplaceUsagesRefusalTests : InterfaceRouteTestBase
         var generated = compilation.GetTypeByMetadataName("Consumer.GeneratedUser")!.Constructors.Single(c => !c.IsImplicitlyDeclared);
         Assert.AreEqual("RefService", generated.Parameters.Single().Type.Name,
             "generator output is not editable and stays as the generator emits it");
+    }
+
+    [TestMethod]
+    public async Task Reference_Document_Resolver_Skips_Generated_And_Rejects_An_Absent_Document()
+    {
+        await using var workspace = await LoadAsync();
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = solution.Projects.Single(p => p.Name == "SampleLib").AddAnalyzerReference(GeneratorReference(workspace.RootPath));
+        var generated = (await project.GetSourceGeneratedDocumentsAsync()).Single();
+        var ordinary = project.Documents.Single(d => d.Name == "EchoHolder.cs");
+
+        Assert.IsNull(ReferenceDocumentResolver.ResolveEditable(project.Solution, generated));
+        Assert.AreEqual(ordinary.Id, ReferenceDocumentResolver.ResolveEditable(project.Solution, ordinary)!.Id);
+        var absent = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            ReferenceDocumentResolver.ResolveEditable(project.Solution.RemoveDocument(ordinary.Id), ordinary));
+        Assert.IsNotInstanceOfType<PublicInvalidOperationException>(absent);
+        StringAssert.Contains(absent.Message, "EchoHolder.cs");
     }
 
     private static async Task AssertGeneratedReferenceAsync(Project project, string generatedTypeName)

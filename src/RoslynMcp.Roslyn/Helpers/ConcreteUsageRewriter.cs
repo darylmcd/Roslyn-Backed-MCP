@@ -10,7 +10,8 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <c>foreach</c>/<c>out var</c> variable or tuple element, spelled bare, qualified, <c>global::</c>-qualified or through an
 /// alias, alone or as the element of a nullable/array/<c>ref</c> type or an argument of a generic type. Positions that are
 /// not usages of the type as a type stay concrete: construction, static member access, <c>typeof</c>, casts, <c>is</c>/<c>as</c>,
-/// base lists, attributes, constraints, operator signatures and the alias target itself.
+/// base lists, attributes, constraints, operator and conversion signatures, declaration patterns (<c>is X x</c>), catch
+/// declarations and the alias target itself; the compile gate refuses any rewrite that leaves one of them mismatched.
 /// </summary>
 internal static class ConcreteUsageRewriter
 {
