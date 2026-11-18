@@ -64,19 +64,16 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         var requiredNamespaces = projector.RequiredNamespaces(
             typeSymbol.ContainingNamespace.IsGlobalNamespace ? null : typeSymbol.ContainingNamespace.ToDisplayString());
 
-        // Compute alreadyImplements BEFORE the conflict check so we can short-circuit
-        // when the target type already implements a covering interface of the same name.
-        // Bug fix (extract-interface-preview-duplicate-interface-when-already-implements):
-        // previously the document-add path and the base-list rewrite were gated
-        // independently — the document-add was unconditional, producing a duplicate
-        // IFoo.cs even when the type's base list already contained IFoo (from a
-        // sibling namespace). When alreadyImplements==true, return a no-op preview
-        // with a warning so callers see why no changes were produced.
-        var alreadyImplements = typeSymbol.AllInterfaces.Any(i =>
-            string.Equals(i.Name, interfaceName, StringComparison.Ordinal));
+        // Decide alreadyImplements BEFORE the conflict check so a type that already implements an interface of
+        // this name which covers every requested member short-circuits to a no-op preview with a warning
+        // (extract-interface-preview-duplicate-interface-when-already-implements). A same-named interface that
+        // does NOT cover the requested members is a different contract: the requested interface is generated
+        // beside it and every reference the new interface would capture is re-pinned (SiblingInterfaceRepin).
+        var sameNamed = ImplementedInterfaceContract.FindNamed(typeSymbol, interfaceName);
+        var alreadyImplements = ImplementedInterfaceContract.FindCovering(typeSymbol, sameNamed, candidateMembers) is not null;
 
-        // Short-circuit ONLY when alreadyImplements==true. Otherwise still run the
-        // conflict check so a same-name-but-different-namespace collision is reported
+        // Short-circuit ONLY when alreadyImplements==true. Otherwise run the conflict check so a collision with
+        // a type in the target namespace (including an uncovering same-named interface there) is reported
         // before we synthesize a new file.
         if (!alreadyImplements)
         {
@@ -114,20 +111,32 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             newSolution = await nullableProjection.ApplyAsync(
                 interfaceDoc, interfaceFileRoot, ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), ct).ConfigureAwait(false);
 
+            // Pin every reference the new interface would capture (the implemented sibling's and any unrelated
+            // same-named type's) to what it bound to before, then spell the base list against the generated symbol.
             // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
             // produces unrelated formatting churn. The base list is a targeted node replacement,
             // spelled after the generated symbol exists so it binds to it.
+            var repin = await SiblingInterfaceRepin.RepinAsync(
+                newSolution, interfaceDoc.Id, sourceDocument.Id, typeDecl.Span, ct).ConfigureAwait(false);
             newSolution = await GeneratedInterfaceReference.AddToBaseListAsync(
-                newSolution, sourceDocument.Id, typeDecl.Span, interfaceDoc.Id, multilineContinuation: false, ct).ConfigureAwait(false);
+                repin.Solution, sourceDocument.Id, repin.TypeMark, interfaceDoc.Id, multilineContinuation: false, ct).ConfigureAwait(false);
 
             if (replaceUsages)
             {
                 newSolution = await ReplaceConcreteUsagesAsync(
                     newSolution, sourceDocument.Project.Id, typeSymbol, interfaceDoc.Id, ct).ConfigureAwait(false);
-                // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override):
-                // refuse that preview rather than publish a token whose apply does not compile.
+            }
+
+            // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override), and
+            // re-pinning edits documents the caller did not name: refuse either preview rather than publish a token
+            // whose apply does not compile. A same-named type's presence selects the remedy that does not blame replaceUsages.
+            var sameNamedType = sameNamed.Count > 0 || repin.Repinned;
+            if (replaceUsages || sameNamedType)
+            {
                 await InterfacePreviewCompilationGate.ValidateAsync(
-                    solution, newSolution, InterfacePreviewCompilationGate.ReplaceUsagesRemedy, ct).ConfigureAwait(false);
+                    solution, newSolution,
+                    sameNamedType ? InterfacePreviewCompilationGate.SiblingRemedy : InterfacePreviewCompilationGate.ReplaceUsagesRemedy,
+                    ct).ConfigureAwait(false);
             }
         }
         else

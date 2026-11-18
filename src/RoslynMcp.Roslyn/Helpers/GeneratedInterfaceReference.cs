@@ -92,12 +92,12 @@ internal static class GeneratedInterfaceReference
     }
 
     /// <summary>
-    /// Adds the generated interface to the base list of the type declared at <paramref name="typeSpan"/> of
-    /// <paramref name="sourceDocumentId"/>, spelled so it binds at that declaration. A type that already
-    /// implements the generated symbol is left alone.
+    /// Adds the generated interface to the base list of the type marked by <paramref name="typeMark"/> in
+    /// <paramref name="sourceDocumentId"/> (see <see cref="SiblingInterfaceRepin"/>), spelled so it binds at that
+    /// declaration. A type that already implements the generated symbol is left alone. The mark is removed.
     /// </summary>
     public static async Task<Solution> AddToBaseListAsync(
-        Solution solution, DocumentId sourceDocumentId, TextSpan typeSpan, DocumentId interfaceDocumentId,
+        Solution solution, DocumentId sourceDocumentId, SyntaxAnnotation typeMark, DocumentId interfaceDocumentId,
         bool multilineContinuation, CancellationToken ct)
     {
         var generated = await ResolveGeneratedAsync(solution, interfaceDocumentId, ct).ConfigureAwait(false);
@@ -107,12 +107,12 @@ internal static class GeneratedInterfaceReference
             ?? throw InvalidOperationErrors.Internal("Source syntax is unavailable.");
         var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Source semantic model is unavailable.");
-        var declaration = root.DescendantNodes().OfType<TypeDeclarationSyntax>().Single(n => n.Span == typeSpan);
+        var declaration = root.GetAnnotatedNodes(typeMark).OfType<TypeDeclarationSyntax>().Single();
         if (model.GetDeclaredSymbol(declaration, ct) is { } symbol && symbol.Interfaces.Any(i => IsSame(i, generated)))
-            return solution;
+            return solution.WithDocumentSyntaxRoot(sourceDocumentId, root.ReplaceNode(declaration, declaration.WithoutAnnotations(typeMark)));
 
         var reference = Create(generated, model, declaration.SpanStart);
         var updated = InterfaceBaseTypeWriter.AddBaseType(declaration, reference, multilineContinuation);
-        return solution.WithDocumentSyntaxRoot(sourceDocumentId, root.ReplaceNode(declaration, updated));
+        return solution.WithDocumentSyntaxRoot(sourceDocumentId, root.ReplaceNode(declaration, updated.WithoutAnnotations(typeMark)));
     }
 }

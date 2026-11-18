@@ -13,6 +13,9 @@ internal static class InterfacePreviewCompilationGate
     public const string ReplaceUsagesRemedy =
         "Preview with replaceUsages=false, or include the members those usages call in memberNames, before previewing again.";
 
+    /// <summary>Remedy for the same-project route when an implemented interface of the requested name already exists and its references were re-pinned.</summary>
+    public const string SiblingRemedy = "Resolve the reported errors, or choose a different interface name, before previewing again.";
+
     public static async Task ValidateAsync(Solution baseline, Solution pending, string remedy, CancellationToken ct)
     {
         var changed = pending.GetChanges(baseline).GetProjectChanges()

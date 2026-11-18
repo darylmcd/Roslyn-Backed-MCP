@@ -711,8 +711,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         solution = await nullableProjection.ApplyAsync(solution.GetDocument(interfaceDocumentId)
             ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot,
             ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), ct).ConfigureAwait(false);
+        var repin = await SiblingInterfaceRepin.RepinAsync(
+            solution, interfaceDocumentId, sourceDocument.Id, typeDeclaration.Span, ct).ConfigureAwait(false);
         return await GeneratedInterfaceReference.AddToBaseListAsync(
-            solution, sourceDocument.Id, typeDeclaration.Span, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
+            repin.Solution, sourceDocument.Id, repin.TypeMark, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
     }
 
 }
