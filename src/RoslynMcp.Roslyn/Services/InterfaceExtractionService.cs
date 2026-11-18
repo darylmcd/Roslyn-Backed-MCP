@@ -34,8 +34,15 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
     }
 
     /// <summary>
+    /// Test seam: the post-generation compilation read by <c>replaceUsages</c>. Production always reads the forked
+    /// project's own compilation; a test substitutes an unavailable or unrelated one to prove the refusals.
+    /// </summary>
+    internal Func<Project, CancellationToken, Task<Compilation?>> ReplacementCompilationAsync { get; set; } =
+        static (project, ct) => project.GetCompilationAsync(ct);
+
+    /// <summary>
     /// Previews extracting an interface from the specified type, optionally replacing usages of
-    /// the concrete type with the new interface in parameter and field declarations.
+    /// the concrete type with the new interface in declaration positions (parameters, fields, locals, return types, generic arguments).
     /// </summary>
     public async Task<RefactoringPreviewDto> PreviewExtractInterfaceAsync(
         string workspaceId, string filePath, string typeName, string interfaceName,
@@ -117,6 +124,10 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             {
                 newSolution = await ReplaceConcreteUsagesAsync(
                     newSolution, sourceDocument.Project.Id, typeSymbol, interfaceDoc.Id, ct).ConfigureAwait(false);
+                // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override):
+                // refuse that preview rather than publish a token whose apply does not compile.
+                await InterfacePreviewCompilationGate.ValidateAsync(
+                    solution, newSolution, InterfacePreviewCompilationGate.ReplaceUsagesRemedy, ct).ConfigureAwait(false);
             }
         }
         else
@@ -272,18 +283,24 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
     /// synthesized interface document — or pollute the shared cache with an in-memory-only fork.
     /// The raw <c>project.GetCompilationAsync</c> below is the correct read here.
     /// </remarks>
-    private static async Task<Solution> ReplaceConcreteUsagesAsync(
+    private async Task<Solution> ReplaceConcreteUsagesAsync(
         Solution solution, ProjectId projectId, INamedTypeSymbol typeSymbol,
         DocumentId interfaceDocumentId, CancellationToken ct)
     {
-        var compilation = await solution.GetProject(projectId)!
-            .GetCompilationAsync(ct).ConfigureAwait(false);
-        if (compilation is null) return solution;
+        // The caller already forked the generated document and base list into `solution`. Returning it unchanged when a
+        // requested replacement cannot run would publish a preview that silently lacks it, so each gap refuses instead.
+        var project = solution.GetProject(projectId)!;
+        var compilation = await ReplacementCompilationAsync(project, ct).ConfigureAwait(false)
+            ?? throw new PublicInvalidOperationException(
+                $"replaceUsages could not compile project '{project.Name}' after generating the interface, so its usages cannot be rewritten; " +
+                "no preview was produced. Retry after reloading the workspace, or preview with replaceUsages=false.");
 
         // A symbol-identity lookup, not `GetTypeByMetadataName(ToDisplayString())`: the display string escapes keyword
         // namespace segments (`@namespace.Type`) and nested/generic names, which no metadata lookup finds.
-        var updatedTypeSymbol = SymbolFinder.FindSimilarSymbols(typeSymbol, compilation, ct).FirstOrDefault();
-        if (updatedTypeSymbol is null) return solution;
+        var updatedTypeSymbol = SymbolFinder.FindSimilarSymbols(typeSymbol, compilation, ct).FirstOrDefault()
+            ?? throw new PublicInvalidOperationException(
+                $"replaceUsages could not find type '{typeSymbol.Name}' in the generated solution, so its usages cannot be rewritten; " +
+                "no preview was produced. Preview with replaceUsages=false.");
 
         var generated = await GeneratedInterfaceReference.ResolveGeneratedAsync(solution, interfaceDocumentId, ct).ConfigureAwait(false);
         var refs = await SymbolFinder.FindReferencesAsync(updatedTypeSymbol, solution, ct).ConfigureAwait(false);
@@ -292,21 +309,19 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         // them together keeps each edit (re-reading the document per location would drop all but the last).
         foreach (var documentLocations in refs.SelectMany(r => r.Locations).GroupBy(l => l.Document.Id))
         {
-            var document = solution.GetDocument(documentLocations.Key);
-            var root = document is null ? null : await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            var model = document is null ? null : await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-            if (document is null || root is null || model is null) continue;
+            // A source-generated document is not editable: the generator owns its text, so its usages stay as emitted.
+            var document = ReferenceDocumentResolver.ResolveEditable(solution, documentLocations.First().Document);
+            if (document is null) continue;
 
-            // Only a bare identifier directly under a parameter or field declaration is rewritten; a
-            // qualified or aliased spelling of the concrete type is left typed at the concrete class.
-            var targets = documentLocations
-                .Select(l => root.FindNode(l.Location.SourceSpan))
-                .OfType<IdentifierNameSyntax>()
-                .Where(identifier => identifier.Parent is ParameterSyntax ||
-                    (identifier.Parent is VariableDeclarationSyntax { Parent: FieldDeclarationSyntax }))
-                .Distinct()
-                .ToArray();
-            if (targets.Length == 0) continue;
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                ?? throw InvalidOperationErrors.Internal($"Syntax for reference document '{document.Name}' is unavailable.");
+            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                ?? throw InvalidOperationErrors.Internal($"Semantic model for reference document '{document.Name}' is unavailable.");
+
+            // Every spelling that types a declaration (bare, qualified, aliased, return type, local, generic argument, ...)
+            // is retyped; positions that are not usages of the type (construction, static access, typeof, casts) stay concrete.
+            var targets = ConcreteUsageRewriter.FindReplaceableSpellings(root, documentLocations.Select(l => l.Location.SourceSpan));
+            if (targets.Count == 0) continue;
 
             var updatedRoot = root.ReplaceNodes(
                 targets,

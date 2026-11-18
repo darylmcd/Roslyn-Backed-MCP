@@ -1242,7 +1242,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService, IDisposable
         {
             if (current is BaseNamespaceDeclarationSyntax ns)
             {
-                parts.Add(ns.Name.ToString());
+                parts.Add(NamespaceNameIdentity.Of(ns.Name));
             }
         }
 

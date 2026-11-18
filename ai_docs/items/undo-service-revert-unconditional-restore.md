@@ -4,8 +4,8 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/UndoService.cs:368-415 (RevertFromFileSnapshotsAsync)`
-- `src/RoslynMcp.Roslyn/Services/UndoService.cs:605-624`
+- `src/RoslynMcp.Roslyn/Services/UndoService.cs:573` (RevertFromFileSnapshotsAsync; prior anchors :368-415 and :605-624 were stale after PRs 2140/2141)
+- `src/RoslynMcp.Roslyn/Services/UndoService.cs:666` (RevertFromSolutionSnapshotAsync)
 - `tests/RoslynMcp.Tests/UndoFileOperationsTests.cs`
 
 ## Acceptance
@@ -17,3 +17,7 @@
 ## Evidence
 
 - Failed-persistence compensation now preserves externally changed bytes (PR 1963). Explicit user undo was left unchanged because its policy differs; it needs its own decision.
+
+## Notes
+
+Remediation run 2026-11-18 (PR 2140 attempt): not implemented. Needs operator decision: refuse/report conflict when a file no longer matches the applied post-state, or document last-writer-wins. Recommended: enforce, reusing the persistence ownership ledger semantics. A contingent plan was drafted in the undo-a session (D:/Roslyn-Backed-MCP/.worktrees/undo-a.report.md only records that the row was left untouched pending this decision). Note PR 2140 now scopes solution-snapshot revert to the apply own documents, which narrows but does not remove the clobber of same-file external edits.

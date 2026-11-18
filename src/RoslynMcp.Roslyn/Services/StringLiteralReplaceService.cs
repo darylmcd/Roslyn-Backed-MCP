@@ -153,7 +153,7 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
     {
         foreach (var u in root.Usings)
         {
-            if (u.Name is not null && string.Equals(u.Name.ToString(), ns, StringComparison.Ordinal))
+            if (NamespaceNameIdentity.ImportsNamespace(u, NamespaceNameIdentity.Of(ns)))
                 return true;
         }
         return false;
@@ -165,7 +165,7 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
         {
             if (!HasUsing(root, ns))
             {
-                var usingDir = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns))
+                var usingDir = SyntaxFactory.UsingDirective(ReceivingNamespaceFactory.CreateName(ns))
                     .NormalizeWhitespace()
                     .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
                 root = root.AddUsings(usingDir);

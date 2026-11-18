@@ -192,4 +192,45 @@ public class UsingDirectiveSynthesizerTests
             new[] { "System.Z", "Alpha.X", "SystemTools.X" },
             result.Select(u => u.Name!.ToString()).ToArray());
     }
+
+    // relocation-using-semantic-identity copy site: plain source usings were matched to the
+    // required namespaces by their syntax text, so an escaped or interior-trivia spelling was
+    // dropped as "not required" and a second plain using was synthesized for it.
+    [TestMethod]
+    [DataRow("using @System.Linq;\n")]
+    [DataRow("using System . Linq ;\n")]
+    public void BuildUsingDirectives_KeepsARequiredPlainUsingWrittenInAnEquivalentSpelling(string source)
+    {
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            ParseUsings(source), ["System.Linq"], preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [],
+            sourceSemanticModel: null, ct: CancellationToken.None);
+
+        Assert.AreEqual(1, result.Count, string.Join("; ", result.Select(u => u.ToString())));
+        Assert.AreEqual("System.Linq", NamespaceNameIdentity.Of(result[0].Name));
+        Assert.AreEqual(ParseUsings(source)[0].Name!.ToString(), result[0].Name!.ToString(),
+            "The required source directive is kept, not dropped and re-synthesized.");
+    }
+
+    // Same copy site, global path: the global directive's text and the required namespace string
+    // were different keys, so the required namespace was synthesized again beside the global one.
+    [TestMethod]
+    public void BuildUsingDirectives_GlobalPlainWrittenInAnEquivalentSpellingSatisfiesRequiredNamespace()
+    {
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            ParseUsings("global using @System.Globalization;\n"), ["System.Globalization"], preserveGlobalUsings: true,
+            destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
+
+        Assert.AreEqual(1, result.Count, string.Join("; ", result.Select(u => u.ToString())));
+        Assert.IsTrue(IsGlobal(result[0]));
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_DestinationGlobalPlainInAnEquivalentSpellingNeedsNoLocalCopy()
+    {
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            ParseUsings(""), ["System.Globalization"], preserveGlobalUsings: false,
+            destinationGlobalPlainNamespaces: ["@System.Globalization"], sourceSemanticModel: null, ct: CancellationToken.None);
+
+        Assert.AreEqual(0, result.Count);
+    }
 }

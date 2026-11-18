@@ -6,7 +6,14 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>Rejects new compiler errors in the final solution of an interface preview.</summary>
 internal static class InterfacePreviewCompilationGate
 {
-    public static async Task ValidateAsync(Solution baseline, Solution pending, CancellationToken ct)
+    /// <summary>Remedy for routes that generate the interface into another project.</summary>
+    public const string ReceivingProjectRemedy = "Resolve the signature or choose a compatible receiving project before previewing again.";
+
+    /// <summary>Remedy for the same-project route when <c>replaceUsages</c> retyped a consumer into an error.</summary>
+    public const string ReplaceUsagesRemedy =
+        "Preview with replaceUsages=false, or include the members those usages call in memberNames, before previewing again.";
+
+    public static async Task ValidateAsync(Solution baseline, Solution pending, string remedy, CancellationToken ct)
     {
         var changed = pending.GetChanges(baseline).GetProjectChanges()
             .Select(change => change.NewProject.Id).ToHashSet();
@@ -19,7 +26,7 @@ internal static class InterfacePreviewCompilationGate
                 string.Join("; ", introduced.GroupBy(item => item.ProjectName, StringComparer.Ordinal)
                     .OrderBy(group => group.Key, StringComparer.Ordinal)
                     .Select(group => $"{group.Key} ({InterfaceNullableProjection.FormatIds(group.Select(item => item.Diagnostic))})")) +
-                ". Resolve the signature or choose a compatible receiving project before previewing again.");
+                $". {remedy}");
     }
 
     private static string LocationKey(Solution solution, Location location)
