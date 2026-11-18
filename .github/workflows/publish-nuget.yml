@@ -49,7 +49,9 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       # Fails in seconds when the pushed tag / published release name disagrees with the
       # canonical Directory.Build.props <Version>. Must precede the build so a mistag never

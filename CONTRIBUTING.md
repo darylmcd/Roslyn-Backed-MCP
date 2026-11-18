@@ -4,7 +4,7 @@ Thank you for your interest in contributing. This guide covers the essentials.
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) — `10.0.400` per [`global.json`](global.json) (`rollForward` is `latestFeature`; any compatible later 10.0.x feature band works)
+- [.NET 11 SDK](https://dotnet.microsoft.com/download) — `11.0.100` per [`global.json`](global.json) (`rollForward` is `latestFeature`; any later 11.0.x feature band works), plus the .NET 10 runtime, because the projects still target `net10.0`
 - Git
 - [PowerShell 7+](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (`pwsh`) — required for the `eng/*.ps1` gates such as `verify-release.ps1`
 - [`just`](https://github.com/casey/just) — optional, for the local CI mirror (`just ci`)

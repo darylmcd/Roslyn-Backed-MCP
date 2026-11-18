@@ -18,7 +18,7 @@ Jobs of `ci.yml`:
 |---|---|---:|---|
 | `route` | `ubuntu-latest` | 3 | Always |
 | `validate-leg (<name>)` matrix | Per leg (`runs_on`) | Per leg (`timeout_minutes`): Windows 45; Linux code 45 (TEMPORARY, restore 30 via row `ci-restore-linux-leg-timeout-30-after-rebalance`); docs leg 30; dispatch/schedule leg 90 | Not on the evidence route |
-| `sdk-floor (10.0.400)` | `ubuntu-latest` | 15 | Dispatch, schedule, merge group, code PRs (not docs or evidence PRs) |
+| `sdk-floor (11.0.100)` | `ubuntu-latest` | 15 | Dispatch, schedule, merge group, code PRs (not docs or evidence PRs) |
 | `quality` | `ubuntu-latest` | 30 | Dispatch, schedule, merge group, code PRs |
 | `evidence-lint` | `ubuntu-latest` | 5 | Evidence route only |
 | `validate-gate` | `ubuntu-latest` | 5 | Always (`if: always()`) |

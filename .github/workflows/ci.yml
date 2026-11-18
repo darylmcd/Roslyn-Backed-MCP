@@ -155,7 +155,9 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Restore NuGet packages
         id: nuget_cache
@@ -337,7 +339,9 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Restore NuGet packages
         id: nuget_cache
@@ -388,7 +392,7 @@ jobs:
   # exercises native fork admission in the actual BuildHost;
   # repeating the complete suite here would add cost without another test shape.
   sdk_floor:
-    name: sdk-floor (10.0.400)
+    name: sdk-floor (11.0.100)
     needs: route
     if: github.event_name != 'pull_request' || needs.route.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
@@ -409,17 +413,21 @@ jobs:
           "DOTNET_INSTALL_DIR=$($env:RUNNER_TEMP)/dotnet-floor" >> $env:GITHUB_ENV
           "DOTNET_MULTILEVEL_LOOKUP=0" >> $env:GITHUB_ENV
 
+      # The 10.0.x entry supplies the net10.0 runtime the built tests execute on; the
+      # exact-selection step below proves the 11.0.100 SDK is the one that builds.
       - name: Set up exact floor SDK
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
-          dotnet-version: 10.0.400
+          dotnet-version: |
+            10.0.x
+            11.0.100
 
       - name: Require exact floor selection
         shell: pwsh
         run: |
           $actual = (dotnet --version).Trim()
-          if ($actual -cne '10.0.400') {
-            throw "Expected exact SDK floor 10.0.400 but dotnet selected '$actual'."
+          if ($actual -cne '11.0.100') {
+            throw "Expected exact SDK floor 11.0.100 but dotnet selected '$actual'."
           }
 
       - name: Restore and build at the SDK floor

@@ -36,3 +36,4 @@ Numbering runs 0001 to 0038 with 30 ADR files. Gaps 0014, 0017 and 0020 to 0025 
 | [0036](0036-cyclic-interface-signature-refusal.md) | Refuse interface signature dependencies that would create a project-reference cycle | Accepted 2026-11-08 |
 | [0037](0037-interpolated-handler-contract-projection.md) | Preserve handler argument attributes only when source and contract calls bind the same constructors | Accepted 2026-11-08 |
 | [0038](0038-interface-preview-compilation.md) | Reject new compiler errors in final interface previews; compose extract-and-wire on one solution | Accepted 2026-11-08 |
+| [0039](0039-dotnet-11-sdk-floor.md) | Raise the source-build SDK floor to 11.0.100 for Roslyn 5.12 and MSBuild 18.x; keep `net10.0` | Accepted 2026-11-18 |

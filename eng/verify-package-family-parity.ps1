@@ -37,7 +37,8 @@ $families = [ordered]@{
         'Microsoft.Build',
         'Microsoft.Build.Framework',
         'Microsoft.Build.Tasks.Core',
-        'Microsoft.Build.Utilities.Core'
+        'Microsoft.Build.Utilities.Core',
+        'Microsoft.NET.StringTools'
     )
     'Roslyn API family' = @(
         'Microsoft.CodeAnalysis.CSharp',

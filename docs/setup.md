@@ -4,7 +4,7 @@
 
 | Requirement | Notes |
 |---------------|--------|
-| [.NET 10 SDK](https://dotnet.microsoft.com/download) | Repository build floor: `10.0.400` in `global.json` (rollForward `latestFeature`); CI also verifies that exact floor. |
+| [.NET 11 SDK](https://dotnet.microsoft.com/download) and .NET 10 runtime | Repository build floor: `11.0.100` in `global.json` (rollForward `latestFeature`); CI also verifies that exact floor. The projects target `net10.0`, so building from source needs the .NET 10 runtime as well. Running the published package needs only .NET 10. |
 | Git | For clone and CI artifact workflows. |
 | [PowerShell 7+](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (`pwsh`) | Required for the `eng/*.ps1` gates (`verify-release.ps1`, `verify-ai-docs.ps1`) and the plugin refresh script. |
 | [`just`](https://github.com/casey/just) (optional) | Task runner for the local CI mirror (`just ci`). |

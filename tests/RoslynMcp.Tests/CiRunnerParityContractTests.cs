@@ -205,15 +205,15 @@ public sealed class CiRunnerParityContractTests
         using var globalJson = System.Text.Json.JsonDocument.Parse(LoadRepositoryFile("global.json"));
         var declaredFloor = globalJson.RootElement.GetProperty("sdk").GetProperty("version").GetString();
 
-        Assert.AreEqual("10.0.400", declaredFloor);
-        StringAssert.Contains(floorJob, "name: sdk-floor (10.0.400)");
+        Assert.AreEqual("11.0.100", declaredFloor);
+        StringAssert.Contains(floorJob, "name: sdk-floor (11.0.100)");
         StringAssert.Contains(floorJob, "\"DOTNET_INSTALL_DIR=$($env:RUNNER_TEMP)/dotnet-floor\" >> $env:GITHUB_ENV");
         StringAssert.Contains(floorJob, "\"DOTNET_MULTILEVEL_LOOKUP=0\" >> $env:GITHUB_ENV");
-        StringAssert.Contains(floorJob, "dotnet-version: 10.0.400");
+        StringAssert.Contains(floorJob, "dotnet-version: |\n            10.0.x\n            11.0.100\n");
         StringAssert.Contains(
             floorJob,
             "if: github.event_name != 'pull_request' || needs.route.outputs.docs_only != 'true'");
-        StringAssert.Contains(floorJob, "if ($actual -cne '10.0.400')");
+        StringAssert.Contains(floorJob, "if ($actual -cne '11.0.100')");
         StringAssert.Contains(floorJob, "dotnet restore RoslynMcp.slnx --nologo");
         StringAssert.Contains(floorJob, "dotnet build RoslynMcp.slnx -c Release --no-restore --nologo");
         StringAssert.Contains(
@@ -439,7 +439,7 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(GetNamedStepBlock(quality, "Check out repository"), "fetch-depth: 0");
         var setup = GetNamedStepBlock(quality, "Set up .NET");
         StringAssert.Contains(setup, "actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73");
-        StringAssert.Contains(setup, "dotnet-version: 10.0.x");
+        StringAssert.Contains(setup, "dotnet-version: |\n            10.0.x\n            11.0.x\n");
 
         const string auditCall = "./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx";
         const string formatCall = "./eng/verify-changed-format.ps1";
