@@ -42,7 +42,7 @@ internal static class SiblingInterfaceRepin
         // bindings share, so only the generated document can move a binding. Same texts, same spans: no span ever crosses solutions.
         var without = marked.RemoveDocument(interfaceDocumentId);
         var name = generated.Name;
-        var candidates = new List<(Document Document, List<(TextSpan Span, string Text)> Edits)>();
+        var candidates = new List<(Document Document, List<(TextSpan Span, string Text, INamedTypeSymbol Original)> Edits)>();
         foreach (var project in marked.Projects)
         {
             foreach (var document in project.Documents.Where(candidate => candidate.Id != interfaceDocumentId))
@@ -60,7 +60,7 @@ internal static class SiblingInterfaceRepin
                 var rebound = FindRebound(root, after, before, generated, name, ct);
                 if (rebound.Count == 0) continue;
                 candidates.Add((document, rebound
-                    .Select(item => (item.Node.Span, GeneratedInterfaceReference.Create(item.Original!, after, item.Node.SpanStart).ToString()))
+                    .Select(item => (item.Node.Span, GeneratedInterfaceReference.Create(item.Original!, after, item.Node.SpanStart).ToString(), item.Original!))
                     .ToList()));
             }
 
@@ -68,21 +68,41 @@ internal static class SiblingInterfaceRepin
                 await RefuseReboundGeneratedReferencesAsync(project, without.GetProject(project.Id)!, generated, name, ct).ConfigureAwait(false);
         }
 
-        // One physical file linked into several projects is one edit: every copy with the same text gets the union of the
-        // spellings chosen for it (solution order wins a span two copies spell differently), so the copies never diverge and
-        // no copy is written last with a different binding. The compile gate then proves each project accepts that spelling.
+        // One physical file linked into several projects is one edit: every copy gets the union of the spellings chosen for
+        // it, so the copies never diverge and no copy is written last with a different binding. That is only sound when the
+        // copies agree: copies with different text, a span spelled two ways, or a span that means a different type in another
+        // copy refuse the preview rather than write one project's meaning into another's.
         var edits = new Dictionary<DocumentId, Dictionary<TextSpan, string>>();
         foreach (var (document, documentEdits) in candidates)
         {
-            foreach (var copy in await LinkedCopiesAsync(marked, document, ct).ConfigureAwait(false))
+            var (copies, divergent) = await LinkedCopiesAsync(marked, document, ct).ConfigureAwait(false);
+            if (divergent.Count > 0)
             {
-                // The source type's own document is edited again (its base list) after this step, in one copy only; a
-                // route that reconciles linked copies (cross-project) copies that final text to the others, so an edit
+                throw new PublicInvalidOperationException(
+                    $"Linked C# documents at '{document.FilePath}' have different content in different projects, so the preview cannot " +
+                    $"re-pin the references to '{name}' in that one file consistently; reload the workspace and retry.");
+            }
+
+            foreach (var copy in copies)
+            {
+                // The source type's own document is edited again (its base list) after this step, in one copy only; the
+                // linked-document reconciliation that follows on every route copies that final text to the others, so an edit
                 // made here to a second copy would make the copies diverge there.
                 if (copy.Id != sourceDocumentId && !string.IsNullOrWhiteSpace(sourceDocument.FilePath) &&
                     FileSystemPath.Comparer.Equals(copy.FilePath, sourceDocument.FilePath)) continue;
                 if (!edits.TryGetValue(copy.Id, out var spans)) edits[copy.Id] = spans = [];
-                foreach (var (span, text) in documentEdits) spans.TryAdd(span, text);
+                foreach (var (span, text, original) in documentEdits)
+                {
+                    if (spans.TryGetValue(span, out var existing))
+                    {
+                        if (existing != text) throw Disagreement(document, name, span);
+                        continue;
+                    }
+
+                    if (copy.Id != document.Id && !await BindsToAsync(without, copy, span, original, ct).ConfigureAwait(false))
+                        throw Disagreement(document, name, span);
+                    spans[span] = text;
+                }
             }
         }
 
@@ -100,20 +120,46 @@ internal static class SiblingInterfaceRepin
         return new Result(result, typeMark, edits.Count > 0);
     }
 
-    /// <summary>The documents of <paramref name="solution"/> that are the same physical file with the same text (linked copies), including <paramref name="document"/>.</summary>
-    private static async Task<List<Document>> LinkedCopiesAsync(Solution solution, Document document, CancellationToken ct)
+    /// <summary>
+    /// The documents of <paramref name="solution"/> that are the same physical file as <paramref name="document"/> (linked copies):
+    /// those with the same text (including <paramref name="document"/>), and those whose text differs.
+    /// </summary>
+    private static async Task<(List<Document> Same, List<Document> Divergent)> LinkedCopiesAsync(
+        Solution solution, Document document, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(document.FilePath)) return [document];
+        if (string.IsNullOrWhiteSpace(document.FilePath)) return ([document], []);
         var checksum = (await document.GetTextAsync(ct).ConfigureAwait(false)).GetChecksum();
-        var copies = new List<Document>();
+        var same = new List<Document>();
+        var divergent = new List<Document>();
         foreach (var candidate in solution.Projects.SelectMany(project => project.Documents))
         {
             if (!FileSystemPath.Comparer.Equals(candidate.FilePath, document.FilePath)) continue;
-            if ((await candidate.GetTextAsync(ct).ConfigureAwait(false)).GetChecksum().SequenceEqual(checksum)) copies.Add(candidate);
+            if ((await candidate.GetTextAsync(ct).ConfigureAwait(false)).GetChecksum().SequenceEqual(checksum)) same.Add(candidate);
+            else divergent.Add(candidate);
         }
 
-        return copies;
+        return (same, divergent);
     }
+
+    /// <summary>Whether, in the baseline fork, the name at <paramref name="span"/> of <paramref name="copy"/> means <paramref name="original"/>.</summary>
+    private static async Task<bool> BindsToAsync(Solution without, Document copy, TextSpan span, INamedTypeSymbol original, CancellationToken ct)
+    {
+        var baseline = without.GetDocument(copy.Id)
+            ?? throw InvalidOperationErrors.Internal($"Document '{copy.Name}' is missing from the baseline fork.");
+        var root = await baseline.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+            ?? throw InvalidOperationErrors.Internal($"Syntax for document '{copy.Name}' is unavailable.");
+        var model = await baseline.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw InvalidOperationErrors.Internal($"Semantic model for document '{copy.Name}' is unavailable.");
+        var node = root.DescendantNodes().OfType<IdentifierNameSyntax>().FirstOrDefault(candidate => candidate.Span == span);
+        // A linked project compiles its own copy of the declaration, so the symbols differ by assembly: the same
+        // fully-qualified type is the same meaning; a different type, or none, is a disagreement.
+        return node is not null && model.GetSymbolInfo(node, ct).Symbol is INamedTypeSymbol bound &&
+               bound.ToDisplayString() == original.ToDisplayString();
+    }
+
+    private static PublicInvalidOperationException Disagreement(Document document, string name, TextSpan span) =>
+        new($"Linked C# documents at '{document.FilePath}' would pin the reference to '{name}' at position {span.Start} to different types " +
+            "in different projects, so the preview cannot write one spelling into every project; choose a different interface name.");
 
     private static async Task RefuseReboundGeneratedReferencesAsync(
         Project project, Project without, INamedTypeSymbol generated, string name, CancellationToken ct)

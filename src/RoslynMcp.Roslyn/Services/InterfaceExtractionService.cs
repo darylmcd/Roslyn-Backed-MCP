@@ -127,6 +127,11 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                     newSolution, sourceDocument.Project.Id, typeSymbol, interfaceDoc.Id, ct).ConfigureAwait(false);
             }
 
+            // The source type's file may be linked into other projects: copy its final text to those copies, so the pending
+            // solution matches what the apply writes to disk and the gate below sees every project that compiles that file.
+            newSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(
+                solution, newSolution, sourceDocument.Id, sourceDocument.Project.Id, ct).ConfigureAwait(false);
+
             // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override), and
             // re-pinning edits documents the caller did not name: refuse either preview rather than publish a token
             // whose apply does not compile. The remedy names every cause that could apply to this request.

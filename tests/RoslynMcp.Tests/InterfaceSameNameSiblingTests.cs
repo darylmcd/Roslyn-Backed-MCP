@@ -324,14 +324,18 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
     [TestMethod]
     [DataRow(0)]
     [DataRow(5)]
-    [DataRow(17)]
+    [DataRow(18)] // ends exactly at the window edge: not a straddle
+    [DataRow(19)] // 30-char window: every start from 19 to 29 puts the 12-char name across the edge
+    [DataRow(24)]
+    [DataRow(29)]
     public void A_Name_Straddling_Two_Scan_Windows_Is_Found_And_An_Absent_One_Is_Not(int leading)
     {
+        const int chunk = 30; // larger than twice the 12-char name, so the window is exactly this size
         var text = Microsoft.CodeAnalysis.Text.SourceText.From(new string('x', leading) + "IItemService" + new string('y', 9));
 
-        Assert.IsTrue(SiblingInterfaceRepin.Mentions(text, "IItemService", 12));
-        Assert.IsFalse(SiblingInterfaceRepin.Mentions(text, "IOtherService", 12));
-        Assert.IsFalse(SiblingInterfaceRepin.Mentions(Microsoft.CodeAnalysis.Text.SourceText.From(string.Empty), "IItemService", 12));
+        Assert.IsTrue(SiblingInterfaceRepin.Mentions(text, "IItemService", chunk));
+        Assert.IsFalse(SiblingInterfaceRepin.Mentions(text, "IOtherService", chunk));
+        Assert.IsFalse(SiblingInterfaceRepin.Mentions(Microsoft.CodeAnalysis.Text.SourceText.From(string.Empty), "IItemService", chunk));
     }
 
     [TestMethod]
@@ -419,6 +423,126 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
             CollectionAssert.AreEqual(new[] { "Contracts.IItemService", "SampleLib.Legacy.IItemService" },
                 compilation.GetTypeByMetadataName("SampleLib.ItemService")!.AllInterfaces.Select(i => i.ToDisplayString()).Order(StringComparer.Ordinal).ToArray(), project);
         }
+    }
+
+    [TestMethod]
+    public async Task Linked_Copies_That_Bind_The_Name_To_Different_Types_Refuse_The_Preview()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, SiblingFixture);
+        AddLinkedProject(workspace, "Linked", "../SampleLib/Holder.cs");
+        // In Linked, the file's bare name means an unrelated global-using type, not the sibling.
+        await File.WriteAllTextAsync(workspace.GetPath("Linked", "Local.cs"),
+            "global using Other;\nnamespace Other { public interface IItemService { } }\nnamespace SampleLib.Contracts { public sealed class Marker { } }\n");
+        await workspace.LoadAsync(CancellationToken.None);
+        var files = Snapshot(workspace.RootPath);
+
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false));
+
+        StringAssert.Contains(refusal.Message, "to different types in different projects");
+        StringAssert.Contains(refusal.Message, "Holder.cs");
+        AssertSnapshot(files);
+    }
+
+    [TestMethod]
+    public async Task Linked_Copies_With_Different_Text_Refuse_The_Preview()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, SiblingFixture);
+        AddLinkedProject(workspace, "Linked", "../SampleLib/Holder.cs", "../SampleLib/Contracts/IItemService.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+        // The workspace holds the two copies of the one file with different text (an unreloaded edit in one project).
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var variant = solution.Projects.Single(p => p.Name == "Linked").Documents.Single(d => d.Name == "LinkedHolder.cs");
+        solution = solution.WithDocumentText(variant.Id, Microsoft.CodeAnalysis.Text.SourceText.From(
+            (await variant.GetTextAsync()).ToString() + "// stale copy\n"));
+        var manager = new FixedSolutionWorkspace(WorkspaceManager, solution);
+        var store = new TrackingPreviewStore(new PreviewStore());
+        using var cache = new CompilationCache(manager);
+        var service = new InterfaceExtractionService(manager, store, cache, NullLogger<InterfaceExtractionService>.Instance);
+        var files = Snapshot(workspace.RootPath);
+
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            service.PreviewExtractInterfaceAsync(workspace.WorkspaceId, workspace.GetPath("SampleLib", "ItemService.cs"),
+                "ItemService", "IItemService", null, replaceUsages: false, CancellationToken.None));
+
+        StringAssert.Contains(refusal.Message, "different content in different projects");
+        Assert.AreEqual(0, store.GetRedeemableTokens(workspace.WorkspaceId).Count);
+        AssertSnapshot(files);
+    }
+
+    [TestMethod]
+    public async Task Standalone_Route_Edits_Every_Linked_Copy_Of_The_Source_Type_And_Applies()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = await PrepareInterfaceRouteFixtureAsync(workspace, "ItemService.cs",
+            "using Contracts;\n\nnamespace SampleLib;\n\npublic class ItemService : IItemService\n{\n    public int Compute() => 1;\n\n    public int Extra() => 2;\n}\n",
+            "Uses.cs", "namespace Consumer;\n\npublic class Uses\n{\n}\n",
+            extraSources: new Dictionary<string, string>
+            {
+                ["Contracts/IItemService.cs"] = "namespace Contracts;\n\npublic interface IItemService\n{\n    int Compute();\n}\n",
+            },
+            libReferencesContracts: true);
+        AddLinkedProject(workspace, "Linked", "../SampleLib/ItemService.cs");
+        var linkedProject = workspace.GetPath("Linked", "Linked.csproj");
+        var xml = System.Xml.Linq.XDocument.Load(linkedProject);
+        xml.Root!.Add(new System.Xml.Linq.XElement("ItemGroup", new System.Xml.Linq.XElement("ProjectReference",
+            new System.Xml.Linq.XAttribute("Include", "../Contracts/Contracts.csproj"))));
+        xml.Save(linkedProject);
+        await workspace.ReloadAsync();
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+
+        var preview = await ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false, sourcePath);
+
+        var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var copies = pending.Projects.SelectMany(p => p.Documents).Where(d => d.Name is "ItemService.cs" or "LinkedItemService.cs").ToArray();
+        Assert.AreEqual(2, copies.Length, "the source type is compiled by SampleLib and by Linked");
+        var texts = await Task.WhenAll(copies.Select(async d => (await d.GetTextAsync()).ToString()));
+        Assert.AreEqual(1, texts.Distinct().Count(), "pending must match what apply writes to the one physical file");
+        StringAssert.Contains(texts[0], ", IItemService");
+        await AssertCompilesAsync(pending);
+
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "extract_interface_apply", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        var live = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        await AssertCompilesAsync(live);
+        var linkedType = (await CompileAsync(live, "Linked")).GetTypeByMetadataName("SampleLib.ItemService")!;
+        CollectionAssert.Contains(linkedType.AllInterfaces.Select(i => i.ToDisplayString()).ToArray(), "SampleLib.IItemService");
+    }
+
+    [TestMethod]
+    public async Task A_Sibling_Failure_Without_ReplaceUsages_Does_Not_Blame_ReplaceUsages()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, SiblingFixture.Take(2).Append(("SampleLib/ExtUser.cs", """
+            extern alias ext;
+            using ext::Shared;
+
+            namespace SampleLib;
+
+            public class ExtUser
+            {
+                public IItemService Item = default!;
+            }
+            """)));
+        // `Shared` is reachable only through the `ext` alias, so a repaired reference cannot spell it from anywhere.
+        AddProjectToCopiedSolution(workspace.RootPath, "Shared", "net10.0");
+        await File.WriteAllTextAsync(workspace.GetPath("Shared", "IItemService.cs"), "namespace Shared;\n\npublic interface IItemService\n{\n}\n");
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var projectXml = System.Xml.Linq.XDocument.Load(projectPath);
+        projectXml.Root!.Add(new System.Xml.Linq.XElement("ItemGroup", new System.Xml.Linq.XElement("ProjectReference",
+            new System.Xml.Linq.XAttribute("Include", "../Shared/Shared.csproj"), new System.Xml.Linq.XElement("Aliases", "ext"))));
+        projectXml.Save(projectPath);
+        await workspace.LoadAsync(CancellationToken.None);
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false));
+
+        StringAssert.Contains(refusal.Message, "The generated interface introduces compiler errors");
+        StringAssert.Contains(refusal.Message, InterfacePreviewCompilationGate.SiblingRemedy);
+        Assert.IsFalse(refusal.Message.Contains("replaceUsages", StringComparison.Ordinal), refusal.Message);
     }
 
     private static async Task WriteAsync(IsolatedWorkspaceScope workspace, IEnumerable<(string Path, string Text)> files)
