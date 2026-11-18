@@ -649,11 +649,16 @@ public sealed class ExtractMethodService : IExtractMethodService
             exampleExpression, new SharedExpressionBindings.BindingContext(exampleModel),
             exampleFreeVars.Select(variable => variable.Symbol), ct);
         var helperIdentifier = IdentifierValidation.CreateMemberIdentifierToken(helperName).ValueText;
-        var hits = await CollectMatchingExpressionHitsAsync(
+        var (hits, expressionTreeOccurrences) = await CollectMatchingExpressionHitsAsync(
             exampleDocument, exampleExpression, exampleType, exampleFreeVars, exampleBindings, helperOwner, ownerTypeSyntax,
             helperIdentifier, allowCrossFile, ct)
             .ConfigureAwait(false);
 
+        if (hits.Count < 2 && expressionTreeOccurrences > 0)
+            throw new PublicInvalidOperationException(
+                $"{expressionTreeOccurrences} matching occurrence(s) are inside an expression tree, where a helper call would change the tree a " +
+                $"provider receives, so they stay unchanged; {hits.Count} occurrence(s) outside expression trees remain and at least 2 are needed. " +
+                "Select an example outside expression trees or narrow the extraction scope.");
         if (hits.Count == 0)
             throw new InvalidOperationException(
                 "No structurally-identical expressions found — even the example span did not match. " +
@@ -702,7 +707,7 @@ public sealed class ExtractMethodService : IExtractMethodService
     /// (every free variable must carry the same <see cref="ITypeSymbol"/> as the example's).
     /// Refuses extraction when a candidate's binding cannot be proven equivalent to the example.
     /// </summary>
-    private static async Task<List<ExpressionHit>> CollectMatchingExpressionHitsAsync(
+    private static async Task<(List<ExpressionHit> Hits, int ExpressionTreeOccurrences)> CollectMatchingExpressionHitsAsync(
         Document exampleDocument,
         ExpressionSyntax exampleExpression,
         TypeDeclarationSyntax exampleType,
@@ -718,6 +723,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             ? exampleDocument.Project.Documents
             : new[] { exampleDocument };
         var hits = new List<ExpressionHit>();
+        var expressionTreeOccurrences = 0;
         foreach (var doc in scope)
         {
             ct.ThrowIfCancellationRequested();
@@ -742,10 +748,18 @@ public sealed class ExtractMethodService : IExtractMethodService
                 if (candidateType is null) continue;
                 if (!allowCrossFile && candidateType != exampleType) continue;
 
-                // Use-site guard, for the example and every candidate: a helper call is a value, so an
-                // occurrence that needs a variable (assignment target, ref/out/in argument, mutated struct
-                // receiver) cannot be replaced by it.
-                if (SharedExpressionUseSite.Classify(candidate, docModel, ct) == SharedExpressionUseSiteKind.StorageRequired)
+                // Use-site guard, for the example and every candidate. An occurrence inside an expression tree
+                // stays unchanged (a helper call would change the tree a provider receives). A helper call is a
+                // value, so an occurrence that needs a variable (assignment target, ref/out/in argument, mutated
+                // struct receiver) cannot be replaced by it and refuses the extraction.
+                var useSite = SharedExpressionUseSite.Classify(candidate, docModel, ct);
+                if (useSite == SharedExpressionUseSiteKind.ExpressionTree)
+                {
+                    expressionTreeOccurrences++;
+                    continue;
+                }
+
+                if (useSite == SharedExpressionUseSiteKind.StorageRequired)
                 {
                     throw new PublicInvalidOperationException(
                         $"The expression at {doc.Name}:{candidate.GetLocation().GetLineSpan().StartLinePosition.Line + 1} is used where a " +
@@ -804,7 +818,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                 hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, needsQualifiedOwner));
             }
         }
-        return hits;
+        return (hits, expressionTreeOccurrences);
     }
 
     /// <summary>

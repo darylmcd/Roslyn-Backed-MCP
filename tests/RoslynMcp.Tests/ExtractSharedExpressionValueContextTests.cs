@@ -106,6 +106,113 @@ public sealed class ExtractSharedExpressionValueContextTests : IsolatedWorkspace
         });
     }
 
+    private const string TreeSource = """
+        using System;
+        using System.Linq;
+        using System.Linq.Expressions;
+
+        public static class TreeTarget
+        {
+            public static int GetValue(int offset) => offset + 42;
+        }
+
+        public static class TreeCase
+        {
+            public static Expression<Func<int>> TreeA() => () => TreeTarget.GetValue(7);
+            public static Expression<Func<int>> TreeB() => () => TreeTarget.GetValue(7);
+            public static Expression<Func<Func<int>>> TreeNested() => () => () => TreeTarget.GetValue(7);
+            public static Func<int> DelegateA() => () => TreeTarget.GetValue(7);
+            public static Func<int> DelegateB() => () => TreeTarget.GetValue(7);
+            public static IQueryable<int> QueryClause() =>
+                from x in new[] { 1, 2 }.AsQueryable() where x != TreeTarget.GetValue(7) select x;
+            public static IQueryable<int> QueryMethod() =>
+                new[] { 1, 2 }.AsQueryable().Where(x => x != TreeTarget.GetValue(7));
+
+            public static int Run()
+            {
+                var sum = DelegateA()() + DelegateB()();
+                sum += TreeA().Body is MethodCallExpression { Method.Name: "GetValue" } ? 1 : 0;
+                sum += TreeB().Body is MethodCallExpression { Method.Name: "GetValue" } ? 1 : 0;
+                sum += TreeNested().Body is LambdaExpression { Body: MethodCallExpression { Method.Name: "GetValue" } } ? 1 : 0;
+                sum += QueryClause().Expression.ToString().Contains("GetValue(7)") ? 1 : 0;
+                sum += QueryMethod().Expression.ToString().Contains("GetValue(7)") ? 1 : 0;
+                return sum;
+            }
+        }
+        """;
+
+    // Occurrence order in TreeSource: 0 TreeA, 1 TreeB, 2 nested lambda inside a tree, 3 DelegateA, 4 DelegateB,
+    // 5 implicit query-clause lambda over IQueryable, 6 explicit lambda over IQueryable.
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(2)]
+    [DataRow(3)]
+    [DataRow(5)]
+    public async Task ExpressionTreeOccurrences_StayUnrewritten_DelegateOccurrencesAreExtracted(int exampleOccurrence)
+    {
+        await WithWorkspaceAsync(TreeSource, async (workspaceId, path) =>
+        {
+            const string call = "TreeTarget.GetValue(7)";
+            Assert.AreEqual(103, await RunAsync(WorkspaceManager.GetCurrentSolution(workspaceId), "TreeCase"));
+            var json = await PreviewAsync(workspaceId, path, TreeSource, call, exampleOccurrence);
+            using var preview = JsonDocument.Parse(json);
+            var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+            var pending = PreviewStore.Retrieve(token);
+            Assert.IsNotNull(pending);
+            AssertTreesUnchanged(await GetDocumentTextAsync(pending.Value.ModifiedSolution, path));
+            Assert.AreEqual(103, await RunAsync(pending.Value.ModifiedSolution, "TreeCase"));
+
+            var appliedJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate, ApplyUndoWorkflowService, PreviewStore, token);
+            using var applied = JsonDocument.Parse(appliedJson);
+            Assert.AreEqual("applied", applied.RootElement.GetProperty("status").GetString(), appliedJson);
+            AssertTreesUnchanged(await File.ReadAllTextAsync(path));
+            Assert.AreEqual(103, await RunAsync(WorkspaceManager.GetCurrentSolution(workspaceId), "TreeCase"));
+        });
+    }
+
+    private static void AssertTreesUnchanged(string text)
+    {
+        foreach (var kept in new[]
+        {
+            "TreeA() => () => TreeTarget.GetValue(7);",
+            "TreeB() => () => TreeTarget.GetValue(7);",
+            "TreeNested() => () => () => TreeTarget.GetValue(7);",
+            "where x != TreeTarget.GetValue(7) select x;",
+            "Where(x => x != TreeTarget.GetValue(7));",
+        })
+        {
+            StringAssert.Contains(text, kept);
+        }
+
+        StringAssert.Contains(text, "DelegateA() => () => SharedValue();");
+        StringAssert.Contains(text, "DelegateB() => () => SharedValue();");
+    }
+
+    [TestMethod]
+    public async Task OnlyExpressionTreeOccurrences_AreRefusedWithAnExpressionTreeReason()
+    {
+        const string source = """
+            using System;
+            using System.Linq.Expressions;
+
+            public static class TreeTarget { public static int GetValue(int offset) => offset + 42; }
+
+            public static class OnlyTrees
+            {
+                public static Expression<Func<int>> A() => () => TreeTarget.GetValue(7);
+                public static Expression<Func<int>> B() => () => TreeTarget.GetValue(7);
+            }
+            """;
+        await WithWorkspaceAsync(source, async (workspaceId, path) =>
+        {
+            var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
+                () => PreviewAsync(workspaceId, path, source, "TreeTarget.GetValue(7)", 0));
+            StringAssert.Contains(error.PublicMessage, "expression tree");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspaceId);
+        });
+    }
+
     private static async Task WithWorkspaceAsync(string source, Func<string, string, Task> body)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

@@ -13,6 +13,12 @@ internal enum SharedExpressionUseSiteKind
 
     /// <summary>The enclosing syntax needs a variable (assignment target, ref/out/in argument, mutated struct receiver).</summary>
     StorageRequired,
+
+    /// <summary>
+    /// The occurrence is inside a lambda that is converted to an <c>Expression&lt;T&gt;</c> (including implicit query
+    /// lambdas over <c>IQueryable</c>): a helper call would change the tree a provider receives.
+    /// </summary>
+    ExpressionTree,
 }
 
 /// <summary>
@@ -22,8 +28,64 @@ internal enum SharedExpressionUseSiteKind
 /// </summary>
 internal static class SharedExpressionUseSite
 {
-    public static SharedExpressionUseSiteKind Classify(ExpressionSyntax expression, SemanticModel model, CancellationToken ct) =>
-        RequiresStorage(expression, model, ct) ? SharedExpressionUseSiteKind.StorageRequired : SharedExpressionUseSiteKind.Eligible;
+    public static SharedExpressionUseSiteKind Classify(ExpressionSyntax expression, SemanticModel model, CancellationToken ct)
+    {
+        if (IsInExpressionTree(expression, model, ct)) return SharedExpressionUseSiteKind.ExpressionTree;
+        return RequiresStorage(expression, model, ct) ? SharedExpressionUseSiteKind.StorageRequired : SharedExpressionUseSiteKind.Eligible;
+    }
+
+    private static bool IsInExpressionTree(ExpressionSyntax expression, SemanticModel model, CancellationToken ct)
+    {
+        var expressionType = model.Compilation.GetTypeByMetadataName("System.Linq.Expressions.Expression`1");
+        if (expressionType is null) return false;
+
+        var child = (SyntaxNode)expression;
+        for (var parent = child.Parent; parent is not null; child = parent, parent = parent.Parent)
+        {
+            // A lambda nested in a tree is itself part of the tree, so every enclosing lambda counts.
+            if (parent is AnonymousFunctionExpressionSyntax function &&
+                IsExpressionTreeType(model.GetTypeInfo(function, ct).ConvertedType, expressionType))
+            {
+                return true;
+            }
+
+            // Query clauses have no lambda syntax: the compiler binds them to Queryable.* methods whose
+            // parameters are Expression<>.
+            if (IsQueryLambdaPart(parent, child) &&
+                GetQueryMethod(parent, model, ct) is { } method &&
+                method.Parameters.Any(parameter => IsExpressionTreeType(parameter.Type, expressionType)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsExpressionTreeType(ITypeSymbol? type, INamedTypeSymbol expressionType) =>
+        type is INamedTypeSymbol named && SymbolEqualityComparer.Default.Equals(named.OriginalDefinition, expressionType);
+
+    /// <summary>True when <paramref name="child"/> is the part of query clause <paramref name="clause"/> that becomes a lambda body.</summary>
+    private static bool IsQueryLambdaPart(SyntaxNode clause, SyntaxNode child) => clause switch
+    {
+        WhereClauseSyntax where => where.Condition == child,
+        LetClauseSyntax let => let.Expression == child,
+        OrderingSyntax ordering => ordering.Expression == child,
+        SelectClauseSyntax select => select.Expression == child,
+        GroupClauseSyntax group => group.GroupExpression == child || group.ByExpression == child,
+        JoinClauseSyntax join => join.LeftExpression == child || join.RightExpression == child,
+        // The first from clause is the query source; a later one becomes a SelectMany selector lambda.
+        FromClauseSyntax { Parent: QueryBodySyntax } from => from.Expression == child,
+        _ => false,
+    };
+
+    private static IMethodSymbol? GetQueryMethod(SyntaxNode clause, SemanticModel model, CancellationToken ct) => clause switch
+    {
+        QueryClauseSyntax queryClause => model.GetQueryClauseInfo(queryClause, ct).OperationInfo.Symbol as IMethodSymbol,
+        SelectOrGroupClauseSyntax selectOrGroup => model.GetSymbolInfo(selectOrGroup, ct).Symbol as IMethodSymbol,
+        OrderingSyntax ordering => model.GetSymbolInfo(ordering, ct).Symbol as IMethodSymbol,
+        _ => null,
+    };
 
     private static bool RequiresStorage(ExpressionSyntax expression, SemanticModel model, CancellationToken ct)
     {
