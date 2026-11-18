@@ -24,3 +24,7 @@
 ## Context
 
 - Independent nonblocking investigation; no restore closure dependency. Reference intake: `<user>/.codex/scratch/roslyn-remediate-20261023-split/restore-closeout-queued-findings-reconciliation.md`.
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Release impact unqualified. A process-local semaphore separates the expiry and cleanup marker scan from deletion, while peer admission publishes its marker under another process-local lock. Screen both deletion paths, ancestor admission, retained fork copy/replay and cleanup-failure companions. Require deterministic peer-ordering proof and preserve stable load/build/test admission deadlines, cancellation and refusal shapes. Decide mixed-version ownership before selecting in 5.x.

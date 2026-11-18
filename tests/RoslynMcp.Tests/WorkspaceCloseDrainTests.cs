@@ -107,10 +107,10 @@ public sealed class WorkspaceCloseDrainTests
         try
         {
             // A process whose executable lives UNDER workingDirectory: must be killed.
-            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            inDirProcess = await StartLongLivedProcessUnderAsync(Path.Combine(workingDirectory, "host"));
             // A process whose executable lives OUTSIDE workingDirectory (the original system
             // launcher path): must be left running.
-            outOfDirProcess = StartLongLivedProcessFromSystemPath();
+            outOfDirProcess = await StartLongLivedProcessFromSystemPathAsync();
 
             var inDirPid = inDirProcess.Id;
             var outOfDirPid = outOfDirProcess.Id;
@@ -186,8 +186,8 @@ public sealed class WorkspaceCloseDrainTests
         Exception? primaryFailure = null;
         try
         {
-            descendant = StartLongLivedProcessUnder(Path.Combine(workspaceDirectory, "host"));
-            sibling = StartLongLivedProcessUnder(Path.Combine(root, "WS", "host"));
+            descendant = await StartLongLivedProcessUnderAsync(Path.Combine(workspaceDirectory, "host"));
+            sibling = await StartLongLivedProcessUnderAsync(Path.Combine(root, "WS", "host"));
             var descendantId = descendant.Id;
             var siblingId = sibling.Id;
             var json = await CloseWithProcessSeamAsync(new PassthroughGate(),
@@ -240,9 +240,9 @@ public sealed class WorkspaceCloseDrainTests
         try
         {
             // True descendant of workingDirectory: must be killed.
-            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            inDirProcess = await StartLongLivedProcessUnderAsync(Path.Combine(workingDirectory, "host"));
             // Sibling sharing the string prefix but NOT a descendant: must be left running.
-            siblingProcess = StartLongLivedProcessUnder(Path.Combine(siblingDirectory, "host"));
+            siblingProcess = await StartLongLivedProcessUnderAsync(Path.Combine(siblingDirectory, "host"));
 
             var inDirPid = inDirProcess.Id;
             var siblingPid = siblingProcess.Id;
@@ -379,7 +379,7 @@ public sealed class WorkspaceCloseDrainTests
         try
         {
             WindowsDirectoryJunction.Create(link, workingDirectory);
-            launched = StartLongLived(CopyLauncherUnder(Path.Combine(link, "host")));
+            launched = await StartLongLivedAsync(CopyLauncherUnder(Path.Combine(link, "host")));
             var launchedPid = launched.Id;
 
             var json = await CloseWithProcessSeamAsync(
@@ -442,7 +442,7 @@ public sealed class WorkspaceCloseDrainTests
                 loadedPath,
                 ignoreCase: true);
 
-            launched = StartLongLived(CopyLauncherUnder(Path.Combine(workingDirectory, "host")));
+            launched = await StartLongLivedAsync(CopyLauncherUnder(Path.Combine(workingDirectory, "host")));
 
             await AssertDrainKillsCandidateAsync(
                 "test-ws-alias-drain",
@@ -504,7 +504,7 @@ public sealed class WorkspaceCloseDrainTests
             var loadedPath = Path.Combine(
                 shortSide == "load" ? shortWorkingDirectory : workingDirectory,
                 "Sample.slnx");
-            launched = StartLongLived(shortSide == "launch"
+            launched = await StartLongLivedAsync(shortSide == "launch"
                 ? Path.Combine(shortWorkingDirectory, "host", Path.GetFileName(executablePath))
                 : executablePath);
 
@@ -551,7 +551,7 @@ public sealed class WorkspaceCloseDrainTests
         Exception? primaryFailure = null;
         try
         {
-            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            inDirProcess = await StartLongLivedProcessUnderAsync(Path.Combine(workingDirectory, "host"));
             var inDirPid = inDirProcess.Id;
             var logger = new RecordingLogger();
             var reporter = new RecordingUnexpectedExceptionReporter();
@@ -621,7 +621,7 @@ public sealed class WorkspaceCloseDrainTests
         Exception? primaryFailure = null;
         try
         {
-            parent = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            parent = await StartLongLivedProcessUnderAsync(Path.Combine(workingDirectory, "host"));
             enumerated = Process.GetProcessById(parent.Id);
             parent.Kill();
             Assert.IsTrue(parent.WaitForExit(10_000), "The candidate must exit before the drain resolves it.");
@@ -681,7 +681,7 @@ public sealed class WorkspaceCloseDrainTests
         Exception? primaryFailure = null;
         try
         {
-            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            inDirProcess = await StartLongLivedProcessUnderAsync(Path.Combine(workingDirectory, "host"));
             var inDirPid = inDirProcess.Id;
             var reporter = new RecordingUnexpectedExceptionReporter();
 
@@ -722,7 +722,7 @@ public sealed class WorkspaceCloseDrainTests
     }
 
     // ---------------------------------------------------------------------------
-    // ProcessExecutablePathResolver: resolves a process the moment it exists.
+    // ProcessExecutablePathResolver: resolves the published executable image.
     // ---------------------------------------------------------------------------
 
     [TestMethod]
@@ -734,9 +734,9 @@ public sealed class WorkspaceCloseDrainTests
         try
         {
             var executablePath = CopyLauncherUnder(directory);
-            process = StartLongLived(executablePath);
+            process = await StartLongLivedAsync(executablePath);
 
-            // No readiness wait: resolve the same instant the drain would.
+            // Resolve once as soon as the fixture has published its executable image.
             using var candidate = Process.GetProcessById(process.Id);
             var resolution = ProcessExecutablePathResolver.Resolve(candidate);
 
@@ -761,6 +761,117 @@ public sealed class WorkspaceCloseDrainTests
     }
 
     [TestMethod]
+    [DataRow(false, DisplayName = "Release the child and resolve the published image")]
+    [DataRow(true, DisplayName = "Time out and reap the child before handing it off")]
+    public async Task LinuxProcessFixture_WaitsForExecImagePublication(bool timeout)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Inconclusive("Requires Linux procfs executable image publication.");
+            return;
+        }
+
+        var directory = Path.Combine(TestTempRoot.Current, "rmcp-exec-image-" + Guid.NewGuid().ToString("N"));
+        using var startupDeadline = new CancellationTokenSource(ProcessFixtureStartupTimeout);
+        Task<Process>? startup = null;
+        Process? observer = null;
+        StreamReader? output = null;
+        StreamWriter? input = null;
+        Exception? primaryFailure = null;
+        try
+        {
+            var executablePath = CopyLauncherUnder(directory);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "/bin/sh",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+            };
+            startInfo.ArgumentList.Add("-c");
+            // Announce the held state, then keep the shell image until the test releases stdin.
+            startInfo.ArgumentList.Add("""printf 'ready\n'; IFS= read -r release && exec "$@" """);
+            startInfo.ArgumentList.Add("exec-image-fixture");
+            startInfo.ArgumentList.Add(executablePath);
+            foreach (var argument in LauncherArguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            var launcher = new Process { StartInfo = startInfo };
+            startup = StartReadyProcessAsync(launcher, executablePath, startupDeadline.Token);
+            if (startup.IsFaulted)
+                await startup;
+
+            // StartReadyProcessAsync starts synchronously before its first possible suspension.
+            // An independent observer can still inspect and reap this PID if startup fails.
+            var pid = launcher.Id;
+            observer = Process.GetProcessById(pid);
+            output = launcher.StandardOutput;
+            Assert.AreEqual("ready", await output.ReadLineAsync(startupDeadline.Token));
+            Assert.IsFalse(startup.IsCompleted, "Startup must wait while the shell still owns the image.");
+
+            if (timeout)
+            {
+                startupDeadline.CancelAfter(TimeSpan.FromMilliseconds(250));
+                var cancellation = await Assert.ThrowsAsync<OperationCanceledException>(() => startup);
+                Assert.AreEqual(startupDeadline.Token, cancellation.CancellationToken);
+                Assert.IsTrue(observer.HasExited, "Failed startup must terminate the child before returning.");
+                Assert.IsFalse(Directory.Exists($"/proc/{pid}"), "Failed startup must reap the child.");
+                return;
+            }
+
+            input = launcher.StandardInput;
+            await input.WriteLineAsync("release".AsMemory(), startupDeadline.Token);
+            await input.FlushAsync(startupDeadline.Token);
+            var started = await startup;
+
+            Assert.AreEqual(pid, started.Id);
+            using var candidate = Process.GetProcessById(pid);
+            var resolution = ProcessExecutablePathResolver.Resolve(candidate);
+            Assert.AreEqual(ProcessExecutablePathStatus.Resolved, resolution.Status, resolution.Reason);
+            Assert.AreEqual(Path.GetFullPath(executablePath), Path.GetFullPath(resolution.Path!));
+        }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                async () =>
+                {
+                    await startupDeadline.CancelAsync();
+                    if (startup is null)
+                        return;
+
+                    Process acquired;
+                    try
+                    {
+                        acquired = await startup;
+                    }
+                    catch (OperationCanceledException ex) when (ex.CancellationToken == startupDeadline.Token)
+                    {
+                        // Cancelled acquisition owns cleanup; the independent observer is a fallback.
+                        return;
+                    }
+                    catch (Exception ex) when (ReferenceEquals(ex, primaryFailure))
+                    {
+                        return;
+                    }
+
+                    await TerminateOwnedProcessAsync(acquired);
+                },
+                () => TerminateOwnedProcessAsync(observer),
+                () => input?.DisposeAsync() ?? ValueTask.CompletedTask,
+                CleanupFailureCollector.FromAction(() => output?.Dispose()),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(directory)));
+        }
+    }
+
+    [TestMethod]
     public async Task ProcessExecutablePathResolver_ProcessThatExitedWhileAHandleIsHeld_IsExited()
     {
         var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-exited-" + Guid.NewGuid().ToString("N"));
@@ -768,7 +879,7 @@ public sealed class WorkspaceCloseDrainTests
         Exception? primaryFailure = null;
         try
         {
-            process = StartLongLived(CopyLauncherUnder(directory));
+            process = await StartLongLivedAsync(CopyLauncherUnder(directory));
             process.Kill();
             Assert.IsTrue(process.WaitForExit(10_000), "The helper must exit before it is resolved.");
 
@@ -1026,7 +1137,7 @@ public sealed class WorkspaceCloseDrainTests
         Exception? primaryFailure = null;
         try
         {
-            observer = StartLongLivedProcessUnder(root);
+            observer = await StartLongLivedProcessUnderAsync(root);
             var owned = Process.GetProcessById(observer.Id);
             var assertion = new AssertFailedException("primary assertion");
             var refused = new InvalidOperationException("injected termination refusal");
@@ -1176,6 +1287,7 @@ public sealed class WorkspaceCloseDrainTests
     // Cross-platform idle-for-a-while launcher: ping on Windows (no admin needed,
     // present on the self-hosted runner), sleep elsewhere. Both block ~60s until killed.
     private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    private static readonly TimeSpan ProcessFixtureStartupTimeout = TimeSpan.FromSeconds(10);
 
     private static string SystemLauncherPath =>
         IsWindows
@@ -1191,8 +1303,8 @@ public sealed class WorkspaceCloseDrainTests
     /// Copies the system launcher executable into <paramref name="targetDirectory"/> (so its
     /// executable path prefix-matches the working directory) and starts it long-lived.
     /// </summary>
-    private static Process StartLongLivedProcessUnder(string targetDirectory) =>
-        StartLongLived(CopyLauncherUnder(targetDirectory));
+    private static Task<Process> StartLongLivedProcessUnderAsync(string targetDirectory) =>
+        StartLongLivedAsync(CopyLauncherUnder(targetDirectory));
 
     private static string CopyLauncherUnder(string targetDirectory)
     {
@@ -1233,9 +1345,10 @@ public sealed class WorkspaceCloseDrainTests
         return copiedPath;
     }
 
-    private static Process StartLongLivedProcessFromSystemPath() => StartLongLived(SystemLauncherPath);
+    private static Task<Process> StartLongLivedProcessFromSystemPathAsync() =>
+        StartLongLivedAsync(SystemLauncherPath);
 
-    private static Process StartLongLived(string executablePath)
+    private static async Task<Process> StartLongLivedAsync(string executablePath)
     {
         // No stdout/stderr redirection: the test never reads the helper's output, and an
         // undrained redirected pipe is a latent deadlock shape if the child ever fills it.
@@ -1251,8 +1364,57 @@ public sealed class WorkspaceCloseDrainTests
             startInfo.ArgumentList.Add(argument);
         }
 
-        return Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start long-lived helper process: {executablePath}.");
+        using var startupDeadline = new CancellationTokenSource(ProcessFixtureStartupTimeout);
+        return await StartReadyProcessAsync(new Process { StartInfo = startInfo }, executablePath, startupDeadline.Token);
+    }
+
+    private static async Task<Process> StartReadyProcessAsync(
+        Process process,
+        string executablePath,
+        CancellationToken ct)
+    {
+        var started = false;
+        try
+        {
+            started = process.Start();
+            if (!started)
+                throw new InvalidOperationException($"Failed to start helper process for {executablePath}.");
+
+            if (OperatingSystem.IsLinux())
+                await WaitForLinuxExecutableImageAsync(process, executablePath, ct);
+
+            return process;
+        }
+        catch (Exception ex)
+        {
+            // The caller cannot clean up a process whose startup never returned a handle.
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture startup cleanup failed.", ex,
+                started ? () => TerminateOwnedProcessAsync(process) : CleanupFailureCollector.FromAction(process.Dispose));
+            throw;
+        }
+    }
+
+    private static async Task WaitForLinuxExecutableImageAsync(
+        Process process,
+        string executablePath,
+        CancellationToken ct)
+    {
+        // Linux startup can return before exec publishes the new task name. The kernel sets comm
+        // after changing the executable image. The drain normally enumerates by that name, but
+        // the injected PID seam bypasses that condition.
+        var commPath = $"/proc/{process.Id}/comm";
+        var expectedComm = Path.GetFileName(executablePath) + "\n";
+        while (await File.ReadAllTextAsync(commPath, ct) != expectedComm)
+        {
+            if (process.HasExited)
+            {
+                throw new InvalidOperationException(
+                    $"Process {process.Id} exited before publishing executable image {executablePath}.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), ct);
+        }
     }
 
     private static Process? GetByIdOrEmpty(int pid)

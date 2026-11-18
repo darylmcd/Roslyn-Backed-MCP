@@ -86,7 +86,7 @@ public abstract record ApplyVerifyOutcome
 /// <param name="Reverted">Whether the target apply was successfully reverted.</param>
 /// <param name="RevertedOperation">Human-readable description of the reverted operation, or <see langword="null"/> on failure.</param>
 /// <param name="AffectedFiles">The file set the target apply touched; empty when the revert failed before locating the target.</param>
-/// <param name="Reason">Machine-readable failure code (<c>unknown-sequence</c>/<c>dependency-blocked</c>/<c>revert-failed</c>) or <see langword="null"/> on success.</param>
+/// <param name="Reason">Machine-readable failure code (<c>unknown-sequence</c>/<c>already-reverted</c>/<c>dependency-blocked</c>/<c>revert-failed</c>) or <see langword="null"/> on success.</param>
 /// <param name="BlockingSequences">Later overlapping sequence numbers when <see cref="Reason"/> is <c>dependency-blocked</c>; otherwise <see langword="null"/>.</param>
 public sealed record SequenceRevertOutcome(
     bool Reverted,

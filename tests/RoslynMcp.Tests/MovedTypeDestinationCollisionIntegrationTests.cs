@@ -69,7 +69,8 @@ public sealed class MovedTypeDestinationCollisionIntegrationTests : IsolatedWork
         const string source = "public partial class MoveProbe { public int Moved => 1; }";
         var members = hasSibling ? source + " internal class Sibling { }" : source;
         var sourceCode = nested ? $"namespace Outer {{ namespace Original {{ {members} }} }}" : InNamespace("Original", members);
-        var receiverNamespace = nested && !hasSibling ? "Outer.Destination" : "Destination";
+        // The destination is the FULL namespace requested, nested source or not.
+        const string receiverNamespace = "Destination";
         var sourcePath = workspace.GetPath("SampleLib", SourceFile);
         var destinationPath = workspace.GetPath("SampleLib", "Relocated.cs");
         await File.WriteAllTextAsync(sourcePath, sourceCode);
@@ -226,8 +227,8 @@ public sealed class MovedTypeDestinationCollisionIntegrationTests : IsolatedWork
     }
 
     [TestMethod]
-    [DataRow("Original", "@Original", "Original", "namespace Elsewhere; public partial class MoveProbe { }")]
-    [DataRow("Outer.Original", "Destination", "Outer.Destination", "namespace Destination; public partial class MoveProbe { }")]
+    [DataRow("Original", "@Moved", "Moved", "namespace Elsewhere; public partial class MoveProbe { }")]
+    [DataRow("Outer.Original", "Destination", "Destination", "namespace Outer.Destination; public partial class MoveProbe { }")]
     [DataRow("Original", "Destination", "Destination", "namespace Destination; public partial class MoveProbe<T> { }")]
     public async Task ChangeNamespace_AllowsAnUnoccupiedIdentity(
         string fromNamespace, string toNamespace, string projectedNamespace, string existing)

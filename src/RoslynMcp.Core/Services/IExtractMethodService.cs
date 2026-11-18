@@ -33,7 +33,12 @@ public interface IExtractMethodService
     /// <see cref="Microsoft.CodeAnalysis.CSharp.Syntax.ExpressionSyntax" />, (b) refuses when
     /// any candidate site references a variable whose semantic type differs from the
     /// corresponding variable at the example site, (c) refuses when <paramref name="allowCrossFile"/>
-    /// is false and a hit resides in a different containing type.
+    /// is false and a hit resides in a different containing type, (d) refuses an occurrence that
+    /// is used as an assignment target, ref/out/in argument or mutated struct receiver, or that sits in a
+    /// compile-time-constant-only position, (e) leaves occurrences inside expression trees unchanged
+    /// (refusing when fewer than two other sites remain), and (f) refuses a rewrite that would introduce
+    /// compiler errors (for example a private helper called from another type) or change how the
+    /// surrounding expression binds. Every refusal happens before a preview token is stored.
     /// </remarks>
     Task<RefactoringPreviewDto> PreviewExtractSharedExpressionToHelperAsync(
         string workspaceId,

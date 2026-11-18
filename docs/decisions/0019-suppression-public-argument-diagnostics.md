@@ -1,6 +1,6 @@
 # ADR 0019: Suppression public argument diagnostics
 
-Status: Accepted 2026-10-07 for the next major release.
+Status: Accepted 2026-10-07. Shipped in 5.0.0 (2026-10-28).
 
 The stable suppression tools currently redact server-authored correction text along with arbitrary exception messages. The severity producer also accepts blank and unsupported values, and dereferences null before dispatch; these behaviors are observable public contracts that need correction.
 

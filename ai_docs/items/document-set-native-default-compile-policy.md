@@ -32,3 +32,7 @@
 
 - Independent nonblocking source-policy remainder; restore-callers-missing-packages-path closure does not depend on it.
 - Size L records five known shared investigation seams and unresolved integration, not a mandate to edit each file or adopt the prior design.
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Release impact unqualified. ProjectReferenceMutationRenderer.cs:71 and DocumentSetPersistenceService.cs:197 share the raw XML Compile policy. Candidate changes can affect stable create/delete/move preview output and preview-to-apply project edits. Qualify the complete preview, apply, rollback and undo behavior against the 5.x wire and file effects before choosing a slice.

@@ -4,8 +4,9 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/DotnetCommandRunnerPipeLifetimeTests.cs:117` — `RunAsync_ConcurrentOwnedDescendants_HoldPipesWithoutDisruptingEachOtherAsync`; assertion at `:189` (`StdOut` contains `parent-output`).
-- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:145-153` — `RunAsync`, `ReadBoundedAsync`, and `PostExitDrainGracePeriod` — post-exit bounded drain of stdout/stderr while a descendant keeps the pipe handles open.
+- `tests/RoslynMcp.Tests/DotnetCommandRunnerPipeLifetimeTests.cs:148-222` — concurrent held-pipe fixture and exact parent output assertion.
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:36-42,145-160,260-301` — capture, post-exit drain grace and decoder cancellation.
+- `tests/RoslynMcp.Tests/Helpers/ProcessPipeReader.cs:65-92` — sole-reader Windows transport and native pipe availability query.
 
 ## Acceptance
 
@@ -22,3 +23,9 @@
 ## Context
 
 - Found while remediating dependabot PRs #1850–#1852 (2026-10-26). Independent; no dependency.
+
+## Notes
+
+2026-11-17 current evidence: PR 2131 run 44104410433 job 134112846796 returned exit 0 and empty StdOut for the short ASCII parent marker. On clean c705e2e1, the Release pipe class passed 9/9. A separately gated base-binary probe delivered 4096 UTF-8 bytes, parked the next raw read and cancelled only grace. Expected 2048 characters, captured zero, exit 1. This reproduces decoder cancellation loss. The short ASCII hosted witness still needs a native reproduction. Require a fenced native marker reproducer and qualify the complete finite-drain design across Windows, Linux and macOS before selection. Keep caller cancellation, bounded tail/decoding, reader disposal, early-kill classification and stable build/test/restore contracts. Reuse the sole-reader Windows test transport where appropriate and qualify platform-specific final available-byte snapshots. Consider the existing early-kill and unobserved-reader companion rows.
+
+Explicitly qualify Windows thread-pool worker capacity in the command runner itself. The related Git and script consumers have a separate worker-capacity row. Qualify deterministic disposal under dotnet-command-runner-unobserved-failure-paths.

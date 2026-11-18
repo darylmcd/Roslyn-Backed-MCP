@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using RoslynMcp.Roslyn.Services;
@@ -275,6 +276,157 @@ public sealed class InterfaceParameterSemanticsDefaultsRouteTests : InterfacePar
         });
 }
 
+[TestClass]
+public sealed class InterfaceParameterSemanticsMemberAttributesRouteTests : InterfaceParameterSemanticsRouteTestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    private const string TypeScopedMembers = """
+            public const string Fmt = "yyyy";
+            [StringSyntax(Fmt)] public string Pattern { get; set; } = "";
+        """;
+
+    private const string HiddenEnumMembers = """
+            private const DynamicallyAccessedMemberTypes Flags = DynamicallyAccessedMemberTypes.PublicMethods;
+            [DynamicallyAccessedMembers(Flags)] public Type Get() => typeof(object);
+        """;
+
+    private const string BaseConstantMembers = """
+            [StringSyntax(BaseFmt)] public string FromBase { get; set; } = "";
+        """;
+
+    private const string TypeParameterMembers = """
+            public void Gen<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] T, [Tag] U>() { }
+        """;
+
+    private const string OverrideMembers = """
+            public override bool TryGet(string key, out string? value) { value = null; return false; }
+        """;
+
+    // GUARD (green before and after the attribute-scope change): the compiler does not inherit a base member's
+    // nullability attributes onto an override, so the interface must not copy them either; doing so makes the
+    // implementing class disagree with its interface (CS8767/CS8769). Mutation check recorded in the PR report.
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Override_Projects_Only_Its_Own_Contract_Attributes_Never_Its_Bases(string route) =>
+        await AssertRouteAsync(route, OverrideMembers, (contract, text) =>
+        {
+            Assert.AreEqual(0, Method(contract, "TryGet").Parameters[1].GetAttributes().Length, text);
+            Assert.IsFalse(text.Contains("NotNullWhen", StringComparison.Ordinal), text);
+        }, forbidNullabilityMismatch: true);
+
+    private static object? StringSyntaxArgument(INamedTypeSymbol contract, string property) =>
+        contract.GetMembers(property).OfType<IPropertySymbol>().Single().GetAttributes()
+            .Single(a => a.AttributeClass?.Name == "StringSyntaxAttribute").ConstructorArguments[0].Value;
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Member_Attribute_Argument_Naming_A_Type_Scoped_Constant_Is_Qualified_Or_Written_As_Its_Value(string route) =>
+        await AssertRouteAsync(route, TypeScopedMembers, (contract, text) =>
+        {
+            Assert.AreEqual("yyyy", StringSyntaxArgument(contract, "Pattern"), text);
+            // A different receiving assembly cannot name ParamService, so the value is written instead.
+            Assert.AreEqual(route == "standalone", text.Contains("[StringSyntax(ParamService.Fmt)]", StringComparison.Ordinal), text);
+            Assert.AreEqual(route != "standalone", text.Contains("[StringSyntax(\"yyyy\")]", StringComparison.Ordinal), text);
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Member_Attribute_Argument_Naming_A_Hidden_Enum_Constant_Is_Written_As_A_Cast_Value(string route) =>
+        await AssertRouteAsync(route, HiddenEnumMembers, (contract, text) =>
+        {
+            var attribute = Method(contract, "Get").GetAttributes().Single(a => a.AttributeClass?.Name == "DynamicallyAccessedMembersAttribute");
+            Assert.AreEqual((int)DynamicallyAccessedMemberTypes.PublicMethods, attribute.ConstructorArguments[0].Value, text);
+            StringAssert.Contains(text, "(DynamicallyAccessedMemberTypes)");
+            StringAssert.Contains(text, "using System.Diagnostics.CodeAnalysis;");
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Member_Attribute_Argument_Naming_A_Base_Class_Constant_Is_Qualified_With_The_Base_Type(string route) =>
+        await AssertRouteAsync(route, BaseConstantMembers, (contract, text) =>
+        {
+            Assert.AreEqual("b", StringSyntaxArgument(contract, "FromBase"), text);
+            StringAssert.Contains(text, "[StringSyntax(ParamBase.BaseFmt)]");
+            StringAssert.Contains(text, "using SharedLib;");
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Type_Parameter_Attributes_Are_Filtered_Like_Every_Other_Attribute_List(string route) =>
+        await AssertRouteAsync(route, TypeParameterMembers, (contract, text) =>
+        {
+            var parameters = Method(contract, "Gen").TypeParameters;
+            Assert.IsTrue(parameters[0].GetAttributes().Any(a => a.AttributeClass?.Name == "DynamicallyAccessedMembersAttribute"), text);
+            Assert.AreEqual(0, parameters[1].GetAttributes().Length, text);
+            Assert.IsFalse(text.Contains("Tag", StringComparison.Ordinal), text);
+        });
+}
+
+[TestClass]
+public sealed class InterfaceParameterSemanticsInheritedConstraintsRouteTests : InterfaceParameterSemanticsRouteTestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    private const string OverrideMembers = """
+            public override void Unmanaged<T>(T value) { }
+            public override void NotNullable<T>(T value) { }
+            public override void Constructible<T>() { }
+            public override void Structural<T>(T value) { }
+            public override void NullableConstraint<T>(T value) { }
+        """;
+
+    private const string RefLikeMembers = """
+            public override void RefLike<T>(T value) { }
+        """;
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Override_Projection_Keeps_Inherited_Constraints(string route) =>
+        await AssertRouteAsync(route, OverrideMembers, (contract, text) =>
+        {
+            Assert.IsTrue(Method(contract, "Unmanaged").TypeParameters[0].HasUnmanagedTypeConstraint, text);
+            Assert.IsTrue(Method(contract, "NotNullable").TypeParameters[0].HasNotNullConstraint, text);
+            var constructible = Method(contract, "Constructible").TypeParameters[0];
+            Assert.IsTrue(constructible.HasReferenceTypeConstraint && constructible.HasConstructorConstraint, text);
+            Assert.IsTrue(Method(contract, "Structural").TypeParameters[0].HasValueTypeConstraint, text);
+            var nullable = Method(contract, "NullableConstraint").TypeParameters[0];
+            Assert.AreEqual(NullableAnnotation.Annotated, nullable.ReferenceTypeConstraintNullableAnnotation, text);
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Override_Projection_Keeps_Allows_Ref_Struct(string route) =>
+        await AssertRouteAsync(route, RefLikeMembers, (contract, text) =>
+        {
+            Assert.IsTrue(Method(contract, "RefLike").TypeParameters[0].AllowsRefLikeType, text);
+            StringAssert.Contains(text, "allows ref struct");
+        });
+}
+
 /// <summary>
 /// Parameter semantics of an extracted interface on every route (standalone, cross-project,
 /// dependency-inversion, extract-and-wire): each scenario is previewed, applied, reloaded and compiled, so the
@@ -290,11 +442,27 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
         """;
 
     private const string SharedSource = """
+        using System;
+        using System.Diagnostics.CodeAnalysis;
+
         namespace SharedLib;
 
         public enum Hue { Red = 1, Green = 2 }
         public static class Limits { public const int Cap = 9; }
-        public class ParamBase { public const int Max = 3; }
+        [AttributeUsage(AttributeTargets.GenericParameter)]
+        public sealed class TagAttribute : Attribute { }
+        public class ParamBase
+        {
+            public const int Max = 3;
+            public const string BaseFmt = "b";
+            public virtual bool TryGet(string key, [NotNullWhen(true)] out string? value) { value = null; return false; }
+            public virtual void Unmanaged<T>(T value) where T : unmanaged { }
+            public virtual void NotNullable<T>(T value) where T : notnull { }
+            public virtual void Constructible<T>() where T : class, new() { }
+            public virtual void Structural<T>(T value) where T : struct { }
+            public virtual void NullableConstraint<T>(T value) where T : class?, IComparable<T?>? { }
+            public virtual void RefLike<T>(T value) where T : allows ref struct { }
+        }
         """;
 
     private const string ConsumerSource = """
@@ -308,6 +476,7 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
 
     private static string ServiceSource(string members) => $$"""
         using System;
+        using System.Diagnostics.CodeAnalysis;
         using System.Runtime.CompilerServices;
         using System.Runtime.InteropServices;
         using SharedLib;
@@ -333,7 +502,11 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
         string route, string workspaceId, string sourcePath, CompositePreviewStore stores) =>
         PreviewInterfaceRouteAsync(route, workspaceId, sourcePath, "ParamService", stores);
 
-    protected static async Task AssertRouteAsync(string route, string members, Action<INamedTypeSymbol, string> verify)
+    /// <param name="forbidNullabilityMismatch">
+    /// Also fails on CS8767/CS8769: the implementing class and the interface disagree about nullability attributes.
+    /// </param>
+    protected static async Task AssertRouteAsync(
+        string route, string members, Action<INamedTypeSymbol, string> verify, bool forbidNullabilityMismatch = false)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var sourcePath = await PrepareFixtureAsync(workspace, members);
@@ -347,7 +520,7 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
             ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await ReparseSerializedDocumentsAsync(pending);
-        await VerifyAsync(pending, receiver, "preview", verify);
+        await VerifyAsync(pending, receiver, "preview", verify, forbidNullabilityMismatch);
 
         var applied = route == "extract-and-wire"
             ? await new CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None)
@@ -355,16 +528,25 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
         Assert.IsTrue(applied.Success, applied.Error);
         await workspace.ReloadAsync();
 
-        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), receiver, "reload", verify);
+        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), receiver, "reload", verify, forbidNullabilityMismatch);
     }
 
-    private static async Task VerifyAsync(Solution solution, string receiver, string stage, Action<INamedTypeSymbol, string> verify)
+    private static async Task VerifyAsync(
+        Solution solution, string receiver, string stage, Action<INamedTypeSymbol, string> verify, bool forbidNullabilityMismatch)
     {
         var project = solution.Projects.Single(p => p.Name == receiver);
         var interfaceText = (await project.Documents.Single(d => d.Name == "IParamService.cs").GetTextAsync()).ToString();
         try
         {
             await AssertCompilesAsync(solution);
+            if (forbidNullabilityMismatch)
+            {
+                foreach (var candidate in solution.Projects)
+                {
+                    var mismatches = (await candidate.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Id is "CS8767" or "CS8769").ToArray();
+                    Assert.AreEqual(0, mismatches.Length, candidate.Name + ": " + string.Join(Environment.NewLine, mismatches.Select(d => d.ToString())));
+                }
+            }
         }
         catch (AssertFailedException failure)
         {

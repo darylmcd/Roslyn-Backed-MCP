@@ -1,8 +1,8 @@
 # Test integrity remediation — 15 items
 
-<!-- scope: reference -->
+<!-- scope: in-repo -->
 <!-- artifact: plan -->
-<!-- status: reference -->
+<!-- status: active -->
 
 | Field | Record |
 |---|---|

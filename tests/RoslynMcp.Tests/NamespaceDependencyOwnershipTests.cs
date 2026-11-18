@@ -169,6 +169,35 @@ public sealed class NamespaceDependencyOwnershipTests : IsolatedWorkspaceTestBas
             result.Edges.Where(edge => edge.FromNamespace == "ScopeValid").ToArray());
     }
 
+    /// <summary>
+    /// Regression (relocation-using-semantic-identity copy site): an import edge was keyed by the
+    /// syntax <c>Name.ToString()</c>, so an escaped or interior-trivia import of a declared
+    /// namespace produced a phantom node and the real edge, and its cycle, went missing.
+    /// </summary>
+    [TestMethod]
+    public async Task NamespaceGraph_KeysEdgesByNamespaceIdentityNotImportSpelling()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "SpellingA.cs"),
+            "using @SpellingB;\n\nnamespace SpellingA\n{\n    public class AType { }\n}\n");
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "SpellingB.cs"),
+            "using Spelling . Hub ;\n\nnamespace SpellingB\n{\n    public class BType { }\n}\n");
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "SpellingHub.cs"),
+            "using SpellingA;\n\nnamespace Spelling.Hub\n{\n    public class HubType { }\n}\n");
+        await workspace.LoadAsync();
+
+        var result = await ReadGraphAsync(workspace.WorkspaceId, circularOnly: false);
+
+        var spelled = result.Nodes.Where(node => node.Namespace.Contains('@') || node.Namespace.Contains(' ')).ToArray();
+        Assert.AreEqual(0, spelled.Length, string.Join(", ", spelled.Select(node => node.Namespace)));
+        CollectionAssert.Contains(result.Edges.Select(edge => (edge.FromNamespace, edge.ToNamespace)).ToArray(),
+            ("SpellingA", "SpellingB"));
+        CollectionAssert.Contains(result.Edges.Select(edge => (edge.FromNamespace, edge.ToNamespace)).ToArray(),
+            ("SpellingB", "Spelling.Hub"));
+        Assert.IsTrue(result.CircularDependencies.Any(cycle => cycle.Cycle.Contains("SpellingA") && cycle.Cycle.Contains("SpellingB")
+            && cycle.Cycle.Contains("Spelling.Hub")), "The A -> B -> Hub -> A cycle must be reported.");
+    }
+
     private static async Task<NamespaceDependencyGraphDto> ReadGraphAsync(string workspaceId, bool circularOnly)
     {
         var json = await AdvancedAnalysisTools.GetNamespaceDependencies(

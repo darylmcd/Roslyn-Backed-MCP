@@ -1,8 +1,6 @@
 # Interface extraction split delivery
 
 <!-- scope: in-repo -->
-<!-- artifact: report -->
-<!-- status: active -->
 
 ## Delivery contract
 

@@ -1,8 +1,13 @@
+using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
@@ -19,6 +24,15 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
 {
     private const string PlainSource =
         "namespace SampleLib { public class EchoService { public int Echo(int value) => value + 1; } }";
+
+    private const string NestedConsumerSource = """
+        public class EchoConsumer
+        {
+            public EchoConsumer(SampleLib.Outer.EchoService real, SampleLib.Decoy.EchoService decoy)
+            {
+            }
+        }
+        """;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
@@ -267,14 +281,103 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
                 public class Decoy { public class EchoService { public int Echo(int value) => value + 2; } }
             }
             """;
-        await using var workspace = await LoadAsync(source, consumerSource:
-            "public class EchoConsumer\n{\n    public EchoConsumer(SampleLib.Outer.EchoService real, SampleLib.Decoy.EchoService decoy)\n    {\n    }\n}\n");
+        await using var workspace = await LoadAsync(source, consumerSource: NestedConsumerSource + "\n");
         var pending = await PreviewAsync(workspace, "dependency-inversion");
 
         await AssertCompilesAsync(pending);
         var consumer = (await pending.Projects.Single(p => p.Name == "SampleApp").Documents.Single(d => d.Name == "EchoConsumer.cs").GetTextAsync()).ToString();
         StringAssert.Contains(consumer, "Contracts.IEchoService real");
         StringAssert.Contains(consumer, "SampleLib.Decoy.EchoService decoy");
+    }
+
+    [TestMethod]
+    public async Task Dependency_Inversion_Nested_Consumer_Bindings_Survive_Mcp_Apply_And_Reload()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = workspace.GetPath("SampleLib", "EchoService.cs");
+        var consumerPath = workspace.GetPath("SampleApp", "EchoConsumer.cs");
+        await PrepareNestedDependencyInversionAsync(workspace);
+
+        await using var harness = await ProductionParityMcpHarness.CreateAsync("nested-dependency-inversion", "2026-07-28",
+            services => services.AddSingleton(new SecurityOptions { SanctionedRoots = [workspace.RootPath] }));
+        var manager = harness.Server.Services!.GetRequiredService<IWorkspaceManager>();
+        var loaded = await CallAsync("workspace_load", new() { ["path"] = workspace.SolutionPath });
+        Assert.IsTrue(loaded["isLoaded"]!.GetValue<bool>(), loaded.ToJsonString());
+        var workspaceId = loaded["workspaceId"]!.GetValue<string>();
+
+        var preview = await CallAsync("dependency_inversion_preview", new()
+        {
+            ["workspaceId"] = workspaceId,
+            ["filePath"] = sourcePath,
+            ["typeName"] = "EchoService",
+            ["interfaceProjectName"] = "Contracts",
+        });
+        var consumerChange = preview["changes"]!.AsArray().SingleOrDefault(
+            change => change!["filePath"]!.GetValue<string>() == consumerPath);
+        Assert.IsNotNull(consumerChange, preview.ToJsonString());
+        StringAssert.Contains(consumerChange["unifiedDiff"]!.GetValue<string>(), "Contracts.IEchoService real");
+
+        var applied = await CallAsync("apply_with_verify", new() { ["previewToken"] = preview["previewToken"]!.GetValue<string>() });
+        Assert.AreEqual("applied", applied["status"]!.GetValue<string>(), applied.ToJsonString());
+        Assert.AreEqual(0, applied["preErrorCount"]!.GetValue<int>(), applied.ToJsonString());
+        Assert.AreEqual(0, applied["postErrorCount"]!.GetValue<int>(), applied.ToJsonString());
+
+        var appliedVersion = manager.GetCurrentVersion(workspaceId);
+        var reloaded = await CallAsync("workspace_reload", new() { ["workspaceId"] = workspaceId, ["verbose"] = false });
+        Assert.IsTrue(reloaded["isLoaded"]!.GetValue<bool>(), reloaded.ToJsonString());
+        Assert.AreEqual(workspaceId, reloaded["workspaceId"]!.GetValue<string>());
+        Assert.IsTrue(reloaded["workspaceVersion"]!.GetValue<int>() > appliedVersion, reloaded.ToJsonString());
+
+        var solution = manager.GetCurrentSolution(workspaceId);
+        await AssertCompilesAsync(solution);
+        var app = solution.Projects.Single(p => p.Name == "SampleApp");
+        var compilation = (await app.GetCompilationAsync())!;
+        var generated = compilation.GetTypeByMetadataName("Contracts.IEchoService");
+        var concrete = compilation.GetTypeByMetadataName("SampleLib.Outer+EchoService");
+        var decoy = compilation.GetTypeByMetadataName("SampleLib.Decoy+EchoService");
+        var consumer = compilation.GetTypeByMetadataName("EchoConsumer");
+        Assert.IsNotNull(generated);
+        Assert.AreEqual(TypeKind.Interface, generated.TypeKind);
+        Assert.AreEqual("Contracts", generated.ContainingAssembly.Name);
+        Assert.IsNotNull(concrete);
+        Assert.IsNotNull(decoy);
+        Assert.IsTrue(concrete.Interfaces.Any(type => SymbolEqualityComparer.Default.Equals(generated, type)),
+            $"{concrete} must implement {generated}.");
+        Assert.IsFalse(decoy.Interfaces.Any(type => SymbolEqualityComparer.Default.Equals(generated, type)),
+            $"{decoy} must retain its original interface list.");
+        Assert.IsNotNull(consumer);
+        var parameters = consumer.InstanceConstructors.Single().Parameters;
+        var realParameter = parameters.Single(p => p.Name == "real");
+        var decoyParameter = parameters.Single(p => p.Name == "decoy");
+        Assert.IsTrue(SymbolEqualityComparer.Default.Equals(generated, realParameter.Type),
+            $"Expected real to bind to {generated}, but found {realParameter.Type}.");
+        Assert.IsTrue(SymbolEqualityComparer.Default.Equals(decoy, decoyParameter.Type),
+            $"Expected decoy to bind to {decoy}, but found {decoyParameter.Type}.");
+
+        async Task<JsonObject> CallAsync(string name, Dictionary<string, object?> arguments)
+        {
+            var result = await harness.Client.CallToolAsync(name, arguments, cancellationToken: CancellationToken.None);
+            var payload = result.Content.OfType<TextContentBlock>().Single().Text;
+            Assert.IsFalse(result.IsError == true, $"{name}: {payload}");
+            return JsonNode.Parse(payload)!.AsObject();
+        }
+    }
+
+    private static async Task PrepareNestedDependencyInversionAsync(IsolatedWorkspaceScope workspace)
+    {
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        // Both nested types have the same leaf name, namespace and assembly. The source path selects Outer.
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "EchoService.cs"), """
+            namespace SampleLib;
+
+            public class Outer { public class EchoService { public int Echo(int value) => value + 1; } }
+            """);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "Decoy.cs"), """
+            namespace SampleLib;
+
+            public class Decoy { public class EchoService { public int Echo(int value) => value + 2; } }
+            """);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleApp", "EchoConsumer.cs"), NestedConsumerSource);
     }
 
     private static string InterfaceFolderNamespace(string rootNamespace) =>
