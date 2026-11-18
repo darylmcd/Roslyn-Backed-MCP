@@ -300,6 +300,25 @@ public sealed class InterfaceParameterSemanticsMemberAttributesRouteTests : Inte
             public void Gen<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] T, [Tag] U>() { }
         """;
 
+    private const string OverrideMembers = """
+            public override bool TryGet(string key, out string? value) { value = null; return false; }
+        """;
+
+    // GUARD (green before and after the attribute-scope change): the compiler does not inherit a base member's
+    // nullability attributes onto an override, so the interface must not copy them either; doing so makes the
+    // implementing class disagree with its interface (CS8767/CS8769). Mutation check recorded in the PR report.
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Override_Projects_Only_Its_Own_Contract_Attributes_Never_Its_Bases(string route) =>
+        await AssertRouteAsync(route, OverrideMembers, (contract, text) =>
+        {
+            Assert.AreEqual(0, Method(contract, "TryGet").Parameters[1].GetAttributes().Length, text);
+            Assert.IsFalse(text.Contains("NotNullWhen", StringComparison.Ordinal), text);
+        }, forbidNullabilityMismatch: true);
+
     private static object? StringSyntaxArgument(INamedTypeSymbol contract, string property) =>
         contract.GetMembers(property).OfType<IPropertySymbol>().Single().GetAttributes()
             .Single(a => a.AttributeClass?.Name == "StringSyntaxAttribute").ConstructorArguments[0].Value;
@@ -424,6 +443,7 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
 
     private const string SharedSource = """
         using System;
+        using System.Diagnostics.CodeAnalysis;
 
         namespace SharedLib;
 
@@ -435,6 +455,7 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
         {
             public const int Max = 3;
             public const string BaseFmt = "b";
+            public virtual bool TryGet(string key, [NotNullWhen(true)] out string? value) { value = null; return false; }
             public virtual void Unmanaged<T>(T value) where T : unmanaged { }
             public virtual void NotNullable<T>(T value) where T : notnull { }
             public virtual void Constructible<T>() where T : class, new() { }
@@ -481,7 +502,11 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
         string route, string workspaceId, string sourcePath, CompositePreviewStore stores) =>
         PreviewInterfaceRouteAsync(route, workspaceId, sourcePath, "ParamService", stores);
 
-    protected static async Task AssertRouteAsync(string route, string members, Action<INamedTypeSymbol, string> verify)
+    /// <param name="forbidNullabilityMismatch">
+    /// Also fails on CS8767/CS8769: the implementing class and the interface disagree about nullability attributes.
+    /// </param>
+    protected static async Task AssertRouteAsync(
+        string route, string members, Action<INamedTypeSymbol, string> verify, bool forbidNullabilityMismatch = false)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var sourcePath = await PrepareFixtureAsync(workspace, members);
@@ -495,7 +520,7 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
             ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await ReparseSerializedDocumentsAsync(pending);
-        await VerifyAsync(pending, receiver, "preview", verify);
+        await VerifyAsync(pending, receiver, "preview", verify, forbidNullabilityMismatch);
 
         var applied = route == "extract-and-wire"
             ? await new CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None)
@@ -503,16 +528,25 @@ public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteT
         Assert.IsTrue(applied.Success, applied.Error);
         await workspace.ReloadAsync();
 
-        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), receiver, "reload", verify);
+        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), receiver, "reload", verify, forbidNullabilityMismatch);
     }
 
-    private static async Task VerifyAsync(Solution solution, string receiver, string stage, Action<INamedTypeSymbol, string> verify)
+    private static async Task VerifyAsync(
+        Solution solution, string receiver, string stage, Action<INamedTypeSymbol, string> verify, bool forbidNullabilityMismatch)
     {
         var project = solution.Projects.Single(p => p.Name == receiver);
         var interfaceText = (await project.Documents.Single(d => d.Name == "IParamService.cs").GetTextAsync()).ToString();
         try
         {
             await AssertCompilesAsync(solution);
+            if (forbidNullabilityMismatch)
+            {
+                foreach (var candidate in solution.Projects)
+                {
+                    var mismatches = (await candidate.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Id is "CS8767" or "CS8769").ToArray();
+                    Assert.AreEqual(0, mismatches.Length, candidate.Name + ": " + string.Join(Environment.NewLine, mismatches.Select(d => d.ToString())));
+                }
+            }
         }
         catch (AssertFailedException failure)
         {
