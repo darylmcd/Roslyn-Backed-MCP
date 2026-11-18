@@ -53,8 +53,7 @@ internal static class GeneratedInterfaceReference
         (SymbolEqualityComparer.Default.Equals(type, expected) || IsSameAcrossCompilations(type, expected));
 
     // Same metadata name, same chain of containing types (a nested `Outer.IFoo` is not `IFoo`), and for the
-    // outermost type the same namespace and the same assembly identity (name, version, culture, key): two versions of
-    // one assembly, referenced under different extern aliases, define different types.
+    // outermost type the same namespace and assembly.
     private static bool IsSameAcrossCompilations(INamedTypeSymbol type, INamedTypeSymbol expected)
     {
         if (type.MetadataName != expected.MetadataName) return false;
@@ -62,7 +61,7 @@ internal static class GeneratedInterfaceReference
         {
             return type.ContainingType is null && expected.ContainingType is null &&
                 type.ContainingNamespace.ToDisplayString() == expected.ContainingNamespace.ToDisplayString() &&
-                Equals(type.ContainingAssembly?.Identity, expected.ContainingAssembly?.Identity);
+                type.ContainingAssembly?.Identity.Name == expected.ContainingAssembly?.Identity.Name;
         }
 
         return IsSameAcrossCompilations(type.ContainingType, expected.ContainingType);

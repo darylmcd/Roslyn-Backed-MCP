@@ -63,9 +63,9 @@ internal static class SiblingInterfaceRepin
                 var spelled = new List<(TextSpan Span, string Text, INamedTypeSymbol Original)>();
                 foreach (var (node, symbol) in rebound)
                 {
-                    // `Create` spells a non-generic, non-nested named type by namespace: anything else (a generic, nested, array,
-                    // pointer or function-pointer alias target, a namespace alias) has no spelling it can produce, so refuse
-                    // rather than leave the reference captured.
+                    // `TryCreate` spells a non-generic, non-nested named type by namespace: anything else (a generic, nested, tuple,
+                    // nullable, array, pointer or function-pointer alias target, a namespace alias) has no spelling it can
+                    // produce, so refuse rather than leave the reference captured.
                     if (symbol is not INamedTypeSymbol { Arity: 0, ContainingType: null } original)
                     {
                         throw new PublicInvalidOperationException(

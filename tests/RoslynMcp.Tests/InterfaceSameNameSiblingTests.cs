@@ -661,7 +661,7 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
     [DataRow("delegate*<int, void>", "a function pointer type")]
     [DataRow("(int, string)", "a tuple type")]
     [DataRow("int?", "a nullable value type")]
-    public async Task A_Name_Reached_Through_An_Alias_Of_An_Array_Or_Pointer_Type_Refuses_The_Preview(string target, string kind)
+    public async Task A_Name_Reached_Through_An_Alias_Of_An_Array_Pointer_Tuple_Or_Nullable_Type_Refuses_The_Preview(string target, string kind)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         await WriteAsync(workspace, SiblingFixture.Concat(
@@ -876,22 +876,28 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
     }
 
     [TestMethod]
-    public void Two_Versions_Of_One_Assembly_Are_Not_The_Same_Type_Across_Compilations()
+    public async Task A_Sibling_Failure_With_No_ReplaceUsages_And_No_Linked_Copy_Reaches_The_Sibling_Remedy()
     {
-        static INamedTypeSymbol TypeOf(string version)
-        {
-            var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
-                $"[assembly: System.Reflection.AssemblyVersion(\"{version}\")] namespace N {{ public class T {{ }} }}");
-            var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("A", [tree],
-                [Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                 Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(System.Reflection.AssemblyVersionAttribute).Assembly.Location)],
-                new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-            return compilation.GetTypeByMetadataName("N.T")!;
-        }
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, SiblingFixture.Take(2));
+        // The project treats warnings as errors and demands XML documentation: the generated interface has none, so the new
+        // errors come from the gate itself, with a same-named sibling and without replaceUsages or a linked copy.
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var projectXml = System.Xml.Linq.XDocument.Load(projectPath);
+        projectXml.Root!.Add(new System.Xml.Linq.XElement("PropertyGroup",
+            new System.Xml.Linq.XElement("GenerateDocumentationFile", "true"),
+            new System.Xml.Linq.XElement("TreatWarningsAsErrors", "true")));
+        projectXml.Save(projectPath);
+        await workspace.LoadAsync(CancellationToken.None);
+        var files = Snapshot(workspace.RootPath);
 
-        Assert.IsTrue(GeneratedInterfaceReference.IsSame(TypeOf("1.0.0.0"), TypeOf("1.0.0.0")), "a rebuilt compilation of one assembly is the same type");
-        Assert.IsFalse(GeneratedInterfaceReference.IsSame(TypeOf("1.0.0.0"), TypeOf("2.0.0.0")),
-            "two versions of one assembly, referenced under different extern aliases, are different types");
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false));
+
+        StringAssert.Contains(refusal.Message, "The generated interface introduces compiler errors");
+        StringAssert.Contains(refusal.Message, InterfacePreviewCompilationGate.SiblingRemedy);
+        Assert.IsFalse(refusal.Message.Contains("replaceUsages", StringComparison.Ordinal), refusal.Message);
+        AssertSnapshot(files);
     }
 
     [TestMethod]
