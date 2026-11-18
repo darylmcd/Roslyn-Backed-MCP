@@ -1,6 +1,9 @@
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Roslyn.Services;
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
 namespace RoslynMcp.Tests;
@@ -27,6 +30,9 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
         public enum Color { Red = 1, Green = 2 }
         public class Outer<T> { public class Inner<U> { } public class Middle<U> { public class Deep<V> { } } }
         public delegate void Changed(object? sender, int value);
+        public static class Ids { public const string Msg = "m"; }
+        [AttributeUsage(AttributeTargets.All)]
+        public sealed class MarkerAttribute : Attribute { public MarkerAttribute(string value) { } }
         public class MatrixBase
         {
             public class BaseNested { }
@@ -45,7 +51,7 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
 
         namespace Contracts;
 
-        public unsafe class MatrixService : MatrixBase
+        public unsafe partial class MatrixService : MatrixBase
         {
             private int _field;
             private readonly Dictionary<string, List<int>> _map = new();
@@ -53,6 +59,14 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
             public ref int RefReturn() => ref _field;
             public ref readonly int RefReadonlyReturn() => ref _field;
             public ref int RefProperty => ref _field;
+            // Pins (green before the attribute-scope change): generic ref returns, partial methods,
+            // multi-declarator events and a qualified non-public constant default.
+            public ref T RefGeneric<T>(T[] values) => ref values[0];
+            public ref readonly T RefReadonlyGeneric<T>(T[] values) => ref values[0];
+            public partial void Part(int a);
+            public partial void Part(int a) { }
+            public event Action? MultiA, MultiB;
+            public void QualifiedHidden(int h = MatrixService.Hidden) { }
             public ref readonly int this[int index] => ref _field;
             public string this[string key, Color color] { get => key; set { } }
 
@@ -103,7 +117,7 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
     private static readonly string[] _expectedMembers =
     [
         "Collect", "Convert", "Defaults", "HiddenDefault", "Over", "ExpressionBodied", "GetSet", "Generic", "InitOnly", "Log", "Manual", "Maybe",
-        "Metadata", "Modify", "Pointer", "PointerProperty", "PrivateGet", "PrivateSet", "RefProperty", "RefReadonlyReturn",
+        "Metadata", "Modify", "MultiA", "MultiB", "Part", "QualifiedHidden", "RefGeneric", "RefReadonlyGeneric", "Pointer", "PointerProperty", "PrivateGet", "PrivateSet", "RefProperty", "RefReadonlyReturn",
         "RefReturn", "Raised", "Scoped", "Substituted", "TryGet", "UseBase", "Values", "class", "delegate", "namespace",
         "this[]", "this[]",
     ];
@@ -157,6 +171,14 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(2, contract.GetMembers().OfType<IPropertySymbol>().Count(p => p.IsIndexer), interfaceText);
         Assert.IsTrue(Method("Over").TypeParameters[0].HasReferenceTypeConstraint, interfaceText);
         Assert.AreEqual(7, Method("HiddenDefault").Parameters[0].ExplicitDefaultValue, interfaceText);
+        Assert.AreEqual(7, Method("QualifiedHidden").Parameters[0].ExplicitDefaultValue, interfaceText);
+        StringAssert.Contains(interfaceText, "ref T RefGeneric<T>(T[] values);");
+        StringAssert.Contains(interfaceText, "ref readonly T RefReadonlyGeneric<T>(T[] values);");
+        StringAssert.Contains(interfaceText, "void Part(int a);");
+        StringAssert.Contains(interfaceText, "event Action? MultiA;");
+        StringAssert.Contains(interfaceText, "event Action? MultiB;");
+        Assert.AreEqual(RefKind.Ref, Method("RefGeneric").RefKind, interfaceText);
+        Assert.AreEqual(RefKind.RefReadOnly, Method("RefReadonlyGeneric").RefKind, interfaceText);
         Assert.AreEqual(1, Method("Generic").TypeParameters.Length, interfaceText);
         Assert.IsTrue(Method("Generic").TypeParameters[0].HasReferenceTypeConstraint, interfaceText);
         Assert.AreEqual(2, Method("Convert").TypeParameters.Count(t => t.HasReferenceTypeConstraint || t.HasValueTypeConstraint), interfaceText);
@@ -292,6 +314,86 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(contract.GetMembers("Name").OfType<IPropertySymbol>().Single().SetMethod!.IsInitOnly, text);
         Assert.AreEqual(NullableAnnotation.Annotated, contract.GetMembers("Ages").OfType<IPropertySymbol>().Single().NullableAnnotation, text);
         Assert.AreEqual(1, contract.GetMembers("Greet").Length, text);
+    }
+
+    private const string NestedOwnedSource = """
+        using System.Collections.Generic;
+
+        namespace Contracts;
+
+        public class NestedOwner
+        {
+            public class Inner { }
+            public Inner Make() => new();
+            public void Take(List<Inner> items) { }
+        }
+        """;
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    public async Task Nested_Type_Owned_By_The_Source_Type_Is_Qualified_Standalone_And_Refused_Across_Projects(string route)
+    {
+        // Pin (green before the attribute-scope change): the nested type is spelled through its owner, and a
+        // receiving project that cannot reference the owner is refused instead of receiving uncompilable text.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        PrepareFixture(workspace);
+        var sourcePath = workspace.GetPath("SampleLib", "MatrixService.cs");
+        await File.WriteAllTextAsync(sourcePath, NestedOwnedSource);
+        await workspace.LoadAsync();
+
+        if (route == "cross-project")
+        {
+            var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+                CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+                    workspace.WorkspaceId, sourcePath, "NestedOwner", "INestedOwner", "Contracts", CancellationToken.None));
+            StringAssert.Contains(refusal.Message, "NestedOwner.Inner");
+            StringAssert.Contains(refusal.Message, "circular dependency");
+            return;
+        }
+
+        var preview = await InterfaceExtractionService.PreviewExtractInterfaceAsync(
+            workspace.WorkspaceId, sourcePath, "NestedOwner", "INestedOwner", null, false, CancellationToken.None);
+        var pending = await ReparseSerializedDocumentsAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
+        var text = (await pending.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.Name == "INestedOwner.cs").GetTextAsync()).ToString();
+        StringAssert.Contains(text, "NestedOwner.Inner Make();");
+        StringAssert.Contains(text, "void Take(List<NestedOwner.Inner> items);");
+        await AssertCompilesAsync(pending);
+    }
+
+    private const string DroppedHostSource = """
+        using MatrixShared;
+
+        namespace Contracts;
+
+        public class DroppedHost
+        {
+            [Marker(Ids.Msg)] public void Member([Marker(Ids.Msg)] int a) { }
+        }
+        """;
+
+    [TestMethod]
+    public async Task Dropped_Attribute_Arguments_Record_No_Referenced_Types_Aliases_Or_Unqualified_Types()
+    {
+        // Asserted on the projector itself so no route gate can mask a spurious record.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        PrepareFixture(workspace);
+        var sourcePath = workspace.GetPath("SampleLib", "MatrixService.cs");
+        await File.WriteAllTextAsync(sourcePath, DroppedHostSource);
+        await workspace.LoadAsync();
+        var document = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.Single(p => p.Name == "SampleLib").Documents
+            .Single(d => d.Name == "MatrixService.cs");
+        var type = (await document.GetSemanticModelAsync())!.Compilation.GetTypeByMetadataName("Contracts.DroppedHost")!;
+
+        var projector = await InterfaceMemberProjector.CreateAsync(document, new InterfaceNullableProjection(), document.Project, CancellationToken.None);
+        var projected = type.GetMembers().Where(InterfaceMemberProjector.IsProjectable).Select(projector.Project).ToArray();
+
+        var declaration = projected.Single().ToFullString();
+        Assert.IsFalse(declaration.Contains("Marker", StringComparison.Ordinal), declaration);
+        Assert.IsFalse(projector.ReferencedTypes.Any(t => t.Name is "Ids" or "MarkerAttribute"), string.Join(",", projector.ReferencedTypes.Select(t => t.Name)));
+        Assert.IsFalse(projector.ReferencedUnqualifiedTypes.Any(t => t.Name is "Ids" or "MarkerAttribute"),
+            string.Join(",", projector.ReferencedUnqualifiedTypes.Select(t => t.Name)));
+        Assert.AreEqual(0, projector.ReferencedUsingAliases.Count);
     }
 
     private static void PrepareFixture(IsolatedWorkspaceScope workspace)

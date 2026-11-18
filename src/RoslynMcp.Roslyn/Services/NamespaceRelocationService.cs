@@ -80,9 +80,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         {
             throw new PublicArgumentException("Destination namespace must be provided.", nameof(toNamespace));
         }
-        if (string.Equals(fromNamespace, toNamespace, StringComparison.Ordinal))
+        if (NamespaceNameIdentity.AreSame(fromNamespace, toNamespace))
         {
-            throw new InvalidOperationException("Source and destination namespaces must differ.");
+            throw new PublicArgumentException("Source and destination namespaces must differ.", nameof(toNamespace));
         }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -117,10 +117,11 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var warnings = new List<string>();
 
         // Rewrite the type's containing namespace, which may itself be nested:
-        //   (a) without file relocation or other members in that declaration, rename it in place;
-        //   (b) without file relocation but with other members (types, enums, delegates, nested
-        //       namespaces), move only the selected type into a new namespace declaration in the
-        //       same file;
+        //   (a) without file relocation, when that declaration is top-level and the selected type
+        //       is its only member, rename it in place;
+        //   (b) without file relocation otherwise (other members: types, enums, delegates, nested
+        //       namespaces; or a nested declaration), move only the selected type into a new
+        //       top-level namespace declaration in the same file;
         //   (c) with file relocation, write the selected type to the destination file and
         //       remove its declaration from the source file.
         var (destinationDocument, movedTypeIdentifier, siblingTypesRemaining) = await ApplyNamespaceRewriteAsync(
@@ -187,6 +188,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         FindTypeInNamespaceAsync(Solution solution, string typeName, string fromNamespace, CancellationToken ct)
     {
         var matches = new List<(Document Document, CompilationUnitSyntax Root, TypeDeclarationSyntax TypeDecl, Project Project)>();
+        var fromKey = NamespaceNameIdentity.Of(fromNamespace);
         foreach (var project in solution.Projects)
         {
             // Use Roslyn's pre-built declaration index instead of parsing every document's syntax
@@ -200,7 +202,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             {
                 if (!string.Equals(symbol.Name, typeName, StringComparison.Ordinal)) continue;
                 if (symbol.ContainingNamespace is not { IsGlobalNamespace: false } nsSymbol) continue;
-                if (!string.Equals(nsSymbol.ToDisplayString(), fromNamespace, StringComparison.Ordinal)) continue;
+                if (!string.Equals(NamespaceNameIdentity.Of(nsSymbol), fromKey, StringComparison.Ordinal)) continue;
 
                 // Resolve the symbol back to its concrete syntax. A partial type surfaces one
                 // symbol with multiple declaring references — enumerate each so a split declaration
@@ -295,10 +297,13 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var containingNs = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault()
             ?? throw new InvalidOperationException("Cannot change namespace of a type with no enclosing namespace declaration.");
 
-        // Any other member of the same declaration (class, struct, interface, record, enum,
-        // delegate, nested namespace) would be dragged along by renaming the whole declaration.
-        // Namespace-level usings and externs are not members, so they never force extraction.
-        var hasOtherMembersInSameNs = containingNs.Members.Any(m => !ReferenceEquals(m, typeDecl));
+        // Renaming the containing declaration in place is correct only when it is a top-level
+        // declaration (its name IS the full namespace; a nested one would keep its enclosing
+        // names, turning Outer.Inner into Outer.Target) and the selected type is its only member:
+        // any other member (class, struct, interface, record, enum, delegate, nested namespace)
+        // would be dragged along. Namespace-level usings and externs are not members, so they
+        // never force extraction.
+        var canRenameInPlace = containingNs.Parent is CompilationUnitSyntax && containingNs.Members.Count == 1;
 
         // Tally sibling types (enums and delegates included) in fromNamespace across ANY other
         // document in the solution — used for consumer using-rewrite decisions (only drop
@@ -308,15 +313,18 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             solution, fromNamespace, excludeDocumentId: sourceDocument.Id, ct).ConfigureAwait(false);
         var siblingTypesRemaining = siblingTypesAnywhereInFromNs > 0;
 
+        var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
+
         if (!isRelocating)
         {
             var movedType = new SyntaxAnnotation();
-            var updatedRoot = hasOtherMembersInSameNs
-                ? MoveTypeIntoNewNamespaceInSameFile(sourceRoot, containingNs, typeDecl, toNamespace, movedType)
-                : RewriteNamespaceName(sourceRoot, containingNs, typeDecl, toNamespace, movedType);
+            var updatedRoot = canRenameInPlace
+                ? RewriteNamespaceName(sourceRoot, containingNs, typeDecl, toNamespace, movedType, semanticModel, ct)
+                : MoveTypeIntoNewNamespaceInSameFile(sourceRoot, typeDecl, toNamespace, movedType, semanticModel, ct);
             siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(updatedRoot, fromNamespace);
             var updatedDocument = sourceDocument.WithSyntaxRoot(updatedRoot);
-            if (hasOtherMembersInSameNs)
+            if (!canRenameInPlace)
             {
                 // Format only the synthesized namespace declarations so their layout follows editorconfig.
                 updatedDocument = await Formatter.FormatAsync(
@@ -347,8 +355,6 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         }
 
         // Build the new compilation unit for the moved type, wrapped in the destination namespace.
-        var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
-            ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
         var (newFileRoot, movedTypeIdentifier) = BuildMovedTypeCompilationUnit(sourceRoot, typeDecl, toNamespace,
             ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), semanticModel, ct);
         var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
@@ -367,43 +373,69 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         BaseNamespaceDeclarationSyntax ns,
         TypeDeclarationSyntax typeDecl,
         string toNamespace,
-        SyntaxAnnotation movedType)
+        SyntaxAnnotation movedType,
+        SemanticModel semanticModel,
+        CancellationToken ct)
     {
-        var newName = SyntaxFactory.ParseName(toNamespace).WithTriviaFrom(ns.Name);
-        var renamed = ns.ReplaceNode(typeDecl, typeDecl.WithAdditionalAnnotations(movedType)).WithName(newName);
+        var newName = ReceivingNamespaceFactory.CreateName(toNamespace).WithTriviaFrom(ns.Name);
+        // Imports written relative to the old namespace would rebind to the new one.
+        var imports = MovedDeclarationFileWriter.PreserveImportBindings(ns.Usings, semanticModel, ct);
+        var renamed = ns.ReplaceNode(typeDecl, typeDecl.WithAdditionalAnnotations(movedType))
+            .WithName(newName).WithUsings(imports);
         return root.ReplaceNode(ns, renamed);
     }
 
     /// <summary>
-    /// When the source file keeps other types but the relocated type stays in the same file,
-    /// extract the target type into its own namespace declaration appended to the compilation
-    /// unit. A file-scoped source namespace is converted to block form first: C# forbids mixing
-    /// file-scoped and block namespace declarations in one file (CS8955), and a file can hold at
-    /// most one file-scoped declaration. Every synthesized declaration carries
-    /// <see cref="Formatter.Annotation"/>; the caller must run <see cref="Formatter"/> over it.
+    /// When the relocated type stays in the same file but cannot rename its containing declaration
+    /// (other members remain, or the declaration is nested), move only that type into a new
+    /// block-namespace declaration appended to the compilation unit. Every retained declaration
+    /// stays at its original text position, so conditional-compilation directive pairs and their
+    /// scope are untouched: the selected declaration is removed keeping its directives, and its
+    /// moved copy carries every directive boundary it needs to stay balanced and conditional
+    /// exactly as before. The appended block takes over the end-of-file trivia as its own leading
+    /// trivia, so every directive that closes at the end of the file closes before the artificial
+    /// namespace boundary rather than after it. A file-scoped source namespace is converted to
+    /// block form first: C# forbids mixing file-scoped and block namespace declarations in one
+    /// file (CS8955), and a file can hold at most one file-scoped declaration. Every synthesized
+    /// declaration carries <see cref="Formatter.Annotation"/>; the caller must run
+    /// <see cref="Formatter"/> over it.
     /// </summary>
     private static CompilationUnitSyntax MoveTypeIntoNewNamespaceInSameFile(
         CompilationUnitSyntax root,
-        BaseNamespaceDeclarationSyntax ns,
         TypeDeclarationSyntax typeDecl,
         string toNamespace,
-        SyntaxAnnotation movedType)
+        SyntaxAnnotation movedType,
+        SemanticModel semanticModel,
+        CancellationToken ct)
     {
         var endOfLine = root.DescendantTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.EndOfLineTrivia)) is var eol
             && eol.IsKind(SyntaxKind.EndOfLineTrivia)
             ? eol
             : SyntaxFactory.EndOfLine(Environment.NewLine);
 
-        // Remove the type from its current namespace. Its trivia (doc comments included) travels
-        // with the node into the new declaration, so none is left behind — keeping it would
-        // duplicate the doc comment and orphan a blank line before the closing brace.
-        BaseNamespaceDeclarationSyntax trimmedNs = ns.RemoveNode(typeDecl, SyntaxRemoveOptions.KeepNoTrivia)!;
-        if (trimmedNs is NamespaceDeclarationSyntax block)
+        // The moved copy keeps the type's own trivia (doc comments included), so none is left
+        // behind in the retained file; the end-of-file trivia stays in the retained file.
+        var (movedMember, namespaceUsings) = MovedDeclarationFileWriter.PrepareMovedMember(
+            root, typeDecl, SyntaxFactory.List<UsingDirectiveSyntax>(), SyntaxFactory.TriviaList(),
+            endOfFileTravelsWithMember: false, semanticModel, ct);
+
+        var containingNs = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().First();
+        var outermostNs = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Last();
+        var tracked = root.TrackNodes(outermostNs, containingNs, typeDecl);
+        var retained = MovedDeclarationFileWriter.RemoveDeclaration(tracked, tracked.GetCurrentNode(typeDecl)!);
+
+        // The retained block lost a member; let the formatter tidy its closing brace.
+        if (retained.GetCurrentNode(containingNs) is NamespaceDeclarationSyntax block)
         {
-            trimmedNs = block.WithCloseBraceToken(block.CloseBraceToken.WithAdditionalAnnotations(Formatter.Annotation));
+            retained = retained.ReplaceNode(block, block.WithCloseBraceToken(
+                block.CloseBraceToken.WithAdditionalAnnotations(Formatter.Annotation)));
         }
-        else if (trimmedNs is FileScopedNamespaceDeclarationSyntax fileScoped)
+
+        var endOfFileTrivia = retained.EndOfFileToken.LeadingTrivia;
+        var newBlockLeadingTrivia = SyntaxFactory.TriviaList(endOfLine);
+        if (retained.GetCurrentNode(outermostNs) is FileScopedNamespaceDeclarationSyntax currentFileScoped)
         {
+            var fileScoped = currentFileScoped;
             // Drop the blank line that followed `namespace X;` so the block opens cleanly.
             if (fileScoped.Externs.Count == 0 && fileScoped.Usings.Count == 0 &&
                 fileScoped.Members.FirstOrDefault() is { } firstMember)
@@ -412,7 +444,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                     firstMember.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine)));
             }
 
-            trimmedNs = SyntaxFactory.NamespaceDeclaration(
+            // The converted block spans the rest of the file, so its brace goes after the
+            // end-of-file trivia (the directives that close there).
+            var converted = SyntaxFactory.NamespaceDeclaration(
                     fileScoped.AttributeLists,
                     fileScoped.Modifiers,
                     fileScoped.NamespaceKeyword,
@@ -422,24 +456,35 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                     fileScoped.Externs,
                     fileScoped.Usings,
                     fileScoped.Members,
-                    SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithTrailingTrivia(endOfLine),
+                    SyntaxFactory.Token(SyntaxKind.CloseBraceToken)
+                        .WithLeadingTrivia(endOfFileTrivia)
+                        .WithTrailingTrivia(endOfLine),
                     semicolonToken: default)
                 .WithAdditionalAnnotations(Formatter.Annotation);
+            retained = retained.ReplaceNode(currentFileScoped, converted);
+        }
+        else
+        {
+            newBlockLeadingTrivia = endOfFileTrivia.Add(endOfLine);
         }
 
-        var rootAfterRemove = root.ReplaceNode(ns, trimmedNs);
+        retained = retained.WithEndOfFileToken(retained.EndOfFileToken.WithLeadingTrivia(SyntaxFactory.TriviaList()));
 
         // Append a new block-namespace declaration for the relocated type, reusing the file's own
         // line terminator for the separator and the final newline.
-        var relocatedType = typeDecl.WithLeadingTrivia(typeDecl.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine))
+        var relocatedType = movedMember
+            .WithLeadingTrivia(movedMember.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine))
             .WithAdditionalAnnotations(movedType);
-        var appended = SyntaxFactory.NamespaceDeclaration(SyntaxFactory.ParseName(toNamespace))
+        var appended = SyntaxFactory.NamespaceDeclaration(ReceivingNamespaceFactory.CreateName(toNamespace))
+            // The enclosing namespace scopes' imports stay with the retained declarations; the
+            // moved copy gets its own so it keeps the bindings it was written against.
+            .WithUsings(namespaceUsings)
             .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(relocatedType))
             .WithCloseBraceToken(SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithTrailingTrivia(endOfLine))
-            .WithLeadingTrivia(endOfLine)
+            .WithLeadingTrivia(newBlockLeadingTrivia)
             .WithAdditionalAnnotations(Formatter.Annotation);
 
-        return rootAfterRemove.AddMembers(appended);
+        return retained.AddMembers(appended);
     }
 
     private static bool IsWhitespaceOrEndOfLine(SyntaxTrivia trivia) =>
@@ -479,7 +524,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             if (compilation is null) continue;
 
             var nsSymbol = NamespaceMemberClassifier.FindNamespaceSymbol(compilation.GlobalNamespace,
-                ns.Split('.', StringSplitOptions.RemoveEmptyEntries));
+                NamespaceNameIdentity.Of(ns).Split('.', StringSplitOptions.RemoveEmptyEntries));
             if (nsSymbol is null) continue;
 
             foreach (var type in nsSymbol.GetTypeMembers())
@@ -574,7 +619,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     private static string GetDocumentPrimaryNamespace(CompilationUnitSyntax root)
     {
         return root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>()
-            .FirstOrDefault()?.Name.ToString() ?? string.Empty;
+            .FirstOrDefault() is { } primary ? NamespaceNameIdentity.Of(primary.Name) : string.Empty;
     }
 
     /// <summary>
@@ -595,11 +640,14 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         out bool keptFallback)
     {
         keptFallback = false;
-        var hasNewUsing = root.Usings.Any(u => string.Equals(u.Name?.ToString(), toNamespace, StringComparison.Ordinal));
-        var oldUsing = root.Usings.FirstOrDefault(u => string.Equals(u.Name?.ToString(), fromNamespace, StringComparison.Ordinal));
+        var fromKey = NamespaceNameIdentity.Of(fromNamespace);
+        var toKey = NamespaceNameIdentity.Of(toNamespace);
+        var hasNewUsing = root.Usings.Any(u => NamespaceNameIdentity.ImportsNamespace(u, toKey));
+        var oldUsing = root.Usings.FirstOrDefault(u => NamespaceNameIdentity.ImportsNamespace(u, fromKey));
 
-        var consumerCoversNewByAmbient = IsAmbientTo(consumerNamespace, toNamespace);
-        var consumerCoversOldByAmbient = IsAmbientTo(consumerNamespace, fromNamespace);
+        var consumerKey = NamespaceNameIdentity.Of(consumerNamespace);
+        var consumerCoversNewByAmbient = IsAmbientTo(consumerKey, toKey);
+        var consumerCoversOldByAmbient = IsAmbientTo(consumerKey, fromKey);
 
         var newRoot = root;
 
@@ -615,7 +663,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                     usingKeyword: SyntaxFactory.Token(SyntaxKind.UsingKeyword).WithTrailingTrivia(SyntaxFactory.Space),
                     staticKeyword: default,
                     alias: null,
-                    name: SyntaxFactory.ParseName(toNamespace),
+                    name: ReceivingNamespaceFactory.CreateName(toNamespace),
                     semicolonToken: SyntaxFactory.Token(SyntaxKind.SemicolonToken))
                 .WithTrailingTrivia(SyntaxFactory.EndOfLine(Environment.NewLine));
             newRoot = newRoot.WithUsings(newRoot.Usings.Add(addUsing));
@@ -640,8 +688,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             {
                 // Old namespace is empty after the move and the consumer can't see it ambiently.
                 // Safe to drop the using.
-                var updatedOldReference = newRoot.Usings.FirstOrDefault(u =>
-                    string.Equals(u.Name?.ToString(), fromNamespace, StringComparison.Ordinal));
+                var updatedOldReference = newRoot.Usings.FirstOrDefault(u => NamespaceNameIdentity.ImportsNamespace(u, fromKey));
                 if (updatedOldReference is not null)
                 {
                     newRoot = newRoot.WithUsings(newRoot.Usings.Remove(updatedOldReference));

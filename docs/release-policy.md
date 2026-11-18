@@ -12,7 +12,7 @@ A release is production-ready when all of the following are true:
 - `eng/verify-release.ps1` succeeds and writes publish hashes
 - CI passes on the protected branch
 - dependency audit output has been reviewed for vulnerable packages
-- for material tool/resource/prompt surface or tiering changes, the latest deep-review rollup in `ai_docs/reports/` has been reviewed against its supporting raw audits in `ai_docs/audit-reports/`
+- for material tool/resource/prompt surface or tiering changes, the latest `*_mcp-server-surface-test.md` run in the repository-root `audit-reports/` directory (produced by the `mcp-server-surface-test` skill) has been reviewed
 
 ## Compatibility Policy
 
@@ -122,9 +122,9 @@ This drift check is automated: `eng/verify-version-drift.ps1` runs at the top of
 2. Review the generated publish hash manifest under `artifacts/manifests/`.
 3. Review dependency audit output from CI.
 4. Confirm `server_info` and `server_catalog` reflect the intended support tiers; for supported prior release pairs, use `roslyn://server/catalog-diff/{fromVersion}/{toVersion}` as a machine-readable review aid.
-5. For material surface, preview/apply-behavior, or tiering changes, review the latest deep-review rollup under `ai_docs/reports/` and its raw evidence under `ai_docs/audit-reports/`.
+5. For material surface, preview/apply-behavior, or tiering changes, review the latest `*_mcp-server-surface-test.md` run in the repository-root `audit-reports/` directory.
 6. **Run the version-string drift check** from [Where To Bump The Version String](#where-to-bump-the-version-string). All seven files must agree.
-7. Publish the host executable built from `src/RoslynMcp.Host.Stdio`.
+7. Publish. Bump the version in the seven files (the maintainer `release-cut` flow wraps this), merge to `main`, then push the tag `vX.Y.Z`. The tag triggers the `publish-nuget` workflow, which verifies the tag matches the canonical version, runs `verify-release.ps1`, packs `Darylmcd.RoslynMcp`, pushes it to nuget.org through GitHub OIDC trusted publishing, and then publishes `.claude-plugin/server.json` to the MCP Registry. The expected outcome is a new package version on nuget.org and a matching registry entry. Run the workflow manually with `dry_run` to validate and pack without pushing, or with `publish_registry` to recover a registry publish. `eng/publish-nuget.ps1` is the local fallback; it needs `NUGET_API_KEY` and supports `-NoPush`. Afterwards refresh both local install layers per [reinstall.md](reinstall.md).
 8. Confirm docs remain synchronized (`README.md`, `AGENTS.md`, and `docs/product-contract.md`) for any surface or tiering change.
 
 ## Agent Session Release Gate

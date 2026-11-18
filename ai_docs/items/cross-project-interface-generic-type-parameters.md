@@ -21,3 +21,5 @@
 ## Notes
 
 2026-10-28 PR #1875: method type parameters and their constraints (including override-inherited ones) carry over. Remaining delta: type parameters of the enclosing source type (class Repo<T>) are not declared on the interface, so members using T still do not bind.
+
+2026-11-17 screen at c705e2e1. Decompose the experimental-only sweep across both arity-zero declaration emitters, constructed base and usage references, dependency inversion, and extract-and-wire. Keep exact constructed arguments and transitive constraints. Qualify introduced high-fanout review limits and current-major shared apply behavior before selecting a complete slice.

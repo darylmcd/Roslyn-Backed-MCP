@@ -40,15 +40,9 @@ internal static class MovedDeclarationFileWriter
         CancellationToken ct)
     {
         var prelude = GetFilePrelude(sourceRoot);
-        var movedMember = StripPrelude(sourceRoot, member, prelude);
         var usings = SyntaxFactory.List(copiedUsings.Select(u => StripPrelude(sourceRoot, u, prelude)));
-        var localUsings = GetNamespaceUsings(member, semanticModel, ct);
-        var retainedSpans = copiedUsings.Select(u => u.FullSpan)
-            .Concat(member.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(n => n.Usings).Select(u => u.FullSpan))
-            .Append(member.FullSpan).Append(sourceRoot.EndOfFileToken.FullSpan).ToArray();
-        var (before, after) = GetSurroundingDirectives(sourceRoot, member, retainedSpans, prelude);
-        movedMember = movedMember.WithLeadingTrivia(before.AddRange(movedMember.GetLeadingTrivia()));
-        movedMember = movedMember.WithTrailingTrivia(movedMember.GetTrailingTrivia().AddRange(after));
+        var (movedMember, localUsings) = PrepareMovedMember(
+            sourceRoot, member, copiedUsings, prelude, endOfFileTravelsWithMember: true, semanticModel, ct);
 
         MemberDeclarationSyntax outputMember;
         if (destinationNamespace is null)
@@ -83,6 +77,37 @@ internal static class MovedDeclarationFileWriter
         var output = root.Members.Single();
         var type = (TypeDeclarationSyntax)(output is BaseNamespaceDeclarationSyntax ns ? ns.Members.Single() : output);
         return (root, type.Identifier.Span);
+    }
+
+    /// <summary>
+    /// Builds the moved declaration and the namespace-scoped imports that must govern it at its
+    /// destination: the declaration with every conditional / policy directive boundary it needs
+    /// to stay balanced and conditional exactly as before, plus the enclosing namespace scopes'
+    /// imports with their bindings made explicit. Shared by the new-file projection (where the end-of-file
+    /// trivia is copied into the new file, so <paramref name="endOfFileTravelsWithMember"/> is true)
+    /// and the same-file projection (where it stays in the retained file, so a directive pair that
+    /// closes there must be duplicated around the moved copy).
+    /// </summary>
+    internal static (TypeDeclarationSyntax Member, SyntaxList<UsingDirectiveSyntax> NamespaceUsings) PrepareMovedMember(
+        CompilationUnitSyntax sourceRoot,
+        TypeDeclarationSyntax member,
+        SyntaxList<UsingDirectiveSyntax> copiedUsings,
+        SyntaxTriviaList prelude,
+        bool endOfFileTravelsWithMember,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        var movedMember = StripPrelude(sourceRoot, member, prelude);
+        var localUsings = GetNamespaceUsings(member, semanticModel, ct);
+        var retained = copiedUsings.Select(u => u.FullSpan)
+            .Concat(member.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(n => n.Usings).Select(u => u.FullSpan))
+            .Append(member.FullSpan);
+        if (endOfFileTravelsWithMember)
+            retained = retained.Append(sourceRoot.EndOfFileToken.FullSpan);
+        var (before, after) = GetSurroundingDirectives(sourceRoot, member, retained.ToArray(), prelude);
+        movedMember = movedMember.WithLeadingTrivia(before.AddRange(movedMember.GetLeadingTrivia()));
+        movedMember = movedMember.WithTrailingTrivia(movedMember.GetTrailingTrivia().AddRange(after));
+        return (movedMember, localUsings);
     }
 
     internal static CompilationUnitSyntax RemoveDeclaration(CompilationUnitSyntax sourceRoot, MemberDeclarationSyntax member)
@@ -130,19 +155,35 @@ internal static class MovedDeclarationFileWriter
             {
                 if (import.Alias is { } alias)
                     result.RemoveAll(u => u.Alias?.Name.Identifier.ValueText == alias.Name.Identifier.ValueText);
-                var copied = import;
-                if (import.Name is { } name &&
-                    semanticModel.GetSymbolInfo(name, ct).Symbol is INamespaceOrTypeSymbol symbol)
-                {
-                    // Namespace-local imports bind relative to their old namespace. Make that
-                    // binding explicit before placing them in the destination namespace.
-                    copied = import.WithName(SyntaxFactory.ParseName(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-                        .WithTriviaFrom(name));
-                }
-                result.Add(copied);
+                // Namespace-local imports bind relative to their old namespace. Make that
+                // binding explicit before placing them in the destination namespace.
+                result.Add(QualifyImport(import, semanticModel, ct, onlyWhenRelative: false));
             }
         }
         return SyntaxFactory.List(result);
+    }
+
+    /// <summary>
+    /// Makes the namespace-scoped imports of a declaration whose namespace NAME is about to change
+    /// keep their meaning: an import written relative to the old namespace (<c>using Sub;</c>
+    /// meaning <c>Old.Sub</c>) would otherwise rebind to the new one. Only imports whose written
+    /// name differs from the symbol they bind to are rewritten, so ordinary imports keep their text.
+    /// </summary>
+    internal static SyntaxList<UsingDirectiveSyntax> PreserveImportBindings(
+        SyntaxList<UsingDirectiveSyntax> imports, SemanticModel semanticModel, CancellationToken ct) =>
+        SyntaxFactory.List(imports.Select(import => QualifyImport(import, semanticModel, ct, onlyWhenRelative: true)));
+
+    private static UsingDirectiveSyntax QualifyImport(
+        UsingDirectiveSyntax import, SemanticModel semanticModel, CancellationToken ct, bool onlyWhenRelative)
+    {
+        if (import.Name is not { } name ||
+            semanticModel.GetSymbolInfo(name, ct).Symbol is not INamespaceOrTypeSymbol symbol)
+            return import;
+        if (onlyWhenRelative &&
+            string.Equals(name.WithoutTrivia().ToString(), symbol.ToDisplayString(), StringComparison.Ordinal))
+            return import;
+        return import.WithName(SyntaxFactory.ParseName(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+            .WithTriviaFrom(name));
     }
 
     private static (SyntaxTriviaList Before, SyntaxTriviaList After) GetSurroundingDirectives(

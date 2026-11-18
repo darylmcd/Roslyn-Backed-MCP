@@ -37,7 +37,7 @@ The [Standing Engineering Directives](../AGENTS.md#standing-engineering-directiv
   multi-file text edits when a tool covers the operation (rename, extract/move type,
   code fixes, bulk type replace, etc.) — preview first, then apply.
 - **Write-side on THIS repo:** depends on session shape.
-  - *Worktree session* (default for `/backlog-remediate` delegated executors; running against the
+  - *Worktree session* (default for remediation worker sessions, `~/.claude/prompts/remediate.md`; running against the
     installed global `roslynmcp` tool): `*_apply` is safe — use it when a Roslyn MCP
     refactor tool covers the operation. Load the worktree's own `RoslynMcp.slnx`;
     `workspace_reload` after apply if a downstream call needs fresh state.
@@ -51,39 +51,39 @@ The [Standing Engineering Directives](../AGENTS.md#standing-engineering-directiv
 
 - All mutations must go through preview → apply flow
 - Pass and propagate `workspaceId` on all workspace-scoped operations
-- Reject or regenerate a preview if the workspace version has changed between preview and apply
+- Apply rebases the preview onto the current workspace state; a workspace reload or close invalidates outstanding preview tokens, so re-preview after either
 
 ## Testing Requirements
 
 - New tools and analysis methods need integration test coverage in `tests/RoslynMcp.Tests/`
 - Prefer integration tests over unit tests — mock-only tests have previously masked real failures
 - Use sample solutions in `samples/` for workspace-level tests
-- Run `dotnet test RoslynMcp.slnx --nologo` before declaring work merge-ready
-- Current coverage baseline (from Cobertura root after `./eng/verify-release.ps1`): **~86.2% line / ~71.9% branch** — do not regress it; see `docs/coverage-baseline.md`
+- Validate before declaring work merge-ready with the commands in `CI_POLICY.md` § Local Validation and § Merge Proof
+- Do not regress coverage; the baseline and its measurement version live in `docs/coverage-baseline.md`
 
 ## Claude Code Plugin
 
 The server ships as a Claude Code plugin with 32 skills and safety hooks. When modifying plugin artifacts:
 
 - **Skills** (`skills/*/SKILL.md`): Reference MCP tools by their tool names. Skills are orchestration prompts, not code — they compose existing tools into workflows.
-- **Hooks** (`hooks/hooks.json`): Matchers are regexes over tool names of the form `mcp__(?:plugin_roslyn-mcp_)?roslyn__<tool>` (covers plugin and standalone registrations). Keep matchers in sync when tools are renamed or added.
+- **Hooks** (`hooks/hooks.json`): Matchers are regexes over tool names of the form `mcp__(?:plugin_roslyn-mcp_)?roslyn__<tool>` (covers plugin and standalone registrations). The apply-reminder matcher currently covers only a subset of the `*_apply` tools and nothing enforces sync (row `hooks-apply-matcher-subset-drift`); `hooks/hooks.json` is release-managed (sentinel + changelog fragment).
 - **Plugin manifest** (`.claude-plugin/plugin.json`): For skill or hook changes, add a valid `changelog.d/` fragment; `/bump` advances the manifest with every other version source at release-cut time.
 - **Marketplace** (`.claude-plugin/marketplace.json`): release-managed; `/bump` keeps `version` aligned with `plugin.json` (do not hand-edit; see `ai_docs/workflow.md` release-managed file guard).
 
 ## Safety Guardrails
 
 - Never write to `stdout` from service or domain code — MCP protocol owns that stream
-- Never skip `verify-release.ps1` validation for code changes
+- Never skip the validation `CI_POLICY.md` requires for code changes
 - Never merge with failing CI
 - Do not add new public stable-surface tools without updating `server_info` surface counts and `roslyn://server/catalog`
-- Do not evolve stable-surface DTOs in a breaking way (additive changes only)
+- Do not evolve stable-surface DTOs in a breaking way: additive only, unless an ADR, a migration note and a major bump are recorded (`docs/release-policy.md`)
 - Do not hard-code solution paths or machine-specific paths in source or tests
 
 ## Naming Conventions
 
 - MCP tool names: `snake_case` (e.g., `find_references`, `apply_code_action`)
 - MCP resource URIs: `roslyn://<scope>/<name>` pattern
-- DTO classes: PascalCase, suffix with `Request` / `Result` / `Response` as appropriate
+- DTO records: PascalCase, `Dto` suffix (a few existing `Request` / `Result` outliers remain; do not add more)
 - Service interfaces: `I<Domain>Service` pattern
 - Test classes: `<Subject>Tests` suffix
 
@@ -91,4 +91,4 @@ The server ships as a Claude Code plugin with 32 skills and safety hooks. When m
 
 - Do not log user code or file contents to stderr at Info level — Debug only
 - Do not accept arbitrary shell command execution from MCP tool parameters
-- Validate all file paths are within the loaded workspace root before file I/O
+- Validate every path against the configured sanctioned-root boundary before file I/O (client/workspace roots may only narrow it; ADR 0002)

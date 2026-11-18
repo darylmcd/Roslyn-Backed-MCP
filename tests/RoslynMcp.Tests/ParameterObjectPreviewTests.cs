@@ -1695,6 +1695,37 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         }
     }
 
+    // relocation-using-semantic-identity copy site: the enclosing namespace and the imports were
+    // compared with the DTO namespace as syntax text, so an interior-trivia declaration or an
+    // escaped import was treated as "not in scope" and the DTO was needlessly global::-qualified.
+    [TestMethod]
+    [DataRow("namespace SampleLib . Inner;\n\npublic class POSpelledNamespaceFixture\n{\n    public int Sum(int a, int b) => a + b;\n    public int Caller() => Sum(1, 2);\n}\n", 5, DisplayName = "declared namespace with interior trivia")]
+    [DataRow("using @SampleLib;\n\nnamespace Other.Place;\n\npublic class POSpelledNamespaceFixture\n{\n    public int Sum(int a, int b) => a + b;\n    public int Caller() => Sum(1, 2);\n}\n", 7, DisplayName = "escaped import of the DTO namespace")]
+    public async Task DtoNamespaceInAnEquivalentSpelling_UsesUnqualifiedTypeAtDeclarationAndCaller(string source, int line)
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(source, "POSpelledNamespaceFixture.cs");
+
+        try
+        {
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: line, column: 16),
+                new ParameterObjectPreviewRequest(["a", "b"], "SumArgs", DtoNamespace: "SampleLib"),
+                CancellationToken.None);
+
+            var fixtureDiff = preview.Changes.Single(change =>
+                change.FilePath.EndsWith("POSpelledNamespaceFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(fixtureDiff, "Sum(SumArgs sumArgs)");
+            StringAssert.Contains(fixtureDiff, "new SumArgs(1, 2)");
+            Assert.IsFalse(fixtureDiff.Contains("global::SampleLib.SumArgs", StringComparison.Ordinal),
+                "The DTO namespace is already in scope, so qualification is unnecessary.");
+        }
+        finally
+        {
+            Services.WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     /// <summary>
     /// Guard against over-refusal: a plain (non-virtual, non-interface, non-partial)
     /// extension method's non-receiver parameters must remain eligible for grouping.

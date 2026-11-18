@@ -27,3 +27,7 @@
 | Shared owner graph | Side-effect-free publication with one wrapper per partition; preserve original fields/constructors and weak-key collection. |
 | Atomic selected scope | Seven production/four tests/ADR-index-fragment at110000; global Rule5 cap80000 currently rejects it. Other agent owns tooling remediation. |
 | Tracking identity | Original row/id/priority retained; no duplicate row or source change. Full selected coupling scope remains preserved. |
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Include registration target identity in the ownership plan. SymbolRefactorService.cs:541–674 uses a simple-name regex to identify and replace embedded registrations, including service/factory shapes. Qualify same-name decoys, unrelated extension calls, and comments/literals together with preservation of already selected registration identities. Coordinate with extract-and-wire-semantic-registration-rewrite before shipping either semantic mutation.

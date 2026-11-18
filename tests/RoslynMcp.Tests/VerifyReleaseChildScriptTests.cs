@@ -238,46 +238,27 @@ public sealed class VerifyReleaseChildScriptTests
     [DataRow(1, true)]
     [DataRow(0, false)]
     [DataRow(1, false)]
-    public async Task VerifyRelease_DocsWorkflowExecutesEachSelectedShardAndRequiresTrxAsync(int shardIndex, bool produceTrx)
+    public async Task VerifyRelease_WorkflowStepExecutesEachSelectedShardAndRequiresTrxAsync(int shardIndex, bool produceTrx)
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(VerifyReleaseChildScriptTests), Guid.NewGuid().ToString("N"));
         try
         {
             var fixture = WriteFixture(repositoryRoot, fixtureRoot,
-                new ReleaseCase("docs workflow shard", null, FailureMode.None, false, null, true));
+                new ReleaseCase("workflow shard", null, FailureMode.None, false, null, true));
             WriteFakeShardPlanner(fixtureRoot);
-            await File.WriteAllTextAsync(Path.Combine(fixtureRoot, "eng", "docs-only-test-classes.txt"),
-                "RoslynMcp.Tests.DocumentationContract\n");
-            var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml")).Replace("\r\n", "\n");
-            var stepStart = workflow.IndexOf("- name: Verify release build (pull request)", StringComparison.Ordinal);
-            Assert.IsTrue(stepStart >= 0);
-            const string RunMarker = "        run: |\n";
-            var runStart = workflow.IndexOf(RunMarker, stepStart, StringComparison.Ordinal);
-            Assert.IsTrue(runStart >= 0);
-            runStart += RunMarker.Length;
-            var runEnd = workflow.IndexOf("\n      - ", runStart, StringComparison.Ordinal);
-            Assert.IsTrue(runEnd > runStart);
-            var command = string.Join('\n', workflow[runStart..runEnd].Split('\n')
-                .Select(line => line.StartsWith("          ", StringComparison.Ordinal) ? line[10..] : line));
-            Assert.IsFalse(command.Contains("${{", StringComparison.Ordinal), "Every workflow expression must be resolved for this executed route.");
-            var wrapper = Path.Combine(fixtureRoot, "docs-workflow.ps1");
-            await File.WriteAllTextAsync(wrapper,
-                "$ErrorActionPreference = 'Stop'\n" +
-                "$env:HOSTED_IMAGE = 'ubuntu-latest'\n" +
-                "$env:LINUX_SHARD_BUILD_SECONDS = '[52,68]'\n" +
-                $"$env:TEST_SHARD_INDEX = '{shardIndex}'\n" +
-                "$env:TEST_SHARD_COUNT = '2'\n" +
-                $"$env:ARTIFACT_OWNER = '{(shardIndex == 0 ? "true" : "false")}'\n" +
-                "$env:DOCS_ONLY = 'true'\n" +
-                ". (Join-Path $PSScriptRoot 'fake-dotnet.ps1')\n" + command);
-            fixture = fixture with { ScriptPath = wrapper };
+            fixture = WriteWorkflowReleaseStepWrapper(
+                repositoryRoot,
+                fixture,
+                testScope: "full",
+                shardIndex: shardIndex,
+                shardCount: 2,
+                artifactOwner: shardIndex == 0,
+                linuxShardBuildSeconds: "[52,68]");
 
             var result = await RunVerifyReleaseAsync(fixture, false, trxMode: produceTrx ? null : "missing");
             var diagnostic = $"shard={shardIndex} trx={produceTrx} stdout={result.StdOut} stderr={result.StdErr}";
-            var calls = File.ReadAllLines(fixture.DotnetArgumentsPath)
-                .Select(line => System.Text.Json.JsonSerializer.Deserialize<string[]>(line)!)
-                .Where(arguments => arguments[0] == "test").ToArray();
+            var calls = ReadDotnetCalls(fixture, "test");
             Assert.HasCount(1, calls, diagnostic);
             var filterIndex = Array.IndexOf(calls[0], "--filter");
             Assert.IsTrue(filterIndex >= 0, diagnostic);
@@ -298,6 +279,192 @@ public sealed class VerifyReleaseChildScriptTests
                 StringAssert.Contains(PowerShellOutputNormalizer.Normalize(result.StdOut + result.StdErr),
                     "without producing the required TRX result", diagnostic);
             }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    private const string DocsConsumerFilter =
+        "(ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel1)" +
+        "&TestCategory!=Benchmark&TestCategory!=Network";
+
+    private const string DocsConsumerList =
+        """
+        {
+          "consumers": [
+            { "class": "RoslynMcp.Tests.DocumentationContract", "reads": "fixture" },
+            { "class": "RoslynMcp.Tests.ShardSentinel1", "reads": "fixture" }
+          ]
+        }
+        """;
+
+    /// <summary>
+    /// Executes the real workflow release step as the router's policy-docs leg supplies it (one
+    /// unsharded artifact-owner leg, no calibration output): every release gate still runs, the
+    /// test filter is exactly the checked-in consumer list, and release output is produced.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyRelease_WorkflowDocsLegRunsEveryReleaseGateAndOnlyTheListedConsumerClassesAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(VerifyReleaseChildScriptTests), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = WriteFixture(repositoryRoot, fixtureRoot,
+                new ReleaseCase("workflow docs leg", null, FailureMode.None, false, null, true));
+            WriteFakeShardPlanner(fixtureRoot);
+            await File.WriteAllTextAsync(Path.Combine(fixtureRoot, "eng", DocsConsumerListFileName), DocsConsumerList);
+            fixture = WriteWorkflowReleaseStepWrapper(
+                repositoryRoot,
+                fixture,
+                testScope: "docs-consumers",
+                shardIndex: 0,
+                shardCount: 1,
+                artifactOwner: true,
+                linuxShardBuildSeconds: string.Empty);
+
+            var result = await RunVerifyReleaseAsync(
+                fixture,
+                false,
+                trxMode: "classes",
+                trxClasses: "RoslynMcp.Tests.DocumentationContract,RoslynMcp.Tests.ShardSentinel1");
+            var diagnostic = $"stdout={result.StdOut} stderr={result.StdErr}";
+
+            Assert.AreEqual(0, result.ExitCode, diagnostic);
+            var testCalls = ReadDotnetCalls(fixture, "test");
+            Assert.HasCount(1, testCalls, diagnostic);
+            Assert.AreEqual(DocsConsumerFilter, testCalls[0][Array.IndexOf(testCalls[0], "--filter") + 1], diagnostic);
+            StringAssert.Contains(result.StdOut, "Docs-tier consumer tests: 2 of 3 discovered classes", diagnostic);
+            Assert.IsFalse(
+                result.StdOut.Contains("Test shard weighting:", StringComparison.Ordinal),
+                "The docs leg selects by the consumer list, not by a shard plan. " + diagnostic);
+
+            var phases = File.ReadAllLines(Path.Combine(fixtureRoot, "phases.txt"));
+            foreach (var child in _childScripts)
+            {
+                CollectionAssert.Contains(phases, child.FileName, $"The docs leg must still run {child.FileName}. {diagnostic}");
+            }
+            Assert.IsTrue(
+                Array.IndexOf(phases, "publish") > Array.IndexOf(phases, "test"),
+                "The docs leg must publish after its tests. " + diagnostic);
+            Assert.IsTrue(
+                File.Exists(Path.Combine(fixtureRoot, "artifacts", "manifests", "host-stdio-sha256.txt")),
+                "The docs leg must still write the release hash manifest. " + diagnostic);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    /// <summary>
+    /// The docs leg runs only the listed classes, so anything that could make that set empty,
+    /// partial or unchecked has to fail the leg rather than pass with fewer tests.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("missing list", null, "docs-consumers", true, "classes", "Docs-tier consumer list is missing", false)]
+    [DataRow("empty file", "", "docs-consumers", true, "classes", "Docs-tier consumer list is not readable JSON", false)]
+    [DataRow("malformed JSON", "{ \"consumers\": [", "docs-consumers", true, "classes", "Docs-tier consumer list is not readable JSON", false)]
+    [DataRow("no consumers", "{ \"consumers\": [] }", "docs-consumers", true, "classes", "names no test class", false)]
+    [DataRow("consumers key absent", "{ \"nonConsumers\": [] }", "docs-consumers", true, "classes", "names no test class", false)]
+    [DataRow("filter injection", "{ \"consumers\": [ { \"class\": \"RoslynMcp.Tests.DocumentationContract|ClassName=X\" } ] }", "docs-consumers", true, "classes", "without a plain fully qualified class name", false)]
+    [DataRow("entry without class", "{ \"consumers\": [ { \"reads\": \"fixture\" } ] }", "docs-consumers", true, "classes", "without a plain fully qualified class name", false)]
+    [DataRow("duplicate class", "{ \"consumers\": [ { \"class\": \"RoslynMcp.Tests.ShardSentinel1\" }, { \"class\": \"RoslynMcp.Tests.ShardSentinel1\" } ] }", "docs-consumers", true, "classes", "more than once", false)]
+    [DataRow("class absent from the built assembly", "{ \"consumers\": [ { \"class\": \"RoslynMcp.Tests.ShardSentinel1\" }, { \"class\": \"RoslynMcp.Tests.Removed\" } ] }", "docs-consumers", true, "classes", "does not contain: RoslynMcp.Tests.Removed", false)]
+    [DataRow("listed class executed nothing", DocsConsumerList, "docs-consumers", true, "one-class", "executed no test: RoslynMcp.Tests.ShardSentinel1", true)]
+    [DataRow("results carry no class identity", DocsConsumerList, "docs-consumers", true, null, "executed no test: RoslynMcp.Tests.DocumentationContract, RoslynMcp.Tests.ShardSentinel1", true)]
+    [DataRow("docs scope on a non-owner leg", DocsConsumerList, "docs-consumers", false, "classes", "DocsTierConsumerTests cannot be combined with TestShardOnly", false)]
+    [DataRow("unrouted scope", DocsConsumerList, "", true, "classes", "Unknown test scope ''", false)]
+    [DataRow("misspelled scope", DocsConsumerList, "Docs-Consumers", true, "classes", "Unknown test scope 'Docs-Consumers'", false)]
+    public async Task VerifyRelease_WorkflowDocsLegFailsClosedAsync(
+        string caseName,
+        string? consumerList,
+        string testScope,
+        bool artifactOwner,
+        string? trxMode,
+        string expectedText,
+        bool reachesTests)
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(VerifyReleaseChildScriptTests), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = WriteFixture(repositoryRoot, fixtureRoot,
+                new ReleaseCase(caseName, null, FailureMode.None, false, null, true));
+            WriteFakeShardPlanner(fixtureRoot);
+            if (consumerList is not null)
+            {
+                await File.WriteAllTextAsync(Path.Combine(fixtureRoot, "eng", DocsConsumerListFileName), consumerList);
+            }
+            fixture = WriteWorkflowReleaseStepWrapper(
+                repositoryRoot,
+                fixture,
+                testScope: testScope,
+                shardIndex: 0,
+                shardCount: 1,
+                artifactOwner: artifactOwner,
+                linuxShardBuildSeconds: string.Empty);
+
+            var result = await RunVerifyReleaseAsync(
+                fixture,
+                false,
+                trxMode: trxMode == "one-class" ? "classes" : trxMode,
+                trxClasses: trxMode == "one-class"
+                    ? "RoslynMcp.Tests.DocumentationContract"
+                    : "RoslynMcp.Tests.DocumentationContract,RoslynMcp.Tests.ShardSentinel1");
+            var diagnostic = $"case={caseName} stdout={result.StdOut} stderr={result.StdErr}";
+
+            Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+            StringAssert.Contains(
+                PowerShellOutputNormalizer.Normalize(result.StdOut + result.StdErr),
+                expectedText,
+                diagnostic);
+            Assert.AreEqual(reachesTests ? 1 : 0, ReadDotnetCalls(fixture, "test").Length, diagnostic);
+            Assert.IsEmpty(ReadDotnetCalls(fixture, "publish"), "A failed docs leg must not publish. " + diagnostic);
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(fixtureRoot, "artifacts", "manifests")),
+                "A failed docs leg must not leave a release manifest. " + diagnostic);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyRelease_DocsConsumerScopeRejectsAShardedRunAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(VerifyReleaseChildScriptTests), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = WriteFixture(repositoryRoot, fixtureRoot,
+                new ReleaseCase("sharded docs scope", null, FailureMode.None, false, null, true));
+            WriteFakeShardPlanner(fixtureRoot);
+            await File.WriteAllTextAsync(Path.Combine(fixtureRoot, "eng", DocsConsumerListFileName), DocsConsumerList);
+            fixture = WriteWorkflowReleaseStepWrapper(
+                repositoryRoot,
+                fixture,
+                testScope: "docs-consumers",
+                shardIndex: 0,
+                shardCount: 2,
+                artifactOwner: true,
+                linuxShardBuildSeconds: string.Empty);
+
+            var result = await RunVerifyReleaseAsync(fixture, false);
+            var diagnostic = $"stdout={result.StdOut} stderr={result.StdErr}";
+
+            Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+            StringAssert.Contains(
+                PowerShellOutputNormalizer.Normalize(result.StdOut + result.StdErr),
+                "DocsTierConsumerTests cannot be combined with TestShardOnly or a sharded test run",
+                diagnostic);
+            Assert.IsFalse(File.Exists(fixture.DotnetSentinelPath), "A rejected parameter set must not start any dotnet phase. " + diagnostic);
         }
         finally
         {
@@ -855,6 +1022,21 @@ public sealed class VerifyReleaseChildScriptTests
                         '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><ResultSummary outcome="Completed"><Counters total="0" executed="0" passed="0" failed="0" /></ResultSummary></TestRun>'
                         break
                     }
+                    'classes' {
+                        # One passed case per named class, shaped like an MSTest TRX: results join
+                        # to their class through the test definition id.
+                        $definitions = ''
+                        $results = ''
+                        $ordinal = 0
+                        foreach ($className in @($env:ROSLYNMCP_DOTNET_TRX_CLASSES -split ',')) {
+                            $ordinal++
+                            $testId = '00000000-0000-0000-0000-{0:D12}' -f $ordinal
+                            $definitions += '<UnitTest id="{0}"><TestMethod className="{1}" name="Case" /></UnitTest>' -f $testId, $className
+                            $results += '<UnitTestResult testId="{0}" outcome="Passed" />' -f $testId
+                        }
+                        '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results>{0}</Results><TestDefinitions>{1}</TestDefinitions><ResultSummary outcome="Completed"><Counters total="{2}" executed="{2}" passed="{2}" failed="0" /></ResultSummary></TestRun>' -f $results, $definitions, $ordinal
+                        break
+                    }
                     default {
                         '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><ResultSummary outcome="Completed"><Counters total="1" executed="1" passed="1" failed="0" /></ResultSummary></TestRun>'
                     }
@@ -904,6 +1086,62 @@ public sealed class VerifyReleaseChildScriptTests
         return wrapperPath;
     }
 
+    private const string DocsConsumerListFileName = "docs-tier-test-consumers.json";
+
+    /// <summary>
+    /// Wraps the body of ci.yml's "Verify release build (pull request)" step, verbatim, behind the
+    /// environment a routed leg gives it, so the tests execute the workflow's own parameter
+    /// selection rather than a copy of it.
+    /// </summary>
+    private static ReleaseFixture WriteWorkflowReleaseStepWrapper(
+        string repositoryRoot,
+        ReleaseFixture fixture,
+        string testScope,
+        int shardIndex,
+        int shardCount,
+        bool artifactOwner,
+        string linuxShardBuildSeconds)
+    {
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml")).Replace("\r\n", "\n");
+        var stepStart = workflow.IndexOf("- name: Verify release build (pull request)", StringComparison.Ordinal);
+        Assert.IsTrue(stepStart >= 0);
+        const string RunMarker = "        run: |\n";
+        var runStart = workflow.IndexOf(RunMarker, stepStart, StringComparison.Ordinal);
+        Assert.IsTrue(runStart >= 0);
+        runStart += RunMarker.Length;
+        var runEnd = workflow.IndexOf("\n      - ", runStart, StringComparison.Ordinal);
+        Assert.IsTrue(runEnd > runStart);
+        var command = string.Join('\n', workflow[runStart..runEnd].Split('\n')
+            .Select(line => line.StartsWith("          ", StringComparison.Ordinal) ? line[10..] : line));
+        Assert.IsFalse(command.Contains("${{", StringComparison.Ordinal), "Every workflow expression must be resolved for this executed route.");
+
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var wrapper = Path.Combine(fixture.RepositoryRoot, "workflow-release-step.ps1");
+        File.WriteAllText(wrapper,
+            "$ErrorActionPreference = 'Stop'\n" +
+            "$env:HOSTED_IMAGE = 'ubuntu-latest'\n" +
+            $"$env:LINUX_SHARD_BUILD_SECONDS = '{linuxShardBuildSeconds}'\n" +
+            $"$env:TEST_SHARD_INDEX = '{shardIndex.ToString(invariant)}'\n" +
+            $"$env:TEST_SHARD_COUNT = '{shardCount.ToString(invariant)}'\n" +
+            $"$env:TEST_SCOPE = '{testScope}'\n" +
+            $"$env:ARTIFACT_OWNER = '{(artifactOwner ? "true" : "false")}'\n" +
+            ". (Join-Path $PSScriptRoot 'fake-dotnet.ps1')\n" + command);
+        return fixture with { ScriptPath = wrapper };
+    }
+
+    private static string[][] ReadDotnetCalls(ReleaseFixture fixture, string verb)
+    {
+        if (!File.Exists(fixture.DotnetArgumentsPath))
+        {
+            return [];
+        }
+
+        return File.ReadAllLines(fixture.DotnetArgumentsPath)
+            .Select(line => System.Text.Json.JsonSerializer.Deserialize<string[]>(line)!)
+            .Where(arguments => arguments[0] == verb)
+            .ToArray();
+    }
+
     private static void WriteFakeShardPlanner(string fixtureRoot)
     {
         File.WriteAllText(
@@ -918,6 +1156,33 @@ public sealed class VerifyReleaseChildScriptTests
                 [double[]]$ShardBuildSeconds
             )
 
+            $catalog = @(
+                [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.DocumentationContract' },
+                [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel0' },
+                [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel1' }
+            )
+            if ($TestShardCount -eq 1 -and $TestShardIndex -eq 0) {
+                # The policy-docs leg asks only for the class catalog: one unprofiled shard.
+                if ($HostedImage -or $DurationProfilePath -or $PSBoundParameters.ContainsKey('ShardBuildSeconds')) {
+                    throw 'The class catalog request must not carry hosted duration inputs.'
+                }
+                $allClasses = ($catalog | ForEach-Object { "ClassName=$($_.ClassName)" }) -join '|'
+                [pscustomobject]@{
+                    SchemaVersion = 1
+                    WeightingMode = 'static-cases'
+                    ProfiledClassCount = 0
+                    FallbackClassCount = 0
+                    SelectedFilter = $allClasses
+                    TestClasses = $catalog
+                    Shards = @(
+                        [pscustomobject]@{
+                            Index = 0; ClassCount = 3; StaticCaseWeight = 3; BalanceWeight = 3.0
+                            Filter = $allClasses
+                        }
+                    )
+                } | ConvertTo-Json -Depth 4
+                return
+            }
             if ($TestShardCount -ne 2 -or $TestShardIndex -lt 0 -or $TestShardIndex -gt 1) {
                 throw "Unexpected shard selection $TestShardIndex/$TestShardCount."
             }
@@ -930,7 +1195,7 @@ public sealed class VerifyReleaseChildScriptTests
                 throw 'Unexpected hosted duration profile selection.'
             }
             if ($HostedImage -ceq 'ubuntu-latest' -and ($ShardBuildSeconds -join ',') -cne '52,68') {
-                throw 'The docs workflow must supply both measured Linux build times in shard order.'
+                throw 'The workflow must supply both measured Linux build times in shard order.'
             }
 
             $filters = @(
@@ -943,11 +1208,7 @@ public sealed class VerifyReleaseChildScriptTests
                 ProfiledClassCount = if ($HostedImage) { 3 } else { 0 }
                 FallbackClassCount = 0
                 SelectedFilter = $filters[$TestShardIndex]
-                TestClasses = @(
-                    [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.DocumentationContract' },
-                    [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel0' },
-                    [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel1' }
-                )
+                TestClasses = $catalog
                 Shards = @(
                     [pscustomobject]@{
                         Index = 0; ClassCount = 2; StaticCaseWeight = 2; BalanceWeight = 2.0
@@ -1031,6 +1292,7 @@ public sealed class VerifyReleaseChildScriptTests
         bool failDotnetTest = false,
         string? failDotnetStep = null,
         string? trxMode = null,
+        string? trxClasses = null,
         string? publishMode = null,
         string? outputRoot = null,
         bool testShardOnly = false,
@@ -1092,6 +1354,10 @@ public sealed class VerifyReleaseChildScriptTests
         if (trxMode is not null)
         {
             environment["ROSLYNMCP_DOTNET_TRX_MODE"] = trxMode;
+        }
+        if (trxClasses is not null)
+        {
+            environment["ROSLYNMCP_DOTNET_TRX_CLASSES"] = trxClasses;
         }
         if (publishMode is not null)
         {

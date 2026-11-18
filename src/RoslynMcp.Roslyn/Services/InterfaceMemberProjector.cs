@@ -188,7 +188,7 @@ internal sealed class InterfaceMemberProjector
     private MemberDeclarationSyntax Strip(MemberDeclarationSyntax source, ISymbol member, SemanticModel? model, ScopeQualifier qualifier)
     {
         T Qualified<T>(T node) where T : SyntaxNode => (T)qualifier.Visit(node)!;
-        SyntaxList<AttributeListSyntax> Attributes(SyntaxList<AttributeListSyntax> lists) => ContractAttributes(lists, model);
+        SyntaxList<AttributeListSyntax> Attributes(SyntaxList<AttributeListSyntax> lists) => ContractAttributes(lists, model, qualifier);
 
         switch (source, member)
         {
@@ -200,8 +200,8 @@ internal sealed class InterfaceMemberProjector
                     Qualified(method.ReturnType),
                     explicitInterfaceSpecifier: null,
                     method.Identifier,
-                    method.TypeParameterList,
-                    parameters.WithParameters(ContractParameters(method.ParameterList.Parameters, parameters.Parameters, model)),
+                    TypeParameters(method.TypeParameterList, model, qualifier),
+                    parameters.WithParameters(ContractParameters(method.ParameterList.Parameters, parameters.Parameters, model, qualifier)),
                     methodSymbol.IsOverride
                         ? InheritedConstraints(methodSymbol)
                         : SyntaxFactory.List(method.ConstraintClauses.Select(clause => Qualified(clause))),
@@ -215,7 +215,7 @@ internal sealed class InterfaceMemberProjector
                     Qualified(property.Type),
                     explicitInterfaceSpecifier: null,
                     property.Identifier,
-                    Accessors(symbol, property.AccessorList, model),
+                    Accessors(symbol, property.AccessorList, model, qualifier),
                     expressionBody: null,
                     initializer: null,
                     default);
@@ -227,8 +227,8 @@ internal sealed class InterfaceMemberProjector
                     Qualified(indexer.Type),
                     explicitInterfaceSpecifier: null,
                     indexer.ThisKeyword,
-                    bracketed.WithParameters(ContractParameters(indexer.ParameterList.Parameters, bracketed.Parameters, model)),
-                    Accessors(symbol, indexer.AccessorList, model),
+                    bracketed.WithParameters(ContractParameters(indexer.ParameterList.Parameters, bracketed.Parameters, model, qualifier)),
+                    Accessors(symbol, indexer.AccessorList, model, qualifier),
                     expressionBody: null,
                     default);
             case (EventDeclarationSyntax evt, IEventSymbol):
@@ -244,25 +244,39 @@ internal sealed class InterfaceMemberProjector
     /// <summary>An override inherits its constraints from the base method, so its syntax has none: rebuild them from the symbol.</summary>
     private static SyntaxList<TypeParameterConstraintClauseSyntax> InheritedConstraints(IMethodSymbol method)
     {
-        static string Escape(string name) => SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name;
-        var clauses = new List<string>();
+        var clauses = new List<TypeParameterConstraintClauseSyntax>();
         foreach (var parameter in method.TypeParameters)
         {
-            var constraints = new List<string>();
+            // Source order: class/struct/unmanaged, notnull, type constraints, new(), allows ref struct.
+            var constraints = new List<TypeParameterConstraintSyntax>();
             if (parameter.HasReferenceTypeConstraint)
-                constraints.Add(parameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated ? "class?" : "class");
-            if (parameter.HasUnmanagedTypeConstraint) constraints.Add("unmanaged");
-            else if (parameter.HasValueTypeConstraint) constraints.Add("struct");
-            if (parameter.HasNotNullConstraint) constraints.Add("notnull");
-            constraints.AddRange(parameter.ConstraintTypes.Select(t => t.ToDisplayString(_containingTypeFormat)));
-            if (parameter.HasConstructorConstraint && !parameter.HasValueTypeConstraint && !parameter.HasUnmanagedTypeConstraint) constraints.Add("new()");
-            if (constraints.Count > 0) clauses.Add($"where {Escape(parameter.Name)} : {string.Join(", ", constraints)}");
+            {
+                var reference = SyntaxFactory.ClassOrStructConstraint(SyntaxKind.ClassConstraint);
+                constraints.Add(parameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated
+                    ? reference.WithQuestionToken(SyntaxFactory.Token(SyntaxKind.QuestionToken))
+                    : reference);
+            }
+
+            if (parameter.HasUnmanagedTypeConstraint) constraints.Add(SyntaxFactory.TypeConstraint(SyntaxFactory.IdentifierName("unmanaged")));
+            else if (parameter.HasValueTypeConstraint) constraints.Add(SyntaxFactory.ClassOrStructConstraint(SyntaxKind.StructConstraint));
+            if (parameter.HasNotNullConstraint) constraints.Add(SyntaxFactory.TypeConstraint(SyntaxFactory.IdentifierName("notnull")));
+            constraints.AddRange(parameter.ConstraintTypes.Select(type =>
+                SyntaxFactory.TypeConstraint(SyntaxFactory.ParseTypeName(type.ToDisplayString(_containingTypeFormat)))));
+            if (parameter.HasConstructorConstraint && !parameter.HasValueTypeConstraint && !parameter.HasUnmanagedTypeConstraint)
+                constraints.Add(SyntaxFactory.ConstructorConstraint());
+            if (parameter.AllowsRefLikeType)
+                constraints.Add(SyntaxFactory.AllowsConstraintClause(SyntaxFactory.SingletonSeparatedList<AllowsConstraintSyntax>(SyntaxFactory.RefStructConstraint())));
+            if (constraints.Count > 0)
+            {
+                clauses.Add(SyntaxFactory.TypeParameterConstraintClause(SyntaxFactory.IdentifierName(EscapedIdentifier(parameter.Name)))
+                    .WithConstraints(SyntaxFactory.SeparatedList(constraints)));
+            }
         }
 
-        var names = string.Join(", ", method.TypeParameters.Select(p => Escape(p.Name)));
-        var parsed = (MethodDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"void M<{names}>() {string.Join(" ", clauses)};")!;
-        return parsed.ConstraintClauses;
+        return SyntaxFactory.List(clauses);
     }
+
+    private static string EscapedIdentifier(string name) => SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name;
 
     private static EventFieldDeclarationSyntax EventField(SyntaxList<AttributeListSyntax> attributes, TypeSyntax type, SyntaxToken identifier) =>
         SyntaxFactory.EventFieldDeclaration(
@@ -273,7 +287,7 @@ internal sealed class InterfaceMemberProjector
             SyntaxFactory.Token(SyntaxKind.SemicolonToken));
 
     /// <summary>Public accessors only; <c>init</c> stays <c>init</c>; accessor attributes are filtered like any other.</summary>
-    private AccessorListSyntax Accessors(IPropertySymbol property, AccessorListSyntax? sourceAccessors, SemanticModel? model)
+    private AccessorListSyntax Accessors(IPropertySymbol property, AccessorListSyntax? sourceAccessors, SemanticModel? model, ScopeQualifier qualifier)
     {
         var accessors = new List<AccessorDeclarationSyntax>();
         void Add(IMethodSymbol? method, SyntaxKind kind)
@@ -281,7 +295,7 @@ internal sealed class InterfaceMemberProjector
             if (method is not { DeclaredAccessibility: Accessibility.Public }) return;
             var attributes = sourceAccessors?.Accessors.FirstOrDefault(a => a.IsKind(kind))?.AttributeLists ?? default;
             accessors.Add(SyntaxFactory.AccessorDeclaration(kind)
-                .WithAttributeLists(ContractAttributes(attributes, model))
+                .WithAttributeLists(ContractAttributes(attributes, model, qualifier))
                 .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
         }
 
@@ -291,63 +305,42 @@ internal sealed class InterfaceMemberProjector
     }
 
     /// <summary>
-    /// <paramref name="source"/> is the declaration's own parameter list, which the semantic model can bind;
-    /// <paramref name="rewritten"/> is the same list after <see cref="ScopeQualifier"/> (same shape, but nodes
-    /// the model no longer knows), and supplies the text that is emitted.
+    /// <paramref name="source"/> is the declaration's own parameter list, whose attributes the semantic model can
+    /// bind; <paramref name="rewritten"/> is the same list after <see cref="ScopeQualifier"/> (same shape, but nodes
+    /// the model no longer knows), and supplies the parameter text that is emitted. Attribute lists are never taken
+    /// from the rewritten parameter: <see cref="ContractAttributes"/> filters and qualifies them from
+    /// <paramref name="source"/>.
     /// </summary>
-    private SeparatedSyntaxList<ParameterSyntax> ContractParameters(
-        SeparatedSyntaxList<ParameterSyntax> source, SeparatedSyntaxList<ParameterSyntax> rewritten, SemanticModel? model) =>
-        SyntaxFactory.SeparatedList(rewritten.Select((p, i) => p
-            .WithAttributeLists(ContractAttributes(source[i].AttributeLists, p.AttributeLists, model))
-            .WithModifiers(SyntaxFactory.TokenList(p.Modifiers.Where(m => !m.IsKind(SyntaxKind.ThisKeyword))))));
+    private static SeparatedSyntaxList<ParameterSyntax> ContractParameters(
+        SeparatedSyntaxList<ParameterSyntax> source, SeparatedSyntaxList<ParameterSyntax> rewritten, SemanticModel? model, ScopeQualifier qualifier) =>
+        SyntaxFactory.SeparatedList(rewritten.Select((p, i) => p.WithAttributeLists(ContractAttributes(source[i].AttributeLists, model, qualifier))));
 
-    private SyntaxList<AttributeListSyntax> ContractAttributes(SyntaxList<AttributeListSyntax> lists, SemanticModel? model) =>
-        ContractAttributes(lists, lists, model);
+    /// <summary>Method type parameters: their attribute lists take the same contract filter and qualifier as every other list.</summary>
+    private static TypeParameterListSyntax? TypeParameters(TypeParameterListSyntax? source, SemanticModel? model, ScopeQualifier qualifier) =>
+        source?.WithParameters(SyntaxFactory.SeparatedList(
+            source.Parameters.Select(parameter => parameter.WithAttributeLists(ContractAttributes(parameter.AttributeLists, model, qualifier)))));
 
     /// <summary>
-    /// Keeps only contract attributes: decided on <paramref name="source"/> (bound by the model), emitted from
-    /// <paramref name="rewritten"/> (the same attribute lists after qualification). Without a semantic model
-    /// (generator-built declarations) the attribute classes cannot be identified, so none are kept.
+    /// The one place every attribute list (member, accessor, parameter, type parameter) is filtered and qualified:
+    /// only contract attributes are kept, decided on the original attribute (bound by the model), and each kept
+    /// attribute is emitted through <paramref name="qualifier"/>, which qualifies or inlines the names its arguments
+    /// use and records the types it spells. A dropped attribute is never visited, so it records nothing. Without a
+    /// semantic model (generator-built declarations) the attribute classes cannot be identified, so none are kept.
     /// </summary>
-    private SyntaxList<AttributeListSyntax> ContractAttributes(
-        SyntaxList<AttributeListSyntax> source, SyntaxList<AttributeListSyntax> rewritten, SemanticModel? model)
+    private static SyntaxList<AttributeListSyntax> ContractAttributes(
+        SyntaxList<AttributeListSyntax> lists, SemanticModel? model, ScopeQualifier qualifier)
     {
         if (model is null) return default;
         var kept = new List<AttributeListSyntax>();
-        for (var i = 0; i < source.Count; i++)
+        foreach (var list in lists)
         {
             // `field:` targets address a backing field the interface member does not have.
-            if (source[i].Target?.Identifier.IsKind(SyntaxKind.FieldKeyword) == true) continue;
-            var attributes = new List<AttributeSyntax>();
-            for (var j = 0; j < source[i].Attributes.Count; j++)
-            {
-                var original = source[i].Attributes[j];
-                if (!IsContractAttribute(model.GetSymbolInfo(original).Symbol?.ContainingType)) continue;
-                // The qualifier may replace an unnameable constant expression with its value.
-                // Only references still present in the emitted attribute need a receiving-project reference.
-                if (original.IsEquivalentTo(rewritten[i].Attributes[j]))
-                {
-                    foreach (var name in original.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
-                        if (model.GetAliasInfo(name) is { } alias) _referencedUsingAliases.Add(alias.Name);
-                    if (original.ArgumentList is { } arguments)
-                    {
-                        foreach (var name in arguments.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
-                        {
-                            switch (model.GetSymbolInfo(name).Symbol)
-                            {
-                                case ITypeSymbol type:
-                                    _referencedTypes.Add(type);
-                                    break;
-                                case ISymbol { ContainingType: not null } symbol when symbol is IFieldSymbol or IPropertySymbol or IMethodSymbol:
-                                    _referencedTypes.Add(symbol.ContainingType);
-                                    break;
-                            }
-                        }
-                    }
-                }
-                attributes.Add(rewritten[i].Attributes[j]);
-            }
-            if (attributes.Count > 0) kept.Add(rewritten[i].WithAttributes(SyntaxFactory.SeparatedList(attributes)));
+            if (list.Target?.Identifier.IsKind(SyntaxKind.FieldKeyword) == true) continue;
+            var attributes = list.Attributes
+                .Where(attribute => IsContractAttribute(model.GetSymbolInfo(attribute).Symbol?.ContainingType))
+                .Select(attribute => (AttributeSyntax)qualifier.Visit(attribute)!)
+                .ToList();
+            if (attributes.Count > 0) kept.Add(list.WithAttributes(SyntaxFactory.SeparatedList(attributes)));
         }
 
         return SyntaxFactory.List(kept);
@@ -381,6 +374,7 @@ internal sealed class InterfaceMemberProjector
             case IMethodSymbol method:
                 _referencedTypes.Add(method.ReturnType);
                 Attributes(method.GetReturnTypeAttributes());
+                foreach (var typeParameter in method.TypeParameters) Attributes(typeParameter.GetAttributes());
                 Parameters(method.Parameters);
                 foreach (var constraint in method.TypeParameters.SelectMany(t => t.ConstraintTypes)) _referencedTypes.Add(constraint);
                 break;
@@ -467,31 +461,53 @@ internal sealed class InterfaceMemberProjector
                 : base.Visit(node);
         }
 
+        /// <summary>
+        /// Attribute lists are filtered and qualified attribute by attribute by <see cref="InterfaceMemberProjector.ContractAttributes"/>;
+        /// walking them here (as part of a parameter) would visit attributes the interface drops.
+        /// </summary>
+        public override SyntaxNode? VisitAttributeList(AttributeListSyntax node) => node;
+
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node) => Qualify(node) ?? base.VisitIdentifierName(node);
 
         public override SyntaxNode? VisitGenericName(GenericNameSyntax node) => Qualify(node) ?? base.VisitGenericName(node);
 
-        /// <summary>A default value, or the argument of an attribute the interface keeps (a dropped attribute's names are not emitted).</summary>
-        private bool InDefaultOrContractAttributeArgument(SyntaxNode node)
-        {
-            foreach (var ancestor in node.Ancestors())
-            {
-                if (ancestor is EqualsValueClauseSyntax) return true;
-                if (ancestor is AttributeArgumentSyntax { Parent.Parent: AttributeSyntax attribute })
-                    return IsContractAttribute(model!.GetSymbolInfo(attribute).Symbol?.ContainingType);
-            }
+        /// <summary>
+        /// A default value or an attribute argument. Only attributes the interface keeps ever reach this rewriter
+        /// (<see cref="InterfaceMemberProjector.ContractAttributes"/> filters first), so a dropped attribute's names are never visited.
+        /// </summary>
+        private static bool InDefaultOrAttributeArgument(SyntaxNode node) =>
+            node.Ancestors().Any(ancestor => ancestor is EqualsValueClauseSyntax or AttributeArgumentSyntax);
 
-            return false;
+        /// <summary>
+        /// A name written qualified keeps its text, but the type that owns it still has to be referenced by the
+        /// receiving project (and imported when the qualification is partial). <c>int.MaxValue</c> and its
+        /// predefined-type siblings need neither.
+        /// </summary>
+        private void RecordQualifiedName(SimpleNameSyntax node)
+        {
+            if (!InDefaultOrAttributeArgument(node) ||
+                node.Parent is MemberAccessExpressionSyntax { Expression: PredefinedTypeSyntax }) return;
+            switch (model!.GetSymbolInfo(node).Symbol)
+            {
+                case ITypeSymbol type:
+                    referencedTypes.Add(type);
+                    break;
+                case ISymbol { ContainingType: not null } member when member is IFieldSymbol or IPropertySymbol or IMethodSymbol:
+                    referencedTypes.Add(member.ContainingType);
+                    break;
+            }
         }
 
         private SyntaxNode? Qualify(SimpleNameSyntax node)
         {
             if (node.Parent is QualifiedNameSyntax qualified && qualified.Right == node ||
-                node.Parent is AliasQualifiedNameSyntax or NameColonSyntax or NameEqualsSyntax or MemberBindingExpressionSyntax ||
                 node.Parent is MemberAccessExpressionSyntax access && access.Name == node)
             {
+                RecordQualifiedName(node);
                 return null;
             }
+
+            if (node.Parent is AliasQualifiedNameSyntax or NameColonSyntax or NameEqualsSyntax or MemberBindingExpressionSyntax) return null;
 
             switch (model!.GetSymbolInfo(node).Symbol)
             {
@@ -503,7 +519,7 @@ internal sealed class InterfaceMemberProjector
                     }
                     referencedTypes.Add(nested);
                     return SyntaxFactory.ParseTypeName(nested.ToDisplayString(_containingTypeFormat)).WithTriviaFrom(node);
-                case INamedTypeSymbol type when InDefaultOrContractAttributeArgument(node):
+                case INamedTypeSymbol type when InDefaultOrAttributeArgument(node):
                     // A default such as `Limits.Cap` keeps its type name, so the interface file must import the type's namespace.
                     referencedTypes.Add(type);
                     if (model!.GetAliasInfo(node) is { } typeAlias) referencedUsingAliases.Add(typeAlias.Name);
@@ -515,7 +531,7 @@ internal sealed class InterfaceMemberProjector
                     return SyntaxFactory.MemberAccessExpression(
                         SyntaxKind.SimpleMemberAccessExpression,
                         SyntaxFactory.ParseName(member.ContainingType.ToDisplayString(_containingTypeFormat)),
-                        SyntaxFactory.IdentifierName(SyntaxFacts.GetKeywordKind(member.Name) == SyntaxKind.None ? member.Name : "@" + member.Name)).WithTriviaFrom(node);
+                        SyntaxFactory.IdentifierName(EscapedIdentifier(member.Name))).WithTriviaFrom(node);
                 default:
                     if (model!.GetAliasInfo(node) is { } emittedAlias) referencedUsingAliases.Add(emittedAlias.Name);
                     else if (model.GetSymbolInfo(node).Symbol is INamedTypeSymbol type) referencedUnqualifiedTypes.Add(type);

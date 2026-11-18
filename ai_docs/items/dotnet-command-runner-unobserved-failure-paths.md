@@ -1,6 +1,6 @@
 # dotnet-command-runner-unobserved-failure-paths — Make DotnetCommandRunner failure paths observed and its null-logger path emit boundary records
 
-**row:** `dotnet-command-runner-unobserved-failure-paths` · **pri:** `Low` · **size:** `S` · **verified:** `df2f06c1dc495c3e0c4dfaf4ae7e67a54b044efa`
+**row:** `dotnet-command-runner-unobserved-failure-paths` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
@@ -8,7 +8,8 @@
 
 ## Acceptance
 
-- [ ] A `process.Start()` failure and the stdout/stderr read tasks are observed (awaited or faulted-handled) when `WaitForExitAsync` throws; no unobserved task exception remains.
+- [ ] Observe start failures and every acquired stdout/stderr reader task when process exit waiting fails. Preserve the primary failure and cleanup diagnostics.
+- [ ] Dispose each acquired stdout and stderr reader after its task settles. Exercise success, caller cancellation, early termination and partial acquisition. Prove the underlying handles close.
 - [ ] The null-logger constructor paths (used in 13 places) no longer silently skip the kill-failure log and boundary records, or the null-logger constructors are removed in favour of a required logger.
 - [ ] The class's folder and namespace agree (`Helpers/` versus `RoslynMcp.Roslyn.Services`).
 - [ ] Red-first tests cover each failure path.

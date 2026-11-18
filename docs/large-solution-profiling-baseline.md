@@ -34,8 +34,8 @@ This document implements **Phase 6** of the release-hardening plan: a **repeatab
 ## Automation
 
 Use `eng/profile-large-solution.ps1` to run the repeatable MCP timing pass. The
-default target is `D:\OrchardCore\OrchardCore.slnx`, a local 50+ project
-representative solution when present. See
+script's built-in default target (`D:\OrchardCore\OrchardCore.slnx`) is a retired local checkout, so always pass
+`-SolutionPath` with any local 50+ project solution. See
 `ai_docs/prompts/profile-large-solution.md` for the runbook and interpretation steps.
 
 ## Decision gate (example thresholds)
@@ -73,12 +73,12 @@ checkout and wrote ignored raw artifacts under
 | Field | Value |
 |-------|--------|
 | Date | 2026-04-26T21:29:37Z |
-| Solution | `C:\Code-Repo\OrchardCore\OrchardCore.slnx` |
+| Solution | `<orchardcore>\OrchardCore.slnx` (historical: that local checkout no longer exists) |
 | OrchardCore git | `main` / `f852c64` |
 | Project count | 227 solution projects; 233 repo projects |
 | Tracked C# files | 5,190 |
 | roslyn-mcp version / commit | `1.33.0+7b28ea43144f998dad6570efa7782bc1712ada10` |
-| Method | `eng/profile-large-solution.ps1 -SolutionPath C:\Code-Repo\OrchardCore\OrchardCore.slnx -Iterations 5 -SymbolQuery ContentItem`; included upfront `dotnet restore`; did not run emit validation |
+| Method | `eng/profile-large-solution.ps1 -SolutionPath <orchardcore>\OrchardCore.slnx -Iterations 5 -SymbolQuery ContentItem`; included upfront `dotnet restore`; did not run emit validation |
 | Selected reference symbol | `OrchardCore.Alias.Indexes.AliasPartIndex.ContentItemId` |
 | workspace_load P50 / P95 | 40,629.54 ms / 44,849.03 ms |
 | symbol_search P50 / P95 | 74 ms / 1,177.84 ms |

@@ -924,7 +924,55 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
                 viaMethod = viaProperty + viaReadonly + viaIndexer + service.Value();
             }
         }
+
+        public class RefRegistry
+        {
+            public void AddScoped<T>() { }
+            public void AddScoped<TService, TImplementation>() { }
+            public void Wire() { AddScoped<RefService>(); }
+        }
         """;
+
+    /// <summary>
+    /// Compiles ref calls written against <c>IRefService</c> (which only exists after the extraction) in the consumer
+    /// project: the projected interface must support the same ref-returning calls the class does.
+    /// </summary>
+    private static async Task AssertRefCallThroughInterfaceCompilesAsync(Microsoft.CodeAnalysis.Solution solution)
+    {
+        var withCall = solution.Projects.Single(p => p.Name == "Consumer").AddDocument("RefThroughInterface.cs", """
+            namespace Contracts;
+
+            public static class RefThroughInterface
+            {
+                public static int Call(IRefService service)
+                {
+                    ref int viaMethod = ref service.RefMethod();
+                    ref readonly int viaReadonly = ref service.RefReadonlyMethod();
+                    ref int viaProperty = ref service.RefProperty;
+                    ref readonly int viaIndexer = ref service[0];
+                    viaMethod = viaProperty + viaReadonly + viaIndexer + service.Value();
+                    return viaMethod;
+                }
+            }
+            """).Project.Solution;
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(withCall);
+    }
+
+    /// <summary>Dependency inversion retargets the consumer's constructor; extract-and-wire rewrites the DI registration text.</summary>
+    private static async Task AssertConsumerWiredAsync(Microsoft.CodeAnalysis.Solution solution, string route)
+    {
+        var consumerText = (await solution.Projects.Single(p => p.Name == "Consumer").Documents.Single(d => d.Name == "RefConsumer.cs").GetTextAsync()).ToString();
+        if (route == "dependency-inversion")
+        {
+            StringAssert.Contains(consumerText, "IRefService service");
+            StringAssert.Contains(consumerText, "ref int viaMethod = ref service.RefMethod()");
+        }
+        else if (route == "extract-and-wire")
+        {
+            StringAssert.Contains(consumerText, "AddScoped<global::Contracts.IRefService, RefService>()");
+            StringAssert.Contains(consumerText, "public RefConsumer(RefService service)");
+        }
+    }
 
     private static Task<string> PrepareRefFixtureAsync(IsolatedWorkspaceScope workspace) =>
         PrepareInterfaceRouteFixtureAsync(workspace, "RefService.cs", RefServiceSource, "RefConsumer.cs", RefConsumerSource);
@@ -965,12 +1013,8 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         pending = await TestInfrastructure.InterfaceExtractionTestContext.ReparseSerializedDocumentsAsync(pending);
         await AssertRefContractAsync(pending, "Contracts");
         await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(pending);
-        if (route == "dependency-inversion")
-        {
-            var consumerText = (await pending.Projects.Single(p => p.Name == "Consumer").Documents.Single(d => d.Name == "RefConsumer.cs").GetTextAsync()).ToString();
-            StringAssert.Contains(consumerText, "IRefService service");
-            StringAssert.Contains(consumerText, "ref int viaMethod = ref service.RefMethod()");
-        }
+        await AssertConsumerWiredAsync(pending, route);
+        await AssertRefCallThroughInterfaceCompilesAsync(pending);
     }
 
     [TestMethod]
@@ -994,6 +1038,8 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         var reloaded = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertRefContractAsync(reloaded, route == "standalone" ? "SampleLib" : "Contracts");
         await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(reloaded);
+        await AssertConsumerWiredAsync(reloaded, route);
+        await AssertRefCallThroughInterfaceCompilesAsync(reloaded);
     }
 
     [TestMethod]
