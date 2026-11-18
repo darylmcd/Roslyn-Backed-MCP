@@ -1,6 +1,6 @@
 # extract-and-wire-same-name-sibling-contract — Make extract_and_wire honour the implemented-contract coverage rule
 
-**row:** `extract-and-wire-same-name-sibling-contract` · **pri:** `Medium` · **size:** `M` · **deps:** `extract-interface-same-name-unrelated-contract-noop`
+**row:** `extract-and-wire-same-name-sibling-contract` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
@@ -25,3 +25,7 @@
 ## Context
 
 - Same-mechanism instance of `extract-interface-same-name-unrelated-contract-noop` (name-only shortcut before checking the member contract).
+
+## Notes
+
+2026-11-18 (docs-2 closeout): the remedy bullet is a same-mechanism instance on all three routes that share the re-pin: extract-and-wire (ExtractAndWireOrchestrator.cs:99), cross-project (CrossProjectRefactoringService.cs:137) and dependency inversion (:340) all pass ReceivingProjectRemedy to the gate even when the failure was caused by the re-pin. Parent row extract-interface-same-name-unrelated-contract-noop closed by PR 2148.

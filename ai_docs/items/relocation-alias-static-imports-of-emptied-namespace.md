@@ -1,6 +1,6 @@
 # relocation-alias-static-imports-of-emptied-namespace — Relocation import pass mishandles alias and static imports of the emptied namespace
 
-**row:** `relocation-alias-static-imports-of-emptied-namespace` · **pri:** `Medium` · **size:** `S` · **verified:** `bb6be1177b4e60b73706031338223f9018889772` · **deps:** `relocation-using-semantic-identity`
+**row:** `relocation-alias-static-imports-of-emptied-namespace` · **pri:** `Medium` · **size:** `S` · **verified:** `bb6be1177b4e60b73706031338223f9018889772`
 
 ## Anchors
 

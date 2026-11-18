@@ -1,6 +1,6 @@
 # generated-interface-reference-create-unverified-spelling — Verify every generated-interface spelling by binding
 
-**row:** `generated-interface-reference-create-unverified-spelling` · **pri:** `Medium` · **size:** `M` · **verified:** `ecde13a0b03ee7ebc6db18d3886b352375d5cf40` · **deps:** `extract-interface-same-name-unrelated-contract-noop`
+**row:** `generated-interface-reference-create-unverified-spelling` · **pri:** `Medium` · **size:** `M` · **verified:** `ecde13a0b03ee7ebc6db18d3886b352375d5cf40`
 
 ## Anchors
 
