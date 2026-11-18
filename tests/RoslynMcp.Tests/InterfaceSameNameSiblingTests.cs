@@ -286,7 +286,7 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
     }
 
     [TestMethod]
-    public async Task A_Failure_After_A_Sibling_Rebind_Names_A_Neutral_Remedy()
+    public async Task A_Failure_With_A_Same_Named_Type_And_ReplaceUsages_Names_Both_Causes()
     {
         await using var workspace = await LoadAsync(SiblingFixture.Append(("SampleLib/Both.cs", """
             using SampleLib.Contracts;
@@ -306,8 +306,141 @@ public sealed class InterfaceSameNameSiblingTests : InterfaceRouteTestBase
             ExtractAsync(workspace, "ItemService", "IItemService", ["Extra"], replaceUsages: true));
 
         StringAssert.Contains(refusal.Message, "The generated interface introduces compiler errors");
-        StringAssert.Contains(refusal.Message, InterfacePreviewCompilationGate.SiblingRemedy);
-        Assert.IsFalse(refusal.Message.Contains("replaceUsages=false", StringComparison.Ordinal), refusal.Message);
+        StringAssert.Contains(refusal.Message, "choose a different interface name");
+        StringAssert.Contains(refusal.Message, "include the members those usages call in memberNames");
+        StringAssert.Contains(refusal.Message, InterfacePreviewCompilationGate.SiblingReplaceUsagesRemedy);
+    }
+
+    [TestMethod]
+    public void The_Remedy_Names_Only_The_Causes_That_Can_Apply()
+    {
+        Assert.AreEqual(InterfacePreviewCompilationGate.ReplaceUsagesRemedy, InterfacePreviewCompilationGate.RemedyFor(sameNamedType: false, replaceUsages: true));
+        Assert.AreEqual(InterfacePreviewCompilationGate.SiblingRemedy, InterfacePreviewCompilationGate.RemedyFor(sameNamedType: true, replaceUsages: false));
+        Assert.AreEqual(InterfacePreviewCompilationGate.SiblingReplaceUsagesRemedy, InterfacePreviewCompilationGate.RemedyFor(sameNamedType: true, replaceUsages: true));
+        Assert.IsFalse(InterfacePreviewCompilationGate.SiblingRemedy.Contains("replaceUsages", StringComparison.Ordinal),
+            "without replaceUsages the remedy must not blame it");
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(5)]
+    [DataRow(17)]
+    public void A_Name_Straddling_Two_Scan_Windows_Is_Found_And_An_Absent_One_Is_Not(int leading)
+    {
+        var text = Microsoft.CodeAnalysis.Text.SourceText.From(new string('x', leading) + "IItemService" + new string('y', 9));
+
+        Assert.IsTrue(SiblingInterfaceRepin.Mentions(text, "IItemService", 12));
+        Assert.IsFalse(SiblingInterfaceRepin.Mentions(text, "IOtherService", 12));
+        Assert.IsFalse(SiblingInterfaceRepin.Mentions(Microsoft.CodeAnalysis.Text.SourceText.From(string.Empty), "IItemService", 12));
+    }
+
+    [TestMethod]
+    public async Task A_Projected_Member_That_Names_The_Unrelated_Same_Named_Type_Does_Not_Bind_To_The_New_Interface()
+    {
+        await using var workspace = await LoadAsync(SiblingFixture.Append(("SampleLib/ItemService.cs", """
+            using SampleLib.Contracts;
+
+            namespace SampleLib;
+
+            public class ItemService : IItemService
+            {
+                public int Compute() => 1;
+
+                public void Take(Other.IItemService other) { }
+            }
+            """)).ToArray());
+
+        var preview = await ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false);
+
+        var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        await AssertCompilesAsync(pending);
+        var generated = (await CompileAsync(pending, "SampleLib")).GetTypeByMetadataName("SampleLib.IItemService")!;
+        var take = generated.GetMembers("Take").OfType<IMethodSymbol>().Single();
+        Assert.AreEqual("Other.IItemService", take.Parameters.Single().Type.ToDisplayString(),
+            "the generated interface must not capture the unrelated type it mentions");
+    }
+
+    [TestMethod]
+    public async Task A_Consumer_File_Linked_Into_Two_Projects_Is_Repinned_Identically_And_Applies()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteAsync(workspace, SiblingFixture);
+        AddLinkedProject(workspace, "Linked", "../SampleLib/Holder.cs", "../SampleLib/Contracts/IItemService.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await ExtractAsync(workspace, "ItemService", "IItemService", null, replaceUsages: false);
+
+        var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        await AssertCompilesAsync(pending);
+        var copies = pending.Projects.SelectMany(p => p.Documents).Where(d => d.Name is "Holder.cs" or "LinkedHolder.cs").ToArray();
+        Assert.AreEqual(2, copies.Length, "the consumer is compiled by SampleLib and by Linked");
+        Assert.AreEqual(1, (await Task.WhenAll(copies.Select(async d => (await d.GetTextAsync()).ToString()))).Distinct().Count(),
+            "both copies of the one physical file carry the same edit");
+        foreach (var project in new[] { "SampleLib", "Linked" })
+            Assert.AreEqual("SampleLib.Contracts.IItemService", FieldType(await CompileAsync(pending, project), "SampleLib.Holder", "Item"), project);
+
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "extract_interface_apply", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        StringAssert.Contains(await File.ReadAllTextAsync(workspace.GetPath("SampleLib", "Holder.cs")), "SampleLib.Contracts.IItemService");
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+    }
+
+    [TestMethod]
+    public async Task Cross_Project_Route_Repins_Linked_Source_And_Consumer_Copies_Without_Diverging()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = await PrepareInterfaceRouteFixtureAsync(workspace, "ItemService.cs",
+            "using Contracts;\nusing SampleLib.Legacy;\n\nnamespace SampleLib;\n\npublic class ItemService : IItemService\n{\n    public int Compute() => 1;\n\n    public int Extra() => 2;\n}\n",
+            "Uses.cs", "namespace Consumer;\n\npublic class Uses\n{\n}\n",
+            extraSources: new Dictionary<string, string>
+            {
+                ["SampleLib/Legacy/IItemService.cs"] = "namespace SampleLib.Legacy;\n\npublic interface IItemService\n{\n    int Compute();\n}\n",
+                ["SampleLib/UsesBoth.cs"] = "using Contracts;\nusing SampleLib.Legacy;\n\nnamespace SampleLib;\n\npublic class UsesBoth\n{\n    public IItemService Item = default!;\n}\n",
+                ["Contracts/Marker.cs"] = "namespace Contracts;\n\npublic sealed class Marker\n{\n}\n",
+            },
+            libReferencesContracts: true);
+        AddLinkedProject(workspace, "Linked", "../SampleLib/ItemService.cs", "../SampleLib/UsesBoth.cs", "../SampleLib/Legacy/IItemService.cs");
+        var linkedProject = workspace.GetPath("Linked", "Linked.csproj");
+        var xml = System.Xml.Linq.XDocument.Load(linkedProject);
+        xml.Root!.Add(new System.Xml.Linq.XElement("ItemGroup", new System.Xml.Linq.XElement("ProjectReference",
+            new System.Xml.Linq.XAttribute("Include", "../Contracts/Contracts.csproj"))));
+        xml.Save(linkedProject);
+        await workspace.ReloadAsync();
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+
+        var preview = await PreviewInterfaceRouteAsync("cross-project", workspace.WorkspaceId, sourcePath, "ItemService", new CompositePreviewStore());
+
+        var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        await AssertCompilesAsync(pending);
+        foreach (var project in new[] { "SampleLib", "Linked" })
+        {
+            var compilation = await CompileAsync(pending, project);
+            Assert.AreEqual("SampleLib.Legacy.IItemService", FieldType(compilation, "SampleLib.UsesBoth", "Item"), project);
+            CollectionAssert.AreEqual(new[] { "Contracts.IItemService", "SampleLib.Legacy.IItemService" },
+                compilation.GetTypeByMetadataName("SampleLib.ItemService")!.AllInterfaces.Select(i => i.ToDisplayString()).Order(StringComparer.Ordinal).ToArray(), project);
+        }
+    }
+
+    private static async Task WriteAsync(IsolatedWorkspaceScope workspace, IEnumerable<(string Path, string Text)> files)
+    {
+        foreach (var (relative, text) in files)
+        {
+            var path = workspace.GetPath(relative.Split('/'));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, text);
+        }
+    }
+
+    /// <summary>Adds a project that compiles the named SampleLib files as linked copies of the same physical files.</summary>
+    private static void AddLinkedProject(IsolatedWorkspaceScope workspace, string projectName, params string[] links)
+    {
+        AddProjectToCopiedSolution(workspace.RootPath, projectName, "net10.0");
+        var path = workspace.GetPath(projectName, projectName + ".csproj");
+        var xml = System.Xml.Linq.XDocument.Load(path);
+        xml.Root!.Add(new System.Xml.Linq.XElement("ItemGroup", links.Select(link => new System.Xml.Linq.XElement("Compile",
+            new System.Xml.Linq.XAttribute("Include", link),
+            new System.Xml.Linq.XAttribute("Link", "Linked" + System.IO.Path.GetFileName(link))))));
+        xml.Save(path);
     }
 
     [TestMethod]

@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Services;
@@ -37,11 +38,11 @@ internal static class SiblingInterfaceRepin
         var marked = forked.WithDocumentSyntaxRoot(
             sourceDocumentId, sourceRoot.ReplaceNode(declaration, declaration.WithAdditionalAnnotations(typeMark)));
 
-        // Same texts, same spans: only the generated document differs, so no span ever crosses between two solutions.
+        // The baseline is this same fork minus the generated document: any other change the fork made is part of the world both
+        // bindings share, so only the generated document can move a binding. Same texts, same spans: no span ever crosses solutions.
         var without = marked.RemoveDocument(interfaceDocumentId);
-        var result = marked;
-        var repinned = false;
         var name = generated.Name;
+        var candidates = new List<(Document Document, List<(TextSpan Span, string Text)> Edits)>();
         foreach (var project in marked.Projects)
         {
             foreach (var document in project.Documents.Where(candidate => candidate.Id != interfaceDocumentId))
@@ -58,19 +59,60 @@ internal static class SiblingInterfaceRepin
 
                 var rebound = FindRebound(root, after, before, generated, name, ct);
                 if (rebound.Count == 0) continue;
-                var originals = rebound.ToDictionary(item => item.Node, item => item.Original!);
-                var updated = root.ReplaceNodes(
-                    originals.Keys,
-                    (original, _) => GeneratedInterfaceReference.Create(originals[original], after, original.SpanStart).WithTriviaFrom(original));
-                result = result.WithDocumentSyntaxRoot(document.Id, updated);
-                repinned = true;
+                candidates.Add((document, rebound
+                    .Select(item => (item.Node.Span, GeneratedInterfaceReference.Create(item.Original!, after, item.Node.SpanStart).ToString()))
+                    .ToList()));
             }
 
             if (project.AnalyzerReferences.Count > 0)
                 await RefuseReboundGeneratedReferencesAsync(project, without.GetProject(project.Id)!, generated, name, ct).ConfigureAwait(false);
         }
 
-        return new Result(result, typeMark, repinned);
+        // One physical file linked into several projects is one edit: every copy with the same text gets the union of the
+        // spellings chosen for it (solution order wins a span two copies spell differently), so the copies never diverge and
+        // no copy is written last with a different binding. The compile gate then proves each project accepts that spelling.
+        var edits = new Dictionary<DocumentId, Dictionary<TextSpan, string>>();
+        foreach (var (document, documentEdits) in candidates)
+        {
+            foreach (var copy in await LinkedCopiesAsync(marked, document, ct).ConfigureAwait(false))
+            {
+                // The source type's own document is edited again (its base list) after this step, in one copy only; a
+                // route that reconciles linked copies (cross-project) copies that final text to the others, so an edit
+                // made here to a second copy would make the copies diverge there.
+                if (copy.Id != sourceDocumentId && !string.IsNullOrWhiteSpace(sourceDocument.FilePath) &&
+                    FileSystemPath.Comparer.Equals(copy.FilePath, sourceDocument.FilePath)) continue;
+                if (!edits.TryGetValue(copy.Id, out var spans)) edits[copy.Id] = spans = [];
+                foreach (var (span, text) in documentEdits) spans.TryAdd(span, text);
+            }
+        }
+
+        var result = marked;
+        foreach (var (documentId, spans) in edits)
+        {
+            var root = await marked.GetDocument(documentId)!.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                ?? throw InvalidOperationErrors.Internal("Syntax for a linked document is unavailable.");
+            var updated = root.ReplaceNodes(
+                root.DescendantNodes().OfType<IdentifierNameSyntax>().Where(node => spans.ContainsKey(node.Span)),
+                (original, _) => SyntaxFactory.ParseTypeName(spans[original.Span]).WithTriviaFrom(original));
+            result = result.WithDocumentSyntaxRoot(documentId, updated);
+        }
+
+        return new Result(result, typeMark, edits.Count > 0);
+    }
+
+    /// <summary>The documents of <paramref name="solution"/> that are the same physical file with the same text (linked copies), including <paramref name="document"/>.</summary>
+    private static async Task<List<Document>> LinkedCopiesAsync(Solution solution, Document document, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(document.FilePath)) return [document];
+        var checksum = (await document.GetTextAsync(ct).ConfigureAwait(false)).GetChecksum();
+        var copies = new List<Document>();
+        foreach (var candidate in solution.Projects.SelectMany(project => project.Documents))
+        {
+            if (!FileSystemPath.Comparer.Equals(candidate.FilePath, document.FilePath)) continue;
+            if ((await candidate.GetTextAsync(ct).ConfigureAwait(false)).GetChecksum().SequenceEqual(checksum)) copies.Add(candidate);
+        }
+
+        return copies;
     }
 
     private static async Task RefuseReboundGeneratedReferencesAsync(
@@ -102,7 +144,24 @@ internal static class SiblingInterfaceRepin
     }
 
     private static async Task<bool> MentionsAsync(Document document, string name, CancellationToken ct) =>
-        (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString().Contains(name, StringComparison.Ordinal);
+        Mentions(await document.GetTextAsync(ct).ConfigureAwait(false), name, 8192);
+
+    /// <summary>Whether <paramref name="text"/> contains <paramref name="name"/>, read in <paramref name="chunk"/>-sized windows (a name may straddle two) so no document is copied to one string.</summary>
+    internal static bool Mentions(SourceText text, string name, int chunk)
+    {
+        var buffer = new char[Math.Max(chunk, name.Length * 2)];
+        var overlap = name.Length - 1;
+        for (var start = 0; start < text.Length;)
+        {
+            var count = Math.Min(buffer.Length, text.Length - start);
+            text.CopyTo(start, buffer, 0, count);
+            if (buffer.AsSpan(0, count).IndexOf(name, StringComparison.Ordinal) >= 0) return true;
+            if (start + count >= text.Length) return false;
+            start += count - overlap;
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Names that bound to a type called <paramref name="name"/> before the generated interface existed and do not bind to it

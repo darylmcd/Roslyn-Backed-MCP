@@ -129,19 +129,17 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
             // Retyping usages can break a consumer (a member the interface lacks, generic variance, an override), and
             // re-pinning edits documents the caller did not name: refuse either preview rather than publish a token
-            // whose apply does not compile. A same-named type's presence selects the remedy that does not blame replaceUsages.
+            // whose apply does not compile. The remedy names every cause that could apply to this request.
             var sameNamedType = sameNamed.Count > 0 || repin.Repinned;
             if (replaceUsages || sameNamedType)
             {
                 await InterfacePreviewCompilationGate.ValidateAsync(
-                    solution, newSolution,
-                    sameNamedType ? InterfacePreviewCompilationGate.SiblingRemedy : InterfacePreviewCompilationGate.ReplaceUsagesRemedy,
-                    ct).ConfigureAwait(false);
+                    solution, newSolution, InterfacePreviewCompilationGate.RemedyFor(sameNamedType, replaceUsages), ct).ConfigureAwait(false);
             }
         }
         else
         {
-            // No-op preview: the type already implements an interface of this name.
+            // No-op preview: the type already implements an interface of this name that covers every requested member.
             // Surface a warning so callers see why no changes were produced. The base-list
             // rewrite, document-add, and usage-replacement paths are all skipped — the
             // computed newSolution is byte-identical to the input solution.
