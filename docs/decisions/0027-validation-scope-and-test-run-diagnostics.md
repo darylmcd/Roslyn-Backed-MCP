@@ -1,6 +1,6 @@
 # ADR 0027: Explicit validation scope and actionable test-run diagnostics
 
-Status: Accepted for the next major release, 2026-10-15.
+Status: Accepted 2026-10-15. Shipped in 5.0.0 (2026-10-28).
 
 The validation service treated an explicit empty changed-file list as omitted scope and consulted the change tracker and Git. This contradicted the tool's empty-list contract. Symbol search also accepted page endpoints whose integer addition overflowed, and two test-run caller refusals lost their corrective guidance at the host boundary.
 
@@ -10,7 +10,7 @@ Publish authored, path-free test-run corrections for a selected non-test project
 
 A supplied test filter that reports zero tests adds a safe warning identifying the filter parameter without echoing its value. Keep the actual process success, exit code, counts, and other warnings. This warning uses the existing optional warnings collection and does not imply a failed execution.
 
-These scope, validation-bound, and message corrections are observable changes under the [release policy](../release-policy.md). Include the pending breaking fragment in the next major release; do not consume it in a minor or patch release. No version files change in this remediation.
+These scope, validation-bound, and message corrections are observable changes under the [release policy](../release-policy.md). The breaking changelog entry shipped in 5.0.0, not in a minor or patch release.
 
 Migration: omit `changedFilePaths` to use tracked scope; pass `[]` to request no changed files. Use representable pagination endpoints. Select a test project using `projectName`, or add a test SDK reference when the workspace has no tests. Treat category and schema guidance as the failure contract rather than parsing old prose. Inspect warnings and test counts before treating a filtered run as verification.
 

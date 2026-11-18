@@ -21,6 +21,8 @@
 | Empty-filter failure | `eng/ci.runsettings` (`TreatNoTestsAsError=true`) |
 | Shard entry point | `eng/verify-release.ps1 -TestShardIndex <zero-based> -TestShardCount <count>` |
 | CI non-owner shard lane | Add `-TestShardOnly` to skip platform-neutral policy checks and publish/hash; do not use it as the standalone release gate |
+| CI policy-docs leg | `eng/verify-release.ps1 -DocsTierConsumerTests`: every release gate, tests = `consumers` in `eng/docs-tier-test-consumers.json` |
+| Docs-tier consumer guard | `DocsTierTestConsumerContractTests`: a test class, helper or fixture script that carries a docs-tier signal must be classified in that list (`CI_POLICY.md` § Docs Route Test Selection) |
 | Per-leg duration/failure evidence | `artifacts/test-results/*.trx`; hosted artifact `test-results-<leg>` |
 | Bounded job-summary renderer | `eng/summarize-test-results.ps1 -ResultsPath artifacts/test-results` |
 | Offline per-image shard-skew collector | `eng/collect-hosted-shard-timings.ps1 -ResultsRoot <dir> -LegManifest <json>` |

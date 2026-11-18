@@ -1,6 +1,6 @@
 # process-environment-fixture-isolation — Isolate shared process environment fixture actors
 
-**row:** `process-environment-fixture-isolation` · **pri:** `Medium` · **size:** `M`
+**row:** `process-environment-fixture-isolation` · **pri:** `Medium` · **size:** `M` · **deps:** `dotnet-runner-concurrent-descendant-stdout-loss`
 
 ## Anchors
 
@@ -21,3 +21,7 @@
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. INVESTIGATION/current isolation defect: ValidationBundleToolsTests has no DoNotParallelize and temporarily mutates process globals320-396, including a synthetic C:\sdk\dotnet.exe path. Parallel WorkspaceForkApplyTests exercises current service reads at245/775/798. No causal runtime failure was executed in this audit; the absent NativeBuildMembership remainder is separate.
 - Source: closed PR #1806 head `d333c2e9`, kept by GitHub as `refs/pull/1806/head` (archive branch and tag deleted 2026-10-27). No build/test ran in this content audit; historical receipts are not current runtime qualification.
+
+## Notes
+
+Draft PR 2131 at ebaf4724. Two-worker probe reproduced cross-class inheritance of the synthetic executable before the fix and read the baseline with method-level exclusion. Four permanent guard cases failed before the fix and the final affected cohort passed 76/76. Required validate run 44104410433 failed only Windows shard 1, with empty StdOut after exit 0 in RunAsync_ConcurrentOwnedDescendants_HoldPipesWithoutDisruptingEachOtherAsync. Keep this row open until the pipe-loss dependency is qualified and validate passes.

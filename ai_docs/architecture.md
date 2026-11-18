@@ -29,6 +29,8 @@
 | Plugin runtime | `hooks/`, `.claude-plugin/` | `hooks/hooks.json`, `plugin.json`, `marketplace.json`, `mcp.json` | See Claude Code Plugin Layer |
 | Codex publication boundary | `.codex/` | `.codex/hooks.json`, `.codex/hooks/pre-publish-changelog.ps1` | — |
 | Shard-discovery fixtures | `tests/RoslynMcp.ShardDiscoveryFixtures/` | `DiscoveryFixtures.cs` | Exercised by `tests/RoslynMcp.Tests/TestShardPlanContractTests.cs` |
+| Test probe executables | `tests/GitFixtureWorkerProbe/`, `tests/InotifyWatcherProbe/`, `tests/ProcessPipeWorkerProbe/` | `Program.cs` (child-process and watcher probes) | Launched by `tests/RoslynMcp.Tests/` (`FileWatcherSharedWatcherTests.cs`, `ProcessProbeOutputTests.cs`, `Helpers/PwshScriptRunnerTests.cs`) |
+| CI workflows | `.github/workflows/` | `ci.yml` (PR validation), `publish-nuget.yml` (release publish) | Policy: `CI_POLICY.md` |
 
 ## Layer Map
 
@@ -69,7 +71,7 @@ Operational logs → `stderr` only (stdout reserved for MCP protocol traffic).
 | Abstraction | Location | Purpose |
 |-------------|----------|---------|
 | `workspaceId` | Core | Session-scoped handle; must be passed on all workspace operations |
-| Preview/Apply flow | Roslyn + Core | Mutations are previewed before applying; workspace version guards apply step |
+| Preview/Apply flow | Roslyn + Core | Mutations are previewed before applying; apply rebases onto the current workspace state; sibling applies do not invalidate tokens, workspace reload or close does |
 | `roslyn://server/catalog` | Host | Machine-readable surface inventory (tools, resources, prompts) |
 | `server_info` tool | Host | Human-readable server surface summary |
 
@@ -85,7 +87,7 @@ Operational logs → `stderr` only (stdout reserved for MCP protocol traffic).
 
 - Keep transport-specific concerns in host layer.
 - Keep public service boundaries DTO-based (no raw Roslyn types crossing boundaries).
-- Keep mutation flows preview-first and workspace-version aware.
+- Keep mutation flows preview-first; apply rebases onto current workspace state.
 
 ## Safety Invariants
 
@@ -110,10 +112,6 @@ The shipped `.claude-plugin/mcp.json` descriptor is distinct from external user/
 ## Known Gaps
 
 - IDE and CA analyzers not loaded in MSBuildWorkspace — only SDK-implicit diagnostics active at runtime (AUDIT-21).
-- **`Host.Stdio.Middleware` ↔ `Host.Stdio.Tools` namespace cycle (accepted).** Middleware types (e.g. `StructuredCallToolFilter`) read tool metadata declared in `Host.Stdio.Tools`, and tool types declare the attributes middleware dispatches on (found via `get_namespace_dependencies(circularOnly=true)`).
-  - **Why accepted.** Both sides ship in one `Host.Stdio` assembly and the coupling is metadata-only (no behavioral dependency).
-  - **Cost of fix.** A tool-dispatch envelope shim: one indirection per tool call, ~3 net new files.
-  - **Trigger.** A middleware feature needing a new tool *category* (not just a new tool) forces the envelope refactor.
 
 ## Deep Material
 

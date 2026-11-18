@@ -78,7 +78,7 @@ write:
    marketplace clone Claude Code reads from).
 2. Wipes and re-syncs the plugin cache directory at
    `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/<version>/`,
-   copying only git-tracked files from the marketplace clone.
+   copying only git-tracked files that match `.claude-plugin/package-allowlist.txt`.
 3. Updates `lastUpdated` and `gitCommitSha` in
    `~/.claude/plugins/known_marketplaces.json` and
    `~/.claude/plugins/installed_plugins.json`.

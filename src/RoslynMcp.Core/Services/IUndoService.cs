@@ -50,6 +50,7 @@ public interface IUndoService
     /// <see cref="IChangeTracker.RecordChange"/> when it records the same logical operation, so
     /// only that record can promote this snapshot into the revert history.
     /// </returns>
+    /// <exception cref="KeyNotFoundException">The workspace is not open, or closed while the snapshot was being captured.</exception>
     UndoCaptureId CaptureBeforeApply(
         string workspaceId,
         string description,
@@ -185,7 +186,8 @@ public sealed record FileSnapshotDto(string FilePath, string? OriginalText)
 /// <param name="Reason">
 /// Machine-readable failure code when <see cref="Reverted"/> is <see langword="false"/>:
 /// <list type="bullet">
-/// <item><description><c>"unknown-sequence"</c> — no snapshot exists for that sequence number.</description></item>
+/// <item><description><c>"unknown-sequence"</c> — no snapshot exists for that sequence number (never recorded for this workspace, e.g. a capture-free audit, or from before this session).</description></item>
+/// <item><description><c>"already-reverted"</c> — that sequence was already reverted in this workspace session, or a competing revert of it is in flight; nothing is restored.</description></item>
 /// <item><description><c>"dependency-blocked"</c> — at least one later apply touches an overlapping file.</description></item>
 /// <item><description><c>"revert-failed"</c> — the snapshot existed but the revert mechanics failed (e.g., disk write rejected).</description></item>
 /// </list>

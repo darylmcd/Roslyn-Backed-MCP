@@ -905,12 +905,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// </summary>
     private static async Task RefuseAddedCompilerErrorsAsync(Solution before, Solution after, ProjectId projectId, CancellationToken ct)
     {
-        static string DocumentKey(Solution solution, Location location) =>
-            location.SourceTree is { } tree && solution.GetDocumentId(tree) is { } id
-                ? id.ToString()
-                : location.Kind.ToString();
-
-        var introduced = await PreviewCompilationDelta.IntroducedErrorsAsync(before, after, [projectId], DocumentKey, ct)
+        var introduced = await PreviewCompilationDelta.IntroducedErrorsAsync(before, after, [projectId], PreviewCompilationDelta.DocumentKey, ct)
             .ConfigureAwait(false);
         if (introduced.Count == 0)
         {

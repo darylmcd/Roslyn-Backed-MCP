@@ -127,19 +127,25 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var updatedSolution = await BuildExtractInterfaceSolutionAsync(workspaceId, solution, filePath, typeName,
+        var (updatedSolution, afterRepin) = await BuildExtractInterfaceSolutionAsync(workspaceId, solution, filePath, typeName,
             interfaceName, targetProjectName, ct).ConfigureAwait(false);
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
-        updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(solution, updatedSolution,
-            InterfaceLinkedDocumentReconciler.ResolveGeneratedInterfaceProjectId(solution, updatedSolution, resolvedInterfaceName), ct).ConfigureAwait(false);
-        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(solution, updatedSolution,
+            InterfaceLinkedDocumentReconciler.DocumentsChangedSince(afterRepin, updatedSolution),
+            InterfaceLinkedDocumentReconciler.ResolveGeneratedInterfaceProjectId(solution, updatedSolution, resolvedInterfaceName),
+            InterfaceLinkedDocumentReconciler.CrossProjectRemedy, ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, InterfacePreviewCompilationGate.ReceivingProjectRemedy, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
-    internal async Task<Solution> BuildExtractInterfaceSolutionAsync(
+    /// <returns>
+    /// The solution, and the same solution just after the re-pin (before the base list): documents that differ between the two
+    /// are the ones this route edited in one copy only, the ones a linked-copy reconciliation has to propagate.
+    /// </returns>
+    internal async Task<(Solution Solution, Solution AfterRepin)> BuildExtractInterfaceSolutionAsync(
         string workspaceId, Solution solution, string filePath, string typeName,
         string? interfaceName, string? targetProjectName, CancellationToken ct)
     {
@@ -212,9 +218,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 updatedSolution, sourceDocument.Project.Id, targetProject.Id, projector.ReferencedTypes, ct).ConfigureAwait(false);
         }
 
-        updatedSolution = await ApplyGeneratedInterfaceAsync(
+        return await ApplyGeneratedInterfaceAsync(
             updatedSolution, nullableProjection, interfaceDocumentId, interfaceRoot, sourceDocument, typeDeclaration, ct).ConfigureAwait(false);
-        return updatedSolution;
     }
 
     public async Task<RefactoringPreviewDto> PreviewDependencyInversionAsync(
@@ -237,7 +242,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
 
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
-        var (updatedSolution, interfaceDocumentId) = await CreateInterfaceExtractionSolutionAsync(
+        var (updatedSolution, interfaceDocumentId, afterRepin) = await CreateInterfaceExtractionSolutionAsync(
             workspaceId,
             _compilationCache,
             solution,
@@ -261,28 +266,28 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // project dependency graph, including transitive project references) to visit just those
         // documents instead of building a semantic model for every document in the solution.
         var references = await SymbolFinder.FindReferencesAsync(updatedConcreteType, updatedSolution, ct).ConfigureAwait(false);
-        var referencingDocumentIds = references
+        var referencingDocuments = references
             .SelectMany(reference => reference.Locations)
-            .Select(location => location.Document.Id)
-            .Distinct();
+            .Select(location => location.Document)
+            .DistinctBy(located => located.Id);
 
         var generatedInterface = await GeneratedInterfaceReference.ResolveGeneratedAsync(updatedSolution, interfaceDocumentId, ct).ConfigureAwait(false);
         var interfaceProjectId = interfaceDocumentId.ProjectId;
 
-        foreach (var documentId in referencingDocumentIds)
+        foreach (var located in referencingDocuments)
         {
-            var document = updatedSolution.GetDocument(documentId);
+            // A source-generated document is not editable: the generator owns its text, so its constructors stay as emitted.
+            var document = ReferenceDocumentResolver.ResolveEditable(updatedSolution, located);
             if (document is null)
             {
                 continue;
             }
 
-            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-            if (root is null || model is null)
-            {
-                continue;
-            }
+            var documentId = document.Id;
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                ?? throw InvalidOperationErrors.Internal($"Syntax for reference document '{document.Name}' is unavailable.");
+            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                ?? throw InvalidOperationErrors.Internal($"Semantic model for reference document '{document.Name}' is unavailable.");
 
             var parameterSpans = root.DescendantNodes()
                 .OfType<ParameterSyntax>()
@@ -305,12 +310,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             {
                 updatedSolution = withReference;
                 document = updatedSolution.GetDocument(documentId)!;
-                root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (root is null || model is null)
-                {
-                    continue;
-                }
+                root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal($"Syntax for reference document '{document.Name}' is unavailable.");
+                model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal($"Semantic model for reference document '{document.Name}' is unavailable.");
             }
 
             var parameters = root.DescendantNodes().OfType<ParameterSyntax>()
@@ -331,8 +334,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updatedSolution = updatedSolution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
         }
 
-        updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(solution, updatedSolution, interfaceProjectId, ct).ConfigureAwait(false);
-        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(solution, updatedSolution,
+            InterfaceLinkedDocumentReconciler.DocumentsChangedSince(afterRepin, updatedSolution), interfaceProjectId,
+            InterfaceLinkedDocumentReconciler.CrossProjectRemedy, ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, InterfacePreviewCompilationGate.ReceivingProjectRemedy, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and update constructor dependencies";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
@@ -634,7 +639,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return solution.AddProjectReference(sourceProjectId, requiredReference);
     }
 
-    private static async Task<(Solution Solution, DocumentId InterfaceDocumentId)> CreateInterfaceExtractionSolutionAsync(
+    private static async Task<(Solution Solution, DocumentId InterfaceDocumentId, Solution AfterRepin)> CreateInterfaceExtractionSolutionAsync(
         string workspaceId,
         ICompilationCache compilationCache,
         Solution solution,
@@ -697,24 +702,28 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 updatedSolution, sourceDocument.Project.Id, targetProject.Id, projector.ReferencedTypes, ct).ConfigureAwait(false);
         }
 
-        updatedSolution = await ApplyGeneratedInterfaceAsync(
+        var (finished, afterRepin) = await ApplyGeneratedInterfaceAsync(
             updatedSolution, nullableProjection, interfaceDocumentId, interfaceRoot, sourceDocument, typeDeclaration, ct).ConfigureAwait(false);
-        return (updatedSolution, interfaceDocumentId);
+        return (finished, interfaceDocumentId, afterRepin);
     }
 
     /// <summary>
     /// The one finishing step both cross-project producers share: decorate and language-check the generated interface document
-    /// against the receiving project (before any token is stored), then spell the source type's base list against it.
+    /// against the receiving project (before any token is stored), pin every reference the new interface's name would capture
+    /// (<see cref="SiblingInterfaceRepin"/>), then spell the source type's base list against it.
     /// </summary>
-    private static async Task<Solution> ApplyGeneratedInterfaceAsync(
+    private static async Task<(Solution Solution, Solution AfterRepin)> ApplyGeneratedInterfaceAsync(
         Solution solution, InterfaceNullableProjection nullableProjection, DocumentId interfaceDocumentId,
         CompilationUnitSyntax interfaceRoot, Document sourceDocument, TypeDeclarationSyntax typeDeclaration, CancellationToken ct)
     {
         solution = await nullableProjection.ApplyAsync(solution.GetDocument(interfaceDocumentId)
             ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot,
             ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), ct).ConfigureAwait(false);
-        return await GeneratedInterfaceReference.AddToBaseListAsync(
-            solution, sourceDocument.Id, typeDeclaration.Span, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
+        var repin = await SiblingInterfaceRepin.RepinAsync(
+            solution, interfaceDocumentId, sourceDocument.Id, typeDeclaration.Span, ct).ConfigureAwait(false);
+        var withBaseList = await GeneratedInterfaceReference.AddToBaseListAsync(
+            repin.Solution, sourceDocument.Id, repin.TypeMark, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
+        return (withBaseList, repin.Solution);
     }
 
 }

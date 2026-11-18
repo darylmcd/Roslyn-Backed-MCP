@@ -29,3 +29,7 @@
 
 - Independent, nonblocking follow-up authorized by the operator; restore-callers-missing-packages-path closure does not depend on this row.
 - Do not count ignored SetTargetFramework on a single-framework project as a discrepancy; the native graph also ignores it. The multi-TFM case is a successful control.
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Release impact unqualified. Reconcile stable load/reload project membership and semantic projections across native reference globals, per-project solution configuration, and the retained-child/remove-edge lifecycle before selecting. Preserve preview and fork source authority through the same loader.

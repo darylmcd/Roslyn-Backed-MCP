@@ -29,3 +29,9 @@
 
 - External dependency mechanism; the snapshot rebase correction remains independent and retains embed mutation/conflict coverage without reload.
 - Keep this row open. Do not describe reload/embed as qualified by the rebase slice.
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Release impact unqualified. Qualify the loader-owned evaluated metadata path through stable workspace_load/reload and preview redemption with aliases, conditions and target selection. Confirm 5.x contract compatibility before selecting an integration or upstream correction.
+
+Pair manager-corrected solutions with preview-store-explicit-original-snapshot. PreviewStore still derives the original snapshot from modifiedSolution.Workspace.CurrentSolution, which would lose manager-owned corrections.

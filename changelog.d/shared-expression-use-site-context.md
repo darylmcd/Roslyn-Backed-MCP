@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** The experimental `extract_shared_expression_to_helper_preview` respects the use site of each matching expression. It refuses occurrences that need a variable (assignment, compound assignment, increment, `ref`/`out`/`in` arguments, mutated struct receivers) or a compile-time constant (interpolation alignment, case labels, patterns, attribute arguments, `const` initializers, default values), leaves occurrences inside expression trees (including nested lambdas and `IQueryable` query clauses) unchanged, and refuses a rewrite that would introduce compiler errors (such as a private helper called from another type) or silently re-bind the surrounding expression (for example `Bind(byte)` becoming `Bind(long)`). A helper is inserted into the example's type even when the example occurrence itself is left unchanged, through one pipeline. Closes `shared-expression-inaccessible-generated-helper`, `shared-expression-preserve-expression-tree-shape`, `shared-expression-requires-value-context`, `shared-expression-writable-target-context` and `shared-expression-dead-helper-insertion-fallback`.

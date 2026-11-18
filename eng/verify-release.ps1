@@ -9,7 +9,10 @@ param(
     [int]$TestShardCount = 1,
     [string]$HostedImage,
     [double[]]$ShardBuildSeconds,
-    [switch]$CalibrateLinuxShardBuild
+    [switch]$CalibrateLinuxShardBuild,
+    # Docs route (CI_POLICY.md § Docs Route Test Selection): keep every release gate, and run only
+    # the test classes listed under "consumers" in eng/docs-tier-test-consumers.json.
+    [switch]$DocsTierConsumerTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,6 +39,11 @@ if ($CalibrateLinuxShardBuild -and $PSBoundParameters.Count -ne 1) {
 }
 if ($PSBoundParameters.ContainsKey('ShardBuildSeconds') -and $HostedImage -cne 'ubuntu-latest') {
     throw 'ShardBuildSeconds requires a hosted Linux shard.'
+}
+if ($DocsTierConsumerTests -and ($TestShardOnly -or $TestShardCount -ne 1)) {
+    # The consumer list replaces the shard plan, and the docs route has one leg that owns every
+    # release gate. Neither a shard of the list nor a gate-free run of it is a defined route.
+    throw 'DocsTierConsumerTests cannot be combined with TestShardOnly or a sharded test run.'
 }
 
 # PowerShell does not honor $ErrorActionPreference = "Stop" for native commands.
@@ -204,7 +212,83 @@ function Remove-VerifierOwnedDirectory {
     }
 }
 
-function Assert-TestResultFile {
+function Resolve-TestAssemblyPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Project,
+
+        [Parameter(Mandatory)]
+        [string]$BuildConfiguration
+    )
+
+    $targetPathArguments = @(
+        'msbuild',
+        $Project,
+        '--nologo',
+        '-getProperty:TargetPath',
+        "-property:Configuration=$BuildConfiguration")
+    $global:LASTEXITCODE = 0
+    $targetPathOutput = @(& dotnet @targetPathArguments)
+    Invoke-DotnetStep "dotnet msbuild (resolve test assembly)"
+    $assemblyPath = ($targetPathOutput | Select-Object -Last 1).Trim()
+    if ([string]::IsNullOrWhiteSpace($assemblyPath)) {
+        throw 'dotnet msbuild returned no test assembly path.'
+    }
+
+    return $assemblyPath
+}
+
+# The docs route runs only these classes, so every way of reading "no classes" out of the list
+# (missing file, invalid JSON, no entries, an entry that is not a plain class name) is a failure.
+function Get-DocsTierConsumerClassName {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Docs-tier consumer list is missing: $Path"
+    }
+
+    $list = $null
+    try {
+        $content = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+        # ConvertFrom-Json returns nothing, without an error, for empty input.
+        if (-not [string]::IsNullOrWhiteSpace($content)) {
+            $list = ConvertFrom-Json -InputObject $content -ErrorAction Stop
+        }
+    }
+    catch {
+        $list = $null
+    }
+    if ($null -eq $list) {
+        throw "Docs-tier consumer list is not readable JSON: $Path"
+    }
+
+    $consumers = if ($list -is [pscustomobject]) { $list.PSObject.Properties['consumers'] } else { $null }
+    $entries = if ($null -eq $consumers) { @() } else { @($consumers.Value) }
+    $classNames = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($entry in $entries) {
+        $class = if ($entry -is [pscustomobject]) { $entry.PSObject.Properties['class'] } else { $null }
+        $className = if ($null -eq $class) { $null } else { $class.Value }
+        if ($className -isnot [string] -or $className -cnotmatch '\A[A-Za-z_][A-Za-z0-9_.]*\z') {
+            throw "Docs-tier consumer list has an entry without a plain fully qualified class name: $Path"
+        }
+        if (-not $seen.Add($className)) {
+            throw "Docs-tier consumer list names '$className' more than once: $Path"
+        }
+        $classNames.Add($className)
+    }
+
+    if ($classNames.Count -eq 0) {
+        throw "Docs-tier consumer list names no test class; the docs route must never run zero tests: $Path"
+    }
+
+    return $classNames.ToArray()
+}
+
+function Read-TestResultDocument {
     param(
         [Parameter(Mandatory)]
         [string]$Path
@@ -239,6 +323,16 @@ function Assert-TestResultFile {
         throw "dotnet test produced XML that is not an MSTest TRX result: $Path"
     }
 
+    return $document
+}
+
+function Assert-TestResultFile {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $document = Read-TestResultDocument -Path $Path
     $counters = $document.SelectSingleNode(
         "/*[local-name()='TestRun']/*[local-name()='ResultSummary']/*[local-name()='Counters']")
     $total = 0
@@ -249,6 +343,45 @@ function Assert-TestResultFile {
         $total -lt 1 -or
         $executed -lt 1) {
         throw "dotnet test produced a TRX result that does not prove any tests executed: $Path"
+    }
+}
+
+# A class the filter selects can still run nothing (every case excluded by a category filter, or
+# ignored). On the docs route that would be a consumer silently dropped, so each listed class must
+# own at least one executed result.
+function Assert-TestResultCoversClass {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string[]]$ClassName
+    )
+
+    $document = Read-TestResultDocument -Path $Path
+    $classByTestId = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    foreach ($definition in $document.SelectNodes(
+        "/*[local-name()='TestRun']/*[local-name()='TestDefinitions']/*[local-name()='UnitTest']")) {
+        $method = $definition.SelectSingleNode("*[local-name()='TestMethod']")
+        $testId = $definition.GetAttribute('id')
+        if ($null -ne $method -and -not [string]::IsNullOrWhiteSpace($testId)) {
+            $classByTestId[$testId] = $method.GetAttribute('className')
+        }
+    }
+
+    $executedClasses = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($result in $document.SelectNodes(
+        "/*[local-name()='TestRun']/*[local-name()='Results']/*[local-name()='UnitTestResult']")) {
+        $resultClass = $null
+        if ($result.GetAttribute('outcome') -cne 'NotExecuted' -and
+            $classByTestId.TryGetValue($result.GetAttribute('testId'), [ref]$resultClass)) {
+            [void]$executedClasses.Add($resultClass)
+        }
+    }
+
+    $silent = @($ClassName | Where-Object { -not $executedClasses.Contains($_) })
+    if ($silent.Count -gt 0) {
+        throw "Docs-tier consumer classes executed no test: $($silent -join ', '). Results: $Path"
     }
 }
 
@@ -308,6 +441,13 @@ try {
 if ($CalibrateLinuxShardBuild) {
     Invoke-ReleaseSolutionBuild -Solution $solutionPath -BuildConfiguration Release
     return
+}
+
+$docsTierConsumerListPath = Join-Path $PSScriptRoot 'docs-tier-test-consumers.json'
+$docsTierConsumerClasses = @()
+if ($DocsTierConsumerTests) {
+    # Read the list before any gate so an unusable list fails in seconds, not after the build.
+    $docsTierConsumerClasses = @(Get-DocsTierConsumerClassName -Path $docsTierConsumerListPath)
 }
 
 if (-not $TestShardOnly) {
@@ -405,20 +545,34 @@ $testRunId = "{0}-shard-{1}-of-{2}-{3}" -f @(
     $TestShardCount,
     [Guid]::NewGuid().ToString('N'))
 $trxPath = Join-Path $testResultsDir "$testRunId.trx"
-if ($TestShardCount -gt 1) {
-    $targetPathArguments = @(
-        'msbuild',
-        $testProject,
-        '--nologo',
-        '-getProperty:TargetPath',
-        "-property:Configuration=$Configuration")
-    $global:LASTEXITCODE = 0
-    $targetPathOutput = @(& dotnet @targetPathArguments)
-    Invoke-DotnetStep "dotnet msbuild (resolve test assembly)"
-    $testAssemblyPath = ($targetPathOutput | Select-Object -Last 1).Trim()
-    if ([string]::IsNullOrWhiteSpace($testAssemblyPath)) {
-        throw 'dotnet msbuild returned no test assembly path.'
+if ($DocsTierConsumerTests) {
+    # The reviewed consumer list replaces the shard plan as the exact class filter. The planner is
+    # still the class catalog: a listed class the built assembly does not contain would otherwise
+    # be an exact filter that silently selects nothing.
+    $testAssemblyPath = Resolve-TestAssemblyPath -Project $testProject -BuildConfiguration $Configuration
+    $catalogJson = & (Join-Path $PSScriptRoot 'get-test-shard-plan.ps1') `
+        -TestAssemblyPath $testAssemblyPath `
+        -TestShardCount 1 `
+        -TestShardIndex 0
+    $discoveredClasses = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($testClass in @(($catalogJson | ConvertFrom-Json).TestClasses)) {
+        [void]$discoveredClasses.Add([string]$testClass.ClassName)
     }
+    $unknownClasses = @($docsTierConsumerClasses | Where-Object { -not $discoveredClasses.Contains($_) })
+    if ($unknownClasses.Count -gt 0) {
+        throw ("Docs-tier consumer list names test classes the built test assembly does not contain: " +
+            "$($unknownClasses -join ', '). Correct $docsTierConsumerListPath.")
+    }
+
+    $consumerFilter = (@($docsTierConsumerClasses | ForEach-Object { "ClassName=$_" })) -join '|'
+    $testFilter = "($consumerFilter)&$testFilter"
+    Write-Host ("Docs-tier consumer tests: {0} of {1} discovered classes ({2})" -f @(
+        $docsTierConsumerClasses.Count,
+        $discoveredClasses.Count,
+        $docsTierConsumerListPath))
+}
+elseif ($TestShardCount -gt 1) {
+    $testAssemblyPath = Resolve-TestAssemblyPath -Project $testProject -BuildConfiguration $Configuration
 
     $planParameters = @{
         TestAssemblyPath = $testAssemblyPath
@@ -494,6 +648,9 @@ $testArguments += $testEnvironment
 & dotnet @testArguments
 Invoke-DotnetStep "dotnet test"
 Assert-TestResultFile -Path $trxPath
+if ($DocsTierConsumerTests) {
+    Assert-TestResultCoversClass -Path $trxPath -ClassName $docsTierConsumerClasses
+}
 
 if (-not $TestShardOnly) {
     # PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2

@@ -15,6 +15,15 @@ internal readonly record struct IntroducedCompilerError(ProjectId ProjectId, str
 /// </summary>
 internal static class PreviewCompilationDelta
 {
+    /// <summary>
+    /// Location key for previews whose diagnostics sit in solution documents: the document id, or the location kind
+    /// for a diagnostic outside any document of <paramref name="solution"/>. Positions are excluded on purpose.
+    /// </summary>
+    public static string DocumentKey(Solution solution, Location location) =>
+        location.SourceTree is { } tree && solution.GetDocumentId(tree) is { } id
+            ? id.ToString()
+            : location.Kind.ToString();
+
     /// <param name="locationKey">Stable identity of a diagnostic location within the given solution (baseline or pending).</param>
     public static async Task<IReadOnlyList<IntroducedCompilerError>> IntroducedErrorsAsync(
         Solution baseline,

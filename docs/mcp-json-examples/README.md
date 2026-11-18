@@ -16,18 +16,9 @@ the server from a different working directory or intentionally spans repositorie
 
 ## Why there's no `${user_config.*}` example
 
-Earlier plugin releases shipped a `.mcp.json` that referenced
-`${user_config.ROSLYNMCP_*}` placeholders expected to be substituted by Claude
-Code's plugin enable-time prompt. That substitution throws a hard error on any
-install flow that skips the prompt (automation, `bypassPermissions`,
-pre-existing installs) — the MCP server never starts and no error surfaces to
-the user. Fixed in v1.18.2 by dropping the `${user_config.*}` placeholders from the
-plugin-shipped files. The plugin now ships the literal
-`env.ROSLYNMCP_SANCTIONED_ROOTS` value `"."` so a plugin-launched server starts with a
-working boundary; every other operational setting uses compiled-in defaults and accepts
-literal overrides via project-scope `.mcp.json` as shown here. The sanctioned-root boundary is
-intentionally explicit rather than a permissive compiled-in default, so hand-written configs
-must set it themselves.
+The plugin-shipped config uses no `${user_config.*}` placeholders, because that substitution fails hard on install flows that skip the enable-time prompt. It ships the literal `ROSLYNMCP_SANCTIONED_ROOTS` value `"."`.
+
+Hand-written configs must set `ROSLYNMCP_SANCTIONED_ROOTS` themselves, since the boundary has no permissive default. History is in `CHANGELOG.md`.
 
 See [`../setup.md`](../setup.md#environment-variables) for the full list of `ROSLYNMCP_*`
 environment variables and their defaults.

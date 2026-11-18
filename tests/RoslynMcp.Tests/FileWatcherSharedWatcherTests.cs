@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -146,7 +147,8 @@ public sealed class FileWatcherSharedWatcherTests
     public async Task RenamingAnotherFileOverTheWorkspaceFile_DoesNotRaiseRootMissing()
     {
         var root = NewTempRoot();
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
         var id = Guid.NewGuid().ToString("N");
         var raised = 0;
         watcher.WorkspaceRootMissing += _ => Interlocked.Increment(ref raised);
@@ -155,18 +157,279 @@ public sealed class FileWatcherSharedWatcherTests
         {
             File.WriteAllText(solution, "<Solution />");
             watcher.Watch(id, solution);
+            // The stale flag cannot fence this: the overwrite marks the workspace stale itself. A watcher
+            // dispatches events serially, so the marker's Created callback (run after the service's own
+            // handlers) can only fire once the overwrite's Deleted/Renamed callbacks have finished.
+            var markerSeen = factory.Tree(root).ArmCreatedFence("Marker.txt", SignalTimeout);
 
             // An atomic save (write a temp file, rename it over the solution) leaves the file in place.
             var temp = Path.Combine(root, "Sample.slnx.tmp");
             File.WriteAllText(temp, "<Solution />");
             File.Move(temp, solution, overwrite: true);
-            // Events arrive in order, so a later watched change proves the rename was already processed.
-            File.WriteAllText(Path.Combine(root, "Marker.cs"), "class Marker {}");
+            File.WriteAllText(Path.Combine(root, "Marker.txt"), "marker");
+            await markerSeen();
 
-            using var cts = new CancellationTokenSource(SignalTimeout);
-            await watcher.WaitForStaleAsync(id, cts.Token);
-            await Task.Delay(500);
             Assert.AreEqual(0, Volatile.Read(ref raised));
+        }
+        finally
+        {
+            watcher.Unwatch(id);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void TreeCallbacks_WorkspaceFileStillPresent_DoNotRaiseRootMissing()
+    {
+        var root = NewTempRoot();
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        var id = Guid.NewGuid().ToString("N");
+        var raised = 0;
+        watcher.WorkspaceRootMissing += _ => Interlocked.Increment(ref raised);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Sample.slnx"), "<Solution />");
+            watcher.Watch(id, Path.Combine(root, "Sample.slnx"));
+            var tree = factory.Tree(root);
+
+            // Windows reports the file an overwriting rename replaced as Deleted while it still exists.
+            tree.RaiseDeleted("Sample.slnx");
+            tree.RaiseRenamed("Other.slnx", "Sample.slnx");
+            tree.RaiseRenamed("Sample.slnx.tmp", "Sample.slnx");
+
+            Assert.AreEqual(0, Volatile.Read(ref raised));
+        }
+        finally
+        {
+            watcher.Unwatch(id);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void TreeCallbacks_WorkspaceFileGoneOrRenamedAway_RaiseRootMissing()
+    {
+        var root = NewTempRoot();
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        var id = Guid.NewGuid().ToString("N");
+        var raised = new List<string>();
+        watcher.WorkspaceRootMissing += workspaceId => { lock (raised) raised.Add(workspaceId); };
+        try
+        {
+            // The file never existed on disk, so a Deleted event for it is a real removal.
+            watcher.Watch(id, Path.Combine(root, "Sample.slnx"));
+            var tree = factory.Tree(root);
+
+            tree.RaiseDeleted("Sample.slnx");
+            lock (raised) CollectionAssert.AreEqual(new[] { id }, raised);
+
+            tree.RaiseRenamed("Sample.slnx", "Renamed.slnx");
+            lock (raised) CollectionAssert.AreEqual(new[] { id, id }, raised);
+        }
+        finally
+        {
+            watcher.Unwatch(id);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Watch_InotifyLimitOnSecondAncestor_LeavesNoEntryNoSharedWatcherAndDisposesEach()
+    {
+        var parent = NewTempRoot();
+        var root = Path.Combine(parent, "ws");
+        Directory.CreateDirectory(root);
+        // Creation 1 is the tree watcher, 2 the first ancestor's shared watcher, 3 the failing ancestor.
+        var injected = new IOException("The configured user limit (128) on the number of instances has been reached.");
+        var factory = new RaisableWatcherFactory((ordinal, _) => ordinal == 3 ? injected : null);
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        var id = Guid.NewGuid().ToString("N");
+        try
+        {
+            var failure = Assert.ThrowsExactly<IOException>(() => watcher.Watch(id, Path.Combine(root, "Sample.slnx")));
+
+            if (OperatingSystem.IsLinux())
+            {
+                // Linux wraps the limit failure with the settings that raise it.
+                StringAssert.Contains(failure.Message, "fs.inotify.max_user_instances");
+                Assert.AreSame(injected, failure.InnerException);
+            }
+            else
+            {
+                Assert.AreSame(injected, failure);
+            }
+
+            Assert.IsFalse(watcher.IsWatchedForTesting(id));
+            Assert.AreEqual(0, watcher.SharedWatcherCountForTesting);
+            Assert.AreEqual(2, factory.Created.Count);
+            foreach (var created in factory.Created)
+                Assert.AreEqual(1, created.DisposeCalls, $"{created.Path} must be disposed exactly once.");
+        }
+        finally
+        {
+            Directory.Delete(parent, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void DescribeStartFailure_NamesInotifyLimitOnlyForIoFailuresOnLinux()
+    {
+        var io = new IOException("limit reached");
+
+        var described = FileWatcherService.DescribeStartFailure(io, "ws1", isLinux: true);
+
+        Assert.IsNotNull(described);
+        StringAssert.Contains(described.Message, "fs.inotify.max_user_instances");
+        StringAssert.Contains(described.Message, "ws1");
+        StringAssert.Contains(described.Message, "limit reached");
+        Assert.AreSame(io, described.InnerException);
+        Assert.IsNull(FileWatcherService.DescribeStartFailure(io, "ws1", isLinux: false));
+        Assert.IsNull(FileWatcherService.DescribeStartFailure(new UnauthorizedAccessException(), "ws1", isLinux: true));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void NestedWorkspace_ChildDirectoryRemoved_RetiresOnlyTheChild(bool rename)
+    {
+        var parent = NewTempRoot();
+        var outerRoot = Path.Combine(parent, "outer");
+        var innerRoot = Path.Combine(outerRoot, "inner");
+        var siblingRoot = Path.Combine(outerRoot, "sibling");
+        Directory.CreateDirectory(innerRoot);
+        Directory.CreateDirectory(siblingRoot);
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        var outer = Guid.NewGuid().ToString("N");
+        var inner = Guid.NewGuid().ToString("N");
+        var sibling = Guid.NewGuid().ToString("N");
+        var raised = new List<string>();
+        watcher.WorkspaceRootMissing += id => { lock (raised) raised.Add(id); };
+        try
+        {
+            watcher.Watch(outer, Path.Combine(outerRoot, "Sample.slnx"));
+            watcher.Watch(inner, Path.Combine(innerRoot, "Sample.slnx"));
+            watcher.Watch(sibling, Path.Combine(siblingRoot, "Sample.slnx"));
+
+            // The outer root is both a workspace root and the shared ancestor directory of the inner and
+            // sibling workspaces, so one watcher carries two subscribers and must pick only the removed one.
+            var outerAsAncestor = factory.Shared(outerRoot);
+            if (rename)
+                outerAsAncestor.RaiseRenamed("inner", "inner-moved");
+            else
+                outerAsAncestor.RaiseDeleted("inner");
+
+            lock (raised) CollectionAssert.AreEqual(new[] { inner }, raised);
+        }
+        finally
+        {
+            watcher.Unwatch(inner);
+            watcher.Unwatch(sibling);
+            watcher.Unwatch(outer);
+            Directory.Delete(parent, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Dispose_DisposesEveryWatcherAndLeavesNoSharedWatcherRegistered()
+    {
+        var parent = NewTempRoot();
+        var factory = new RaisableWatcherFactory();
+        var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        try
+        {
+            for (var i = 0; i < 3; i++)
+            {
+                var root = Path.Combine(parent, $"ws{i}");
+                Directory.CreateDirectory(root);
+                watcher.Watch(Guid.NewGuid().ToString("N"), Path.Combine(root, "Sample.slnx"));
+            }
+
+            Assert.IsTrue(watcher.SharedWatcherCountForTesting > 0);
+            Assert.IsTrue(factory.Created.Count > 3);
+
+            watcher.Dispose();
+
+            Assert.AreEqual(0, watcher.SharedWatcherCountForTesting);
+            foreach (var created in factory.Created)
+                Assert.AreEqual(1, created.DisposeCalls, $"{created.Path} must be disposed exactly once.");
+        }
+        finally
+        {
+            watcher.Dispose();
+            Directory.Delete(parent, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task ConcurrentWatchAndUnwatch_UnderOneParent_NeverLeaksOrDoubleDisposes()
+    {
+        const int workers = 6;
+        const int iterations = 15;
+        var parent = NewTempRoot();
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        try
+        {
+            using var start = new Barrier(workers);
+            var tasks = Enumerable.Range(0, workers).Select(worker =>
+            {
+                var root = Path.Combine(parent, $"ws{worker}");
+                Directory.CreateDirectory(root);
+                var solution = Path.Combine(root, "Sample.slnx");
+                var id = Guid.NewGuid().ToString("N");
+                return Task.Factory.StartNew(() =>
+                {
+                    start.SignalAndWait();
+                    for (var i = 0; i < iterations; i++)
+                    {
+                        // Every worker subscribes to and releases the same ancestor directories.
+                        watcher.Watch(id, solution);
+                        watcher.Unwatch(id);
+                    }
+                }, TaskCreationOptions.LongRunning);
+            }).ToArray();
+
+            await Task.WhenAll(tasks).WaitAsync(SignalTimeout);
+
+            Assert.AreEqual(0, watcher.SharedWatcherCountForTesting);
+            Assert.IsTrue(factory.Created.Count >= workers * iterations);
+            foreach (var created in factory.Created)
+                Assert.AreEqual(1, created.DisposeCalls, $"{created.Path} must be disposed exactly once.");
+        }
+        finally
+        {
+            Directory.Delete(parent, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void TreeWatcher_EventsUnderObjBinAndGit_DoNotMarkStale()
+    {
+        var root = NewTempRoot();
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        var id = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(id, Path.Combine(root, "Sample.slnx"));
+            var tree = factory.Tree(root);
+
+            foreach (var excluded in new[] { "obj", "bin", ".git", Path.Combine("src", "obj"), Path.Combine("src", "bin") })
+            {
+                tree.RaiseCreated(Path.Combine(excluded, "Generated.cs"));
+                tree.RaiseChanged(Path.Combine(excluded, "Generated.cs"));
+                tree.RaiseDeleted(Path.Combine(excluded, "Generated.cs"));
+                tree.RaiseRenamed(Path.Combine(excluded, "Old.cs"), Path.Combine(excluded, "Generated.cs"));
+                Assert.IsFalse(watcher.IsStale(id), $"An event under '{excluded}' must not mark the workspace stale.");
+            }
+
+            tree.RaiseCreated(Path.Combine("src", "Real.cs"));
+
+            Assert.IsTrue(watcher.IsStale(id));
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(id));
         }
         finally
         {

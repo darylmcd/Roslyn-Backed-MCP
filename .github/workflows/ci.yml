@@ -26,9 +26,9 @@ env:
 jobs:
   # Compute the complete validation topology before any platform job is queued.
   # Public pull-request code is always routed to ephemeral GitHub-hosted
-  # runners. Every code PR receives four concurrent Windows and Linux shards;
-  # policy-only documentation PRs use four Linux
-  # shards so every documentation contract test still executes.
+  # runners. Every code PR receives six concurrent Windows and five concurrent
+  # Linux shards; policy-only documentation PRs use one Linux leg that runs
+  # every release gate and the docs-tier consumer test classes.
   route:
     name: Route validation
     runs-on: ubuntu-latest
@@ -228,6 +228,7 @@ jobs:
           HOSTED_IMAGE: ${{ matrix.leg.runs_on }}
           TEST_SHARD_INDEX: ${{ matrix.leg.test_shard_index }}
           TEST_SHARD_COUNT: ${{ matrix.leg.test_shard_count }}
+          TEST_SCOPE: ${{ matrix.leg.test_scope }}
           LINUX_SHARD_BUILD_SECONDS: ${{ steps.linux_shard_times.outputs.seconds }}
           ARTIFACT_OWNER: ${{ matrix.leg.artifact_owner }}
         run: |
@@ -237,14 +238,26 @@ jobs:
             ExcludeNetworkTests = $true
             TestShardIndex = [int]$env:TEST_SHARD_INDEX
             TestShardCount = [int]$env:TEST_SHARD_COUNT
-            HostedImage = $env:HOSTED_IMAGE
           }
-          if ($env:HOSTED_IMAGE -ceq 'ubuntu-latest') {
-            $parameters.ShardBuildSeconds = ConvertFrom-Json -InputObject $env:LINUX_SHARD_BUILD_SECONDS -NoEnumerate
+          # The router names each leg's test scope (eng/resolve-ci-topology.ps1). 'full' is this
+          # leg's shard of the whole suite. 'docs-consumers' is the policy-docs leg: the classes in
+          # eng/docs-tier-test-consumers.json, with no shard plan and no build calibration.
+          # Anything else fails the leg instead of choosing a scope for it.
+          if ($env:TEST_SCOPE -ceq 'full') {
+            $parameters.HostedImage = $env:HOSTED_IMAGE
+            if ($env:HOSTED_IMAGE -ceq 'ubuntu-latest') {
+              $parameters.ShardBuildSeconds = ConvertFrom-Json -InputObject $env:LINUX_SHARD_BUILD_SECONDS -NoEnumerate
+            }
+          }
+          elseif ($env:TEST_SCOPE -ceq 'docs-consumers') {
+            $parameters.DocsTierConsumerTests = $true
+          }
+          else {
+            throw "Unknown test scope '$env:TEST_SCOPE'."
           }
           # The artifact owner runs every release gate on every route. Docs-tier files
-          # (THIRD-PARTY-NOTICES.md, the packed README, CHANGELOG.md, allowlisted plugin
-          # files) feed those gates, so a docs PR must not downgrade the owner to a shard.
+          # (THIRD-PARTY-NOTICES.md, CHANGELOG.md, allowlisted plugin files) feed those
+          # gates, so a docs PR must not downgrade the owner to a shard.
           if ($env:ARTIFACT_OWNER -ne 'true') {
             $parameters.TestShardOnly = $true
           }
