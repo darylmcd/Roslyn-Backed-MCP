@@ -302,7 +302,65 @@ public sealed class InterfaceSignatureReferenceRouteTests : InterfaceRouteTestBa
         await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
     }
 
-    private static readonly string[] SignatureOwners = ["Shared", "GenericArg", "Constraint", "PropertyOwner", "EventOwner"];
+    private const string AttributeOwnerAttributeSource = """
+        using System.Diagnostics.CodeAnalysis;
+        namespace SampleLib;
+        public sealed class RefService
+        {
+            [StringSyntax(AttrOwner.Consts.Fmt)] public string Pattern { get; set; } = "";
+            public void Take([StringSyntax(AttrOwner.Consts.Fmt)] string value) { }
+        }
+        """;
+
+    private const string AttributeOwnerDefaultSource = """
+        namespace SampleLib;
+        public sealed class RefService
+        {
+            public void Take(string value = AttrOwner.Consts.Fmt) { }
+        }
+        """;
+
+    [TestMethod]
+    [DataRow("cross-project", "attribute")]
+    [DataRow("dependency-inversion", "attribute")]
+    [DataRow("extract-and-wire", "attribute")]
+    [DataRow("cross-project", "default")]
+    [DataRow("dependency-inversion", "default")]
+    [DataRow("extract-and-wire", "default")]
+    public async Task Fully_Qualified_Constant_Owner_In_Kept_Attribute_Or_Default_Gets_Reference_And_Compiles(string route, string scenario)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = await PrepareInterfaceRouteFixtureAsync(workspace, "RefService.cs",
+            "namespace SampleLib; public sealed class RefService { public int V { get; set; } }", "RefConsumer.cs", Consumer);
+        AddProjectToCopiedSolution(workspace.RootPath, "AttrOwner", "net10.0");
+        await File.WriteAllTextAsync(workspace.GetPath("AttrOwner", "AttrOwner.cs"),
+            "namespace AttrOwner; public static class Consts { public const string Fmt = \"f\"; }");
+        AddProjectReference(workspace.GetPath("SampleLib", "SampleLib.csproj"), "AttrOwner");
+        await File.WriteAllTextAsync(sourcePath, scenario == "attribute" ? AttributeOwnerAttributeSource : AttributeOwnerDefaultSource);
+        await workspace.ReloadAsync();
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+
+        var stores = new CompositePreviewStore();
+        var preview = await PreviewInterfaceRouteAsync(route, workspace.WorkspaceId, sourcePath, "RefService", stores);
+        string generated;
+        if (route == "extract-and-wire")
+        {
+            var mutations = stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations;
+            StringAssert.Contains(mutations.Single(m => m.FilePath == workspace.GetPath("Contracts", "Contracts.csproj")).UpdatedContent, "AttrOwner.csproj");
+            generated = mutations.Single(m => m.FilePath == workspace.GetPath("Contracts", "IRefService.cs")).UpdatedContent!;
+        }
+        else
+        {
+            var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+            AssertOwnerReferences(pending, ["AttrOwner"]);
+            generated = (await pending.Projects.Single(p => p.Name == "Contracts").Documents.Single(d => d.Name == "IRefService.cs").GetTextAsync()).ToString();
+            await AssertCompilesAsync(pending);
+        }
+
+        StringAssert.Contains(generated, scenario == "attribute" ? "[StringSyntax(AttrOwner.Consts.Fmt)]" : "string value = AttrOwner.Consts.Fmt");
+    }
+
+    private static readonly string[] SignatureOwners =["Shared", "GenericArg", "Constraint", "PropertyOwner", "EventOwner"];
 
     private static void AssertOwnerReferences(Solution pending, IEnumerable<string> ownerNames)
     {
