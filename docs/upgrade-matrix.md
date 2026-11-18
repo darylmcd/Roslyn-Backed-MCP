@@ -16,7 +16,7 @@ Related: [Release policy](release-policy.md) (product version and gates),
 |------|---------|--------------|-----------|------------|
 | .NET SDK (minimum) | `11.0.100` | `global.json` (`sdk.version`, `rollForward`: `latestFeature`) | Supplies the built-in .NET analyzers (`EnableNETAnalyzers`); CI exact-floor lane | `sdk-floor` job plus `./eng/verify-release.ps1`; confirm CI `setup-dotnet` still appropriate |
 | CI / publish SDK channel | `11.0.x` SDK, plus `10.0.x` for the `net10.0` runtime | `.github/workflows/ci.yml`, `.github/workflows/publish-nuget.yml`; GitHub default CodeQL setup | `global.json` policy (exact vs floating) | If you pin CI to an exact SDK, document it here and verify the repository CodeQL setting |
-| Target framework | `net10.0` | `Directory.Build.props` (`TargetFramework`) | SDK that supports the TFM; extension packages in the `10.0.x` line | Full build + test |
+| Target framework | `net10.0` | `Directory.Build.props` (`TargetFramework`) | SDK that supports the TFM; extension packages are on the `11.x` line ([ADR 0040](decisions/0040-extensions-11-on-net10.md)) | Full build + test |
 
 The SDK floor follows the Roslyn API family: the repository's release analyzer is built against the centrally pinned Roslyn API and fails with `CS9057` on an SDK whose compiler is older. Each stable Roslyn version ships with one SDK band (5.9 with `10.0.4xx`, 5.12 with `11.0.100`), so Roslyn 5.12 requires the `11.0.100` floor. The target framework stays `net10.0`; see [ADR 0039](decisions/0039-dotnet-11-sdk-floor.md).
 
@@ -37,10 +37,10 @@ The SDK floor follows the Roslyn API family: the repository's release analyzer i
 | `Microsoft.CodeAnalysis.Workspaces.MSBuild` | `5.12.0` | `Directory.Packages.props` | Roslyn API family; move together |
 | `Microsoft.CodeAnalysis.CSharp.Scripting` | `5.12.0` | `Directory.Packages.props` | Roslyn API family; move together |
 | `Microsoft.Build.Locator` | `1.11.2` | `Directory.Packages.props` | Review with MSBuild/workspace-loading changes |
-| `Microsoft.Extensions.Hosting` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.Http` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.Logging` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.Logging.Console` | `10.0.14` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Hosting` | `11.0.0` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Http` | `11.0.0` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Logging` | `11.0.0` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Logging.Console` | `11.0.0` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.TimeProvider.Testing` | `11.0.0` | `Directory.Packages.props` | Test-only; routine servicing group |
 | `DiffPlex` | `1.9.0` | `Directory.Packages.props` | Independent |
 | `Microsoft.Build.Framework` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
@@ -67,7 +67,7 @@ The SDK floor follows the Roslyn API family: the repository's release analyzer i
 
 - Keep the Roslyn API family on one version. Analyzer tests and production analysis share this workspace ABI.
 - Keep the four `Microsoft.Build*` compile references and `Microsoft.NET.StringTools` on one version. They use `PrivateAssets="all"` and `ExcludeAssets="runtime"`; a major upgrade must promote any new runtime dependency to the same direct-exclusion policy and pass the exact SDK-floor lane. The pin is the lowest version the Roslyn API family requires, so the compiled API surface stays within the MSBuild that older installed SDKs load at run time.
-- Keep the Extensions family in one servicing line.
+- Keep the Extensions family in one servicing line. It is on 11.x while the target framework is `net10.0`, so 11.x copies of some shared-framework libraries ship beside the server.
 - Keep MSTest adapter and framework paired.
 - Route `ModelContextProtocol` outside generic Dependabot groups. Every SDK bump requires a dedicated review, an ADR disposition, refreshed notices and matrix evidence, and all supported raw-wire protocol eras.
 
@@ -120,7 +120,7 @@ Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-releas
 | Any `Microsoft.CodeAnalysis.*` (Roslyn API) version | Bump **all** rows in section 2 together; raise the SDK floor to the band that ships that compiler; run full tests; watch MSBuild workspace integration. |
 | `Microsoft.Build.*` or `Microsoft.Build.Locator` | Keep all five compile-family pins equal; full `verify-release.ps1`; exact-floor lane; exercise solution load + `build_workspace` / `test_run` paths. |
 | `ModelContextProtocol` | Review every official release since the pin; add an ADR disposition that preserves or explicitly supersedes the current wire decision; run raw-wire matrices for every supported protocol era; check tool/prompt/resource registration and schemas. |
-| `Microsoft.Extensions.*` | Host startup, logging, and shutdown; no special Roslyn coupling. |
+| `Microsoft.Extensions.*` | Host startup, logging, and shutdown; also exercise solution load and `build_workspace` / `test_run`, because the family carries app-local `System.*` libraries into the process that hosts MSBuild. |
 | Product version only | All seven version files + `eng/verify-version-drift.ps1`. |
 
 ---
