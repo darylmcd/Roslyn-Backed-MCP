@@ -599,6 +599,8 @@
 | `extract-method-service-shared-expression-split` | Low | — | **Move the shared-expression pipeline out of ExtractMethodService** — the 1077-line service hosts extract_method and the whole shared-expression flow; give the latter its own service. [type: tech-debt] [source: PR 2142 implementation review] | M | items/extract-method-service-shared-expression-split.md |
 | `shared-expression-test-csproj-text-patching` | Low | — | **Edit test csproj files structurally** — the shared-expression tests patch SampleLib.csproj with string Replace, which silently does nothing when the anchor text changes. [type: test] [source: PR 2142 implementation review] | S | items/shared-expression-test-csproj-text-patching.md |
 | `agents-devbuild-runner-pilot-stale-tools` | Low | — | **Update the DevBuild-Runner pilot section to the current runner tools** — AGENTS.md still names the retired server_info, job_get and job_logs tools. [type: docs] [source: runner probe 2026-11-18] | S | items/agents-devbuild-runner-pilot-stale-tools.md |
+| `workspace-restore-budget-tests-wall-clock-tolerance` | Low | — | **Stop asserting a wall-clock tolerance in the restore-budget tests** — one failed under full-gate load with a budget 0.4 s outside its 5 s window. [type: test-infrastructure] [source: full local gate 2026-11-18] | S | items/workspace-restore-budget-tests-wall-clock-tolerance.md |
+| `process-pipe-source-macos-unverified` | Low | — | **Run the Unix process pipe source on macOS** — PR 2158's poll/read capture path ran on Windows and Linux only. [type: test-coverage] [source: PR 2158 2026-11-18] | S | items/process-pipe-source-macos-unverified.md |
 
 ## Defer
 
