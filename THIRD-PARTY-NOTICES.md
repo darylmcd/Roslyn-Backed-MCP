@@ -20,7 +20,7 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.Extensions.Logging.Console | 11.0.0 | MIT | https://github.com/dotnet/runtime |
 | ModelContextProtocol | 2.3.0 | Apache-2.0 | https://github.com/modelcontextprotocol/csharp-sdk |
 | Nito.AsyncEx | 5.1.2 | MIT | https://github.com/StephenCleary/AsyncEx |
-| System.Security.Cryptography.Xml | 10.0.15 | MIT | https://github.com/dotnet/runtime |
+| System.Security.Cryptography.Xml | 11.0.0 | MIT | https://github.com/dotnet/runtime |
 
 ## Build-Time Dependencies
 
