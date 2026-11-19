@@ -79,3 +79,16 @@ updates:
           # MCP SDK updates require a dedicated ADR/wire/notices review and
           # therefore must never share the routine servicing PR.
           - "ModelContextProtocol"
+
+    # The Microsoft.Build compile family is pinned, not serviced (ADR 0039). These are
+    # compile-time references only: the MSBuild that runs is the one the user's SDK
+    # provides, so the pin stays at the lowest version the Roslyn API family accepts
+    # and moves only together with that family. Newer packages cannot be used anyway:
+    # from 18.10 on they target net11.0 only, and Dependabot's proposal (PR #2157)
+    # split the family between 18.9.6 and 18.12.2.
+    ignore:
+      - dependency-name: "Microsoft.Build"
+      - dependency-name: "Microsoft.Build.Framework"
+      - dependency-name: "Microsoft.Build.Tasks.Core"
+      - dependency-name: "Microsoft.Build.Utilities.Core"
+      - dependency-name: "Microsoft.NET.StringTools"

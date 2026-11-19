@@ -1,6 +1,6 @@
 # ADR 0039 — Raise the source-build SDK floor to 11.0.100 for Roslyn 5.12 and MSBuild 18.x
 
-- **Status:** Accepted (2026-11-18)
+- **Status:** Accepted (2026-11-18), amended 2026-11-18
 - **Deciders:** repository maintainers
 - **Scope:** `global.json` SDK floor, the Roslyn API family, the `Microsoft.Build*` compile family, CI SDK lanes
 - **Supersedes:** nothing
@@ -39,6 +39,13 @@ with `MSBL001`.
 6. Remove the Dependabot ignore for `Microsoft.Build*` 18.x and route `Microsoft.NET.StringTools`
    with the MSBuild compile family.
 
+**Amendment (2026-11-18).** Dependabot is told to ignore the five compile-family packages
+entirely. Point 4 pins them at the lowest version the Roslyn API family accepts, so routine
+servicing proposals contradict the decision; they are compile-time references and ship no
+assemblies. The first proposal after this ADR also could not build: `Microsoft.Build` 18.10 and
+later target `net11.0` only, so Dependabot split the family between 18.9.6 and 18.12.2. The
+family moves by hand, in the same change as a Roslyn API family update that requires it.
+
 The `Microsoft.Extensions.*` runtime family is not part of this decision; its move to 11.x is
 recorded in [ADR 0040](0040-extensions-11-on-net10.md).
 
@@ -56,7 +63,8 @@ prerequisite for installed users and needs its own decision.
 
 ## Consequences
 
-- Dependabot can propose Roslyn and MSBuild compile-family updates again. A Roslyn update beyond the
-  compiler of the SDK floor still requires raising the floor in the same change.
+- Dependabot can propose Roslyn API family updates again; the MSBuild compile family is ignored
+  (see the amendment). A Roslyn update beyond the compiler of the SDK floor still requires raising
+  the floor in the same change, and moving the compile family when the new Roslyn requires it.
 - The exact-floor lane now proves the build on `11.0.100`; SDK 10 can no longer build the repository.
 - `THIRD-PARTY-NOTICES.md` and `docs/upgrade-matrix.md` list `Microsoft.NET.StringTools`.

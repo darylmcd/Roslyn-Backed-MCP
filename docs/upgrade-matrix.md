@@ -118,7 +118,7 @@ Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-releas
 |------------------|-------------------|
 | `global.json` SDK | The SDK supplies the built-in .NET analyzers, so there is no analyzer package to adjust; update the exact `sdk-floor` lane; run `verify-release.ps1`. |
 | Any `Microsoft.CodeAnalysis.*` (Roslyn API) version | Bump **all** rows in section 2 together; raise the SDK floor to the band that ships that compiler; run full tests; watch MSBuild workspace integration. |
-| `Microsoft.Build.*` or `Microsoft.Build.Locator` | Keep all five compile-family pins equal; full `verify-release.ps1`; exact-floor lane; exercise solution load + `build_workspace` / `test_run` paths. |
+| `Microsoft.Build.*` or `Microsoft.Build.Locator` | Dependabot ignores the compile family; move it by hand only when a Roslyn API family update requires it. Keep all five compile-family pins equal; full `verify-release.ps1`; exact-floor lane; exercise solution load + `build_workspace` / `test_run` paths. |
 | `ModelContextProtocol` | Review every official release since the pin; add an ADR disposition that preserves or explicitly supersedes the current wire decision; run raw-wire matrices for every supported protocol era; check tool/prompt/resource registration and schemas. |
 | `Microsoft.Extensions.*` | Host startup, logging, and shutdown; also exercise solution load and `build_workspace` / `test_run`, because the family carries app-local `System.*` libraries into the process that hosts MSBuild. |
 | Product version only | All seven version files + `eng/verify-version-drift.ps1`. |
