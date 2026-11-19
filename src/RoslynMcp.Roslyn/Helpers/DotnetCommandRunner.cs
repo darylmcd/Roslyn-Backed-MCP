@@ -1,6 +1,4 @@
-using System.Buffers;
 using System.Diagnostics;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -28,16 +26,15 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class DotnetCommandRunner : IDotnetCommandRunner
 {
     private const int DefaultOutputLimit = 12_000;
-    private const int ReadBufferSize = 4096;
 
     /// <summary>
     /// Grace window for draining stdout/stderr after the child process exits. MSBuild worker
     /// nodes and VBCSCompiler spawned by build-ish commands inherit the redirected pipe write
     /// handles and can outlive the child by many minutes (node idle timeout is 15 minutes, and
     /// continuous reuse resets it) — pipe EOF never arrives while they hold the write end, so an
-    /// unbounded read deadlocks long after the command finished. The child's own buffered output
-    /// flushes within milliseconds of its exit, so a short bounded drain preserves complete
-    /// output without inheriting the descendants' lifetime.
+    /// unbounded read deadlocks long after the command finished. The window only bounds how long
+    /// the runner keeps listening for descendants; <see cref="ProcessOutputPump"/> returns the
+    /// child's own output in full whether or not the window has expired by the time it runs.
     /// </summary>
     internal static readonly TimeSpan PostExitDrainGracePeriod = TimeSpan.FromSeconds(5);
 
@@ -149,15 +146,30 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
                 ? new EarlyKillCoordinator(this, process, earlyKillPatterns)
                 : null;
 
-            using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var stdOutTask = ReadBoundedAsync(process.StandardOutput, _outputLimit, earlyKill, drainCts.Token, ct);
-            var stdErrTask = ReadBoundedAsync(process.StandardError, _outputLimit, earlyKill, drainCts.Token, ct);
+            // The pumps read the pipe handles directly, so they must have stopped before the
+            // process (and with it the handles) is disposed on any path out of this method.
+            using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var exitTask = process.WaitForExitAsync(ct);
+            Func<bool> hasExited = () => exitTask.IsCompletedSuccessfully;
+            var stdOutTask = PumpAsync(process.StandardOutput, earlyKill, hasExited, pumpCts.Token);
+            var stdErrTask = PumpAsync(process.StandardError, earlyKill, hasExited, pumpCts.Token);
 
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
-            // The child has exited; only handle-inheriting descendants can still hold the pipe open.
-            drainCts.CancelAfter(PostExitDrainGracePeriod);
-            var stdOut = await stdOutTask.ConfigureAwait(false);
-            var stdErr = await stdErrTask.ConfigureAwait(false);
+            string stdOut;
+            string stdErr;
+            try
+            {
+                await exitTask.ConfigureAwait(false);
+                // The child has exited; only handle-inheriting descendants can still hold the pipe open.
+                stdOut = await stdOutTask.ConfigureAwait(false);
+                stdErr = await stdErrTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                await pumpCts.CancelAsync().ConfigureAwait(false);
+                await ((Task)Task.WhenAll(stdOutTask, stdErrTask))
+                    .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                throw;
+            }
             stopwatch.Stop();
 
             exitCode = process.ExitCode;
@@ -257,57 +269,23 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         }
     }
 
-    internal static async Task<string> ReadBoundedAsync(
-        StreamReader reader, int outputLimit,
-        CancellationToken drainCt, CancellationToken callerCt)
-        => await ReadBoundedAsync(reader, outputLimit, earlyKill: null, drainCt, callerCt).ConfigureAwait(false);
-
-    private static async Task<string> ReadBoundedAsync(
-        StreamReader reader, int outputLimit, EarlyKillCoordinator? earlyKill,
-        CancellationToken drainCt, CancellationToken callerCt)
-    {
-        var buffer = ArrayPool<char>.Shared.Rent(ReadBufferSize);
-        var bounded = new BoundedTextBuffer(outputLimit);
-
-        try
-        {
-            while (true)
-            {
-                int count;
-                try
-                {
-                    count = await reader.ReadAsync(buffer.AsMemory(0, ReadBufferSize), drainCt).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (!callerCt.IsCancellationRequested)
-                {
-                    // Post-exit drain grace expired: a handle-inheriting descendant (MSBuild
-                    // worker node, VBCSCompiler) still holds the pipe write end open. The child
-                    // itself already exited, so everything it wrote has been read — stop waiting
-                    // for an EOF that only arrives when those descendants die.
-                    break;
-                }
-
-                if (count == 0)
-                {
-                    break;
-                }
-
-                var slice = buffer.AsSpan(0, count);
-                bounded.Append(slice);
-
-                // Item 4: scan only the fresh slice (not the whole bounded buffer) to keep the
-                // match cost per buffer-read O(patterns × slice-length), regardless of how much
-                // prior output accumulated.
-                earlyKill?.ScanAndMaybeKill(slice);
-            }
-
-            return bounded.ToString();
-        }
-        finally
-        {
-            ArrayPool<char>.Shared.Return(buffer);
-        }
-    }
+    private Task<string> PumpAsync(
+        StreamReader redirectedOutput,
+        EarlyKillCoordinator? earlyKill,
+        Func<bool> hasExited,
+        CancellationToken cancellationToken)
+        => ProcessOutputPump.ReadAsync(
+            ProcessPipeSource.Create(redirectedOutput),
+            redirectedOutput.CurrentEncoding,
+            _outputLimit,
+            // Item 4: scan only the fresh chunk (not the whole bounded buffer) to keep the match
+            // cost per read O(patterns × chunk-length), regardless of how much output accumulated.
+            earlyKill is null ? null : earlyKill.ScanAndMaybeKill,
+            hasExited,
+            PostExitDrainGracePeriod,
+            ProcessOutputPump.DefaultPollInterval,
+            TimeProvider.System,
+            cancellationToken);
 
     /// <summary>
     /// Coordinates early-kill state shared by stdout and stderr readers. First match wins; the
@@ -332,13 +310,10 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
 
         public string? KillReason { get; private set; }
 
-        public void ScanAndMaybeKill(ReadOnlySpan<char> slice)
+        public void ScanAndMaybeKill(string text)
         {
-            if (_killed != 0 || slice.Length == 0) return;
+            if (_killed != 0 || text.Length == 0) return;
 
-            // Regex doesn't accept spans directly; allocate one string per slice (4KB max).
-            // At typical MSBuild retry rate this is <= 10 allocations per failed test run.
-            var text = slice.ToString();
             foreach (var pattern in _patterns)
             {
                 if (pattern.Pattern.IsMatch(text))
@@ -355,27 +330,4 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
     private sealed record ProcessKillState(
         DotnetCommandRunner Runner,
         Process Process);
-
-    private sealed class BoundedTextBuffer(int maxLength)
-    {
-        private readonly StringBuilder _builder = new(Math.Min(maxLength, ReadBufferSize));
-
-        public void Append(ReadOnlySpan<char> value)
-        {
-            if (value.Length >= maxLength)
-            {
-                _builder.Clear();
-                _builder.Append(value[^maxLength..]);
-                return;
-            }
-
-            _builder.Append(value);
-            if (_builder.Length > maxLength)
-            {
-                _builder.Remove(0, _builder.Length - maxLength);
-            }
-        }
-
-        public override string ToString() => _builder.ToString();
-    }
 }

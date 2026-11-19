@@ -4,7 +4,7 @@
 - **Deciders:** repository maintainers
 - **Scope:** `global.json` SDK floor, the Roslyn API family, the `Microsoft.Build*` compile family, CI SDK lanes
 - **Supersedes:** nothing
-- **Superseded by:** nothing
+- **Superseded by:** nothing (ADR 0040 decides the Extensions family)
 
 ## Context
 
@@ -39,8 +39,8 @@ with `MSBL001`.
 6. Remove the Dependabot ignore for `Microsoft.Build*` 18.x and route `Microsoft.NET.StringTools`
    with the MSBuild compile family.
 
-The `Microsoft.Extensions.*` runtime family is not part of this decision and stays on the 10.0.x
-servicing line.
+The `Microsoft.Extensions.*` runtime family is not part of this decision; its move to 11.x is
+recorded in [ADR 0040](0040-extensions-11-on-net10.md).
 
 ## Compatibility
 
