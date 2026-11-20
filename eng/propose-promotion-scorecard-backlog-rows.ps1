@@ -19,6 +19,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Emit UTF-8 stdout: the default OEM codepage (cp437 on Windows) turns characters such as U+2192 into
+# 0x1A (SUB), which is invalid inside a JSON string.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $AggregatedScorecardPath) {
     $AggregatedScorecardPath = Join-Path $repoRoot 'audit-reports/_aggregated-promotion-scorecard.json'
