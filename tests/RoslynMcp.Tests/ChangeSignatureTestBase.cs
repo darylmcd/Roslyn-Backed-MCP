@@ -45,7 +45,7 @@ public abstract class ChangeSignatureTestBase : OwnedRefactoringTestBase
         }
     }
     private protected async Task AssertSignatureProofAsync(
-            string source, ChangeSignatureRequest request, int line, int column, string? expected, int expectedCalls)
+            string source, ChangeSignatureRequest request, int line, int column, string? expected, int? expectedCalls)
     {
         await using var workspace = CreateSingleProjectWorkspace();
         var path = workspace.GetPath("SampleLib", "SignatureProof.cs");
@@ -59,7 +59,8 @@ public abstract class ChangeSignatureTestBase : OwnedRefactoringTestBase
         var pair = Services.PreviewStore.Retrieve(preview.PreviewToken);
         Assert.IsNotNull(pair);
         Assert.AreEqual(expectedValue, await RunSignatureFixtureAsync(pair.Value.ModifiedSolution, "SampleLib.SignatureProof"));
-        Assert.AreEqual(expectedCalls, preview.CallsiteUpdates?.Sum(c => c.CallsiteCount));
+        if (expectedCalls is not null)
+            Assert.AreEqual(expectedCalls, preview.CallsiteUpdates?.Sum(c => c.CallsiteCount));
         var proofText = (await pair.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib")
             .Documents.Single(d => d.FilePath == path).GetTextAsync()).ToString();
         foreach (var marker in new[] { "init-comma", "iterator-comma", "receiver", "question", "dot", "name", "arrow", "semicolon" })

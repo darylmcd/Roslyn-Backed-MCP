@@ -45,10 +45,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             _bindings = [];
             foreach (var argument in arguments)
             {
-                var operation = model.GetOperation(argument.Expression);
-                while (operation is not null && operation is not IArgumentOperation)
-                    operation = operation.Parent;
-                var bound = operation as IArgumentOperation;
+                var bound = ArgumentOperationResolver.Resolve(model, argument.Expression, CancellationToken.None);
                 if (bound?.Parameter is null)
                     throw Refuse("An existing argument has no original semantic parameter binding.");
                 var expanded = bound.ArgumentKind is ArgumentKind.ParamArray or ArgumentKind.ParamCollection;
@@ -457,7 +454,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     {
                         var argAnnotation = new SyntaxAnnotation(ArgumentTag);
                         AddAnnotation(annotations, argument.Expression, argAnnotation);
-                        var owner = FindArgument(model.GetOperation(argument.Expression, ct));
+                        var owner = ArgumentOperationResolver.Resolve(model, argument.Expression, ct);
                         documentEvidence.Add(CreateEvidence(argAnnotation, operationTarget, argument.Expression, model,
                             declarationKeys) with
                         { Parameter = owner?.Parameter?.Name });
@@ -906,11 +903,9 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         return result.ToImmutable();
     }
 
-    private static IArgumentOperation? FindArgument(IOperation? operation)
-    {
-        while (operation is not null && operation is not IArgumentOperation) operation = operation.Parent;
-        return operation as IArgumentOperation;
-    }
+    // ArgumentTag annotates the argument expression; any other tagged node is not an argument.
+    private static IArgumentOperation? ResolveArgument(SemanticModel model, SyntaxNode node, CancellationToken ct) =>
+        node is ExpressionSyntax expression ? ArgumentOperationResolver.Resolve(model, expression, ct) : null;
 
     private static ArgumentSyntax NamedArgument(string name, ExpressionSyntax expression) =>
         SyntaxFactory.Argument(expression).WithNameColon(SyntaxFactory.NameColon(
@@ -1250,7 +1245,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     || entry.ContainingArguments.Any(a => !annotatedNodes.ContainsKey(a)))) continue;
                 if (node is null) throw Refuse("A retained call lost its verification identity.");
                 var target = entry.Annotation.Kind == ArgumentTag
-                    ? FindArgument(model.GetOperation(node, ct))?.Parameter?.ContainingSymbol as IMethodSymbol
+                    ? ResolveArgument(model, node, ct)?.Parameter?.ContainingSymbol as IMethodSymbol
                     : model.GetSymbolInfo(node, ct).Symbol as IMethodSymbol;
                 if (target is null) throw Refuse("A retained call or argument no longer has its original binding.");
                 var current = CreateEvidence(entry.Annotation, target, node, model, originals);
@@ -1259,7 +1254,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     || entry.Conversion != current.Conversion)
                     throw Refuse("The requested signature change changes a retained target, type substitution, or contextual conversion.");
                 if (entry.Parameter is not null
-                    && FindArgument(model.GetOperation(node, ct))?.Parameter?.Name != entry.Parameter)
+                    && ResolveArgument(model, node, ct)?.Parameter?.Name != entry.Parameter)
                     throw Refuse("The requested signature change changes a retained argument's parameter binding.");
             }
         }

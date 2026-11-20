@@ -176,7 +176,59 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
     }
 
 
-    private static string ExecuteCompilation(Microsoft.CodeAnalysis.Compilation compilation, string method)
+    /// <summary>
+    /// change-signature-unrelated-invocation-rewrite: a null-forgiving argument (<c>x!</c>) has no operation of its
+    /// own, so it must be resolved through its operand. The old code read it as a params-expanded element.
+    /// </summary>
+    [TestMethod]
+    [DataRow("Plain", "PlainOld(string, int)", "PlainNew(int, string)")]
+    [DataRow("Tail", "TailOld(string, int[])", "TailNew(int[], string)")]
+    [DataRow("Sole", "SoleOld(string[])", "SoleNew(string[])")]
+    [DataRow("ExplicitArray", "SoleOld(string[])", "SoleNew(string[])")]
+    [DataRow("ExplicitArrayForgiven", "SoleOld(string[])", "SoleNew(string[])")]
+    public async Task ReplaceInvocation_NullForgivingArguments_KeepTheirParameterBinding(
+        string method, string oldSignature, string newSignature)
+    {
+        var path = CreateSampleSolutionCopy();
+        var fixture = Path.Combine(Path.GetDirectoryName(path)!, "SampleLib", "NullForgivingBinding.cs");
+        await File.WriteAllTextAsync(fixture, """
+            #nullable enable
+            namespace SampleLib;
+            public static class NullForgivingBinding
+            {
+                private static readonly string Text = "t";
+                public static string PlainOld(string a, int b) => a + ":" + b;
+                public static string PlainNew(int b, string a) => a + ":" + b;
+                public static string TailOld(string a, params int[] rest) => a + ":" + string.Join(",", rest);
+                public static string TailNew(int[] rest, string a) => a + ":" + string.Join(",", rest);
+                public static string SoleOld(params string[] rest) => string.Join(",", rest);
+                public static string SoleNew(string[] rest) => string.Join(",", rest);
+                public static string Plain() => PlainOld(Text!, 2);
+                public static string Tail() => TailOld(Text!, 1, 2);
+                public static string Sole() => SoleOld(Text!);
+                public static string ExplicitArray() => SoleOld(new[] { "x", "y" });
+                public static string ExplicitArrayForgiven() { string[]? values = new[] { "x", "y" }; return SoleOld(values!); }
+            }
+            """);
+        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        try
+        {
+            var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
+            var oldCompilation = await original.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
+            Assert.IsNotNull(oldCompilation);
+            var before = ExecuteCompilation(oldCompilation, "SampleLib.NullForgivingBinding", method);
+            var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
+                loaded.WorkspaceId, "SampleLib.NullForgivingBinding." + oldSignature,
+                "SampleLib.NullForgivingBinding." + newSignature, null, CancellationToken.None);
+            var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+            var newCompilation = await modified.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
+            Assert.IsNotNull(newCompilation);
+            Assert.AreEqual(before, ExecuteCompilation(newCompilation, "SampleLib.NullForgivingBinding", method));
+        }
+        finally { WorkspaceManager.Close(loaded.WorkspaceId); }
+    }
+
+    private static string ExecuteCompilation(Microsoft.CodeAnalysis.Compilation compilation, string typeName, string method)
     {
         foreach (var tree in compilation.SyntaxTrees.ToArray())
             compilation = compilation.ReplaceSyntaxTree(tree, Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
@@ -189,7 +241,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
         try
         {
             var assembly = context.LoadFromStream(stream);
-            return (string)assembly.GetType("SampleLib.InvocationSemantics")!.GetMethod(method)!.Invoke(null, null)!;
+            return (string)assembly.GetType(typeName)!.GetMethod(method)!.Invoke(null, null)!;
         }
         finally { context.Unload(); }
     }
@@ -279,14 +331,14 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
             var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
             var oldCompilation = await original.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
             Assert.IsNotNull(oldCompilation);
-            var before = ExecuteCompilation(oldCompilation, method);
+            var before = ExecuteCompilation(oldCompilation, "SampleLib.InvocationSemantics", method);
             var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
                 loaded.WorkspaceId, (method == "Extension" ? "SampleLib.InvocationExtensions." : "SampleLib.InvocationSemantics.") + oldSignature,
                 (method == "Extension" ? "SampleLib.InvocationExtensions." : "SampleLib.InvocationSemantics.") + newSignature, null, CancellationToken.None);
             var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
             var newCompilation = await modified.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
             Assert.IsNotNull(newCompilation);
-            Assert.AreEqual(before, ExecuteCompilation(newCompilation, method), "Result and expression evaluation order must survive the rewrite.");
+            Assert.AreEqual(before, ExecuteCompilation(newCompilation, "SampleLib.InvocationSemantics", method), "Result and expression evaluation order must survive the rewrite.");
             var document = modified.Projects.Single(x => x.Name == "SampleLib").Documents.Single(x => x.FilePath == fixture);
             var text = (await document.GetTextAsync()).ToString();
             foreach (var marker in new[] { "/*comma*/", "/*name*/", "/*element*/" })
