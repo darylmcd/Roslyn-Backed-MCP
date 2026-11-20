@@ -104,7 +104,7 @@ The server is also distributed as a Claude Code plugin. Plugin artifacts live ou
 | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | Shipped plugin and marketplace manifests |
 | `.claude-plugin/mcp.json` | Shipped plugin MCP descriptor; launches the release-matched `Darylmcd.RoslynMcp` package for plugin installs |
 | `skills/` | 32 SKILL.md skill definitions composing Roslyn MCP tools into guided workflows (shipped with the plugin). Repo-only maintainer skills live in `.claude/skills/` and are not shipped. |
-| `hooks/` | `hooks.json` with advisory PostToolUse hooks (update status and post-refactoring compile-check reminders) |
+| `hooks/` | `hooks.json` with advisory PostToolUse hooks that never end the agent turn (update status via a `continueOnBlock` prompt hook; post-refactoring compile-check reminder via a command hook emitting `additionalContext`) |
 | User/session MCP client config | External registration for the `roslynmcp` stdio host; not shipped from this repository |
 
 The shipped `.claude-plugin/mcp.json` descriptor is distinct from external user/session-scoped registrations; the repository ships no root `.mcp.json`. The plugin layer is pure orchestration (no C# code): skills compose tools by MCP name into workflows, and advisory hooks remind agents to verify after applies. Preview-token validation is enforced server-side.
