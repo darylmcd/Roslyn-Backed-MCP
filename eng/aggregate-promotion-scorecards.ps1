@@ -174,6 +174,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# pwsh encodes stdout/stderr with [Console]::OutputEncoding, which defaults to the OEM codepage
+# (cp437) on Windows. Characters with no mapping there (e.g. U+2192 arrows in scorecard text) become
+# 0x1A (SUB), which is invalid inside a JSON string and breaks every consumer that parses stdout.
+# Emit UTF-8 without a BOM (also covers the [Console]::Error staleness warnings).
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $repoName = Split-Path -Leaf $repoRoot
 
