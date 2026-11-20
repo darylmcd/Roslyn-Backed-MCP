@@ -1,10 +1,10 @@
 # move-type-to-project-signature-dependency-edge — Add dependency edges for moved type bodies
 
-**row:** `move-type-to-project-signature-dependency-edge` · **pri:** `Medium` · **size:** `M`
+**row:** `move-type-to-project-signature-dependency-edge` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:114`
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:106` (`PreviewMoveTypeToProjectAsync` calls `EnsureProjectReference` for the source-to-target edge only; the same single edge is added again at `:216`)
 
 ## Acceptance
 

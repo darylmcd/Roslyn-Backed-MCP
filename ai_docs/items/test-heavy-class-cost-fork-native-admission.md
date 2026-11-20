@@ -1,11 +1,14 @@
 # test-heavy-class-cost-fork-native-admission — Cut the per-test cost of ForkNativeAdmissionTests
 
-**row:** `test-heavy-class-cost-fork-native-admission` · **pri:** `Medium` · **size:** `S`
+**row:** `test-heavy-class-cost-fork-native-admission` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
 - `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTestBase.cs` — shared native fixture, including restore and cleanup.
 - `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs` — native build-host cases.
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeBuildOutputAdmissionTests.cs` — second of the four native admission classes.
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeCopyAdmissionTests.cs` — third of the four.
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeOwnershipTests.cs` — fourth of the four.
 
 ## Acceptance
 

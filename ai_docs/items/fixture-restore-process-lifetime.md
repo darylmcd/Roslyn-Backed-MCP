@@ -1,6 +1,6 @@
 # fixture-restore-process-lifetime — Bound fixture-owned restore processes
 
-**row:** `fixture-restore-process-lifetime` · **pri:** `Medium` · **size:** `M`
+**row:** `fixture-restore-process-lifetime` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # test-inconclusive-count-unbudgeted — Nothing bounds the inconclusive test count
 
-**row:** `test-inconclusive-count-unbudgeted` · **pri:** `Medium` · **size:** `M`
+**row:** `test-inconclusive-count-unbudgeted` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
@@ -10,9 +10,9 @@
 
 ## Acceptance
 
-- [ ] The release/CI test step reads the TRX counters and fails when the not-executed/inconclusive count exceeds a committed per-OS expectation (the OS-only guards are the expected set); the expectation lives in a file a PR must edit to raise it.
+- [ ] The release/CI test step reads the TRX counters and fails when the not-executed/inconclusive count exceeds a committed per-OS expectation (the OS-only guards are the expected set); the expectation lives in a file a PR must edit to raise it. (`eng/verify-release.ps1` reads `NotExecuted` only to prove each docs-tier consumer class ran; it carries no count budget.)
 - [ ] The six fixture-or-product-shape inconclusives become failures or real assertions: `SymbolDisambiguationElicitationTests.cs:119` and `:492`, `Services/WorkspaceDriftServiceTests.cs:171`, `AnalysisToolsTests.cs:310` (its own comment says "fail loudly"), and the two remaining ones the classification finds.
-- [ ] `Support/GitFixtureRunner.cs:52` no longer turns every exception into `false`: only "git not found" may lead to not-run; any other failure fails the test.
+- [x] `Support/GitFixtureRunner.cs` no longer turns every exception into not-run: `RequireAvailableAsync` (lines 44-55) now yields Inconclusive only for a Win32 "git not found" (native error 2 or 3); any other failure propagates.
 
 ## Evidence
 
@@ -25,3 +25,7 @@
 ## Context
 
 - regression_shape: a skip path with no ceiling, so lost coverage is invisible.
+
+## Notes
+
+2026-11-20: re-derived at 847d7f94: GitFixtureRunner now only maps git-not-found to Inconclusive (bullet 3 done); no TRX inconclusive budget exists in verify-release.ps1; Assert.Inconclusive lines now 141 (was ~95).

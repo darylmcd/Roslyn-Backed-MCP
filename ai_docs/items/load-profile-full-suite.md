@@ -1,6 +1,6 @@
 # load-profile-full-suite — Profile full-suite load and decide the test worker cap
 
-**row:** `load-profile-full-suite` · **pri:** `Medium` · **size:** `M`
+**row:** `load-profile-full-suite` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

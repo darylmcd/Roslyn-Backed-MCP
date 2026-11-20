@@ -1,6 +1,6 @@
 # logging-process-vitals-absent — Expose process vitals in server_heartbeat and the JSON-lines stream
 
-**row:** `logging-process-vitals-absent` · **pri:** `Medium` · **size:** `M`
+**row:** `logging-process-vitals-absent` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

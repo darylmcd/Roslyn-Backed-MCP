@@ -1,10 +1,10 @@
 # cross-project-interface-generic-type-parameters — Preserve generic parameters in extracted interfaces
 
-**row:** `cross-project-interface-generic-type-parameters` · **pri:** `Medium` · **size:** `M`
+**row:** `cross-project-interface-generic-type-parameters` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/InterfaceMemberProjector.cs:130` (`Strip`), `:187` (`InheritedConstraints`) — method type parameters and constraints already carry over (PR #1875); enclosing-type parameters do not.
+- `src/RoslynMcp.Roslyn/Services/InterfaceMemberProjector.cs:188` (`Strip`), `:245` (`InheritedConstraints`) — method type parameters and constraints already carry over (PR #1875); enclosing-type parameters do not.
 - `tests/RoslynMcp.Tests/InterfaceMemberProjectorTests.cs`
 - `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`
 

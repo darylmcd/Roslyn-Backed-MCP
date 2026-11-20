@@ -1,6 +1,6 @@
 # docs-ci-sdk-download-dependency — Decouple the docs leg from SDK acquisition
 
-**row:** `docs-ci-sdk-download-dependency` · **pri:** `Medium` · **size:** `M`
+**row:** `docs-ci-sdk-download-dependency` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

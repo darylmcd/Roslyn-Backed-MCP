@@ -1,12 +1,12 @@
 # mstest-formatter-enum-zero-comparison — Investigate enum-zero assertion formatter dependency behavior
 
-**row:** `mstest-formatter-enum-zero-comparison` · **pri:** `Medium` · **size:** `M`
+**row:** `mstest-formatter-enum-zero-comparison` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `Directory.Packages.props:29`
-- `Directory.Packages.props:30`
-- `eng/verify-changed-format.ps1:220`
+- `Directory.Packages.props:33` (`MSTest.TestAdapter` 4.5.3)
+- `Directory.Packages.props:34` (`MSTest.TestFramework` 4.5.3)
+- `eng/verify-changed-format.ps1:211` (`$formatArguments`, the `dotnet format` invocation)
 - `tests/RoslynMcp.Tests/FormatterBaselineContractTests.cs`
 
 ## Acceptance

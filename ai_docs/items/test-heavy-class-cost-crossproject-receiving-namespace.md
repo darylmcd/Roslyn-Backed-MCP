@@ -1,6 +1,6 @@
 # test-heavy-class-cost-crossproject-receiving-namespace — Cut the per-test cost of CrossProjectReceivingNamespaceIntegrationTests
 
-**row:** `test-heavy-class-cost-crossproject-receiving-namespace` · **pri:** `Medium` · **size:** `S`
+**row:** `test-heavy-class-cost-crossproject-receiving-namespace` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

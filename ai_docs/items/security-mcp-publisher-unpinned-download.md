@@ -1,10 +1,10 @@
 # security-mcp-publisher-unpinned-download — Pin and checksum-verify the mcp-publisher download in publish-registry
 
-**row:** `security-mcp-publisher-unpinned-download` · **pri:** `Medium` · **size:** `S`
+**row:** `security-mcp-publisher-unpinned-download` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `.github/workflows/publish-nuget.yml:199`
+- `.github/workflows/publish-nuget.yml:219-222` (`Install mcp-publisher`: `releases/latest` download piped to `tar`, no hash check)
 - `tests/RoslynMcp.Tests/PublishWorkflowContractTests.cs:15`
 
 ## Acceptance

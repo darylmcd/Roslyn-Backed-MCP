@@ -1,6 +1,6 @@
 # fixture-git-add-hosted-deadline — Diagnose fixture Git staging deadlines
 
-**row:** `fixture-git-add-hosted-deadline` · **pri:** `Medium` · **size:** `M`
+**row:** `fixture-git-add-hosted-deadline` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
