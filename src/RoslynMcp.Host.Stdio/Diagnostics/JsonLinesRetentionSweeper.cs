@@ -176,18 +176,44 @@ internal static class JsonLinesRetentionSweeper
     /// Runs <see cref="Sweep"/> with the real clock and process liveness and logs one summary record
     /// (or one warning with the exception type only). Never throws, so a fire-and-forget task over it cannot fault unobserved.
     /// </summary>
-    internal static void SweepAndLog(string directory, int ownPid, JsonLinesRetentionOptions options, ILogger logger)
+    internal static void SweepAndLog(string directory, int ownPid, JsonLinesRetentionOptions options, ILogger logger) =>
+        SweepAndLog(
+            logger,
+            () => Sweep(directory, ownPid, options, TimeProvider.System.GetUtcNow().UtcDateTime, IsProcessAlive));
+
+    /// <summary>The reporting core; <paramref name="sweep"/> is the seam tests use to force a failure.</summary>
+    internal static void SweepAndLog(ILogger logger, Func<JsonLinesSweepResult> sweep)
     {
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(sweep);
+        JsonLinesSweepResult result;
         try
         {
-            var result = Sweep(directory, ownPid, options, TimeProvider.System.GetUtcNow().UtcDateTime, IsProcessAlive);
-            LogSweepCompleted(
-                logger, result.Deleted, result.DeletedBytes, result.SkippedLive, result.SkippedHeld, result.Failed, null);
+            result = sweep();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            LogSweepFailed(logger, ex.GetType().Name, null);
+            TryLog(() => LogSweepFailed(logger, ex.GetType().Name, null));
+            return;
+        }
+
+        TryLog(() => LogSweepCompleted(
+            logger, result.Deleted, result.DeletedBytes, result.SkippedLive, result.SkippedHeld, result.Failed, null));
+    }
+
+    /// <summary>
+    /// Reporting must never fault the fire-and-forget sweep task: a logger that throws has no better channel
+    /// to report to, and the sweep's own work has already finished or failed.
+    /// </summary>
+    private static void TryLog(Action log)
+    {
+        try
+        {
+            log();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Intentionally unreported: rethrowing would fault Program.cs's Task.Run unobserved.
         }
     }
 

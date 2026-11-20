@@ -398,6 +398,56 @@ public sealed class JsonLinesRetentionSweeperTests
     }
 
     [TestMethod]
+    public void SweepAndLog_FailureWritesOneWarningWithTheExceptionTypeOnly()
+    {
+        var directory = NewDirectory();
+        using var provider = new JsonLinesFileLoggerProvider(directory, processId: OwnPid);
+        var logger = provider.CreateLogger("RoslynMcp.LogRetentionSweep");
+
+        JsonLinesRetentionSweeper.SweepAndLog(
+            logger,
+            () => throw new IOException($"{_secretSentinel} C:/private/path"));
+
+        var records = File.ReadAllLines(provider.FilePath).Select(static line => JsonDocument.Parse(line).RootElement).ToArray();
+        Assert.HasCount(1, records);
+        Assert.AreEqual("LogRetentionSweepFailed", records[0].GetProperty("eventName").GetString());
+        Assert.AreEqual(1004, records[0].GetProperty("eventId").GetInt32());
+        Assert.AreEqual("Warning", records[0].GetProperty("level").GetString());
+        Assert.AreEqual("IOException", records[0].GetProperty("fields").GetProperty("exceptionType").GetString());
+        var raw = File.ReadAllText(provider.FilePath);
+        Assert.IsFalse(raw.Contains(_secretSentinel, StringComparison.Ordinal));
+        Assert.IsFalse(raw.Contains("private/path", StringComparison.Ordinal));
+        Assert.IsFalse(raw.Contains("LogRetentionSweepCompleted", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void SweepAndLog_NeverThrowsWhenTheLoggerItselfThrows()
+    {
+        var logger = new ThrowingLogger();
+
+        JsonLinesRetentionSweeper.SweepAndLog(logger, () => throw new IOException("sweep failed"));
+        JsonLinesRetentionSweeper.SweepAndLog(logger, static () => default);
+
+        Assert.AreEqual(2, logger.Attempts, "Both the failure and the summary record were attempted.");
+    }
+
+    private sealed class ThrowingLogger : ILogger
+    {
+        public int Attempts { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            Attempts++;
+            throw new InvalidOperationException("logger failed");
+        }
+    }
+
+    [TestMethod]
     public void SweepAndLog_DeletesDeadFilesAndWritesExactlyOneSummaryRecord()
     {
         var directory = NewDirectory();
