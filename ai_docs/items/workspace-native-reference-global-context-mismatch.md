@@ -1,6 +1,6 @@
 # workspace-native-reference-global-context-mismatch — Preserve native reference evaluation context at workspace load
 
-**row:** `workspace-native-reference-global-context-mismatch` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `workspace-native-reference-global-context-mismatch` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

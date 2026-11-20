@@ -29,3 +29,7 @@ Depends on the fields serialization row.
 **Approach:** Reuse ToolErrorHandler.ClassifyError output (already computed at dispatch) for category; build frame symbols from StackTrace.GetFrames() method metadata through the existing PublicExceptionDetailPolicy projection so the sanitization stays single-sourced.
 
 **Counterargument:** The repo deliberately omits exception text and stacks from the sink (public artifact; logs land on customer machines). Type.Method names are code identifiers, not user data, so the policy holds; the cost is a slightly larger projection surface to keep secret-safe.
+
+## Notes
+
+Seen in PR 2169 review: JsonLinesFileLoggerProvider.ReportFailureOnce (JsonLinesFileLoggerProvider.cs:233) has a bare catch {} (:245) and its stderr message omits the failure type.

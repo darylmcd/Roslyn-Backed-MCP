@@ -1,6 +1,6 @@
 # type-consumer-not-found-public-guidance — Preserve safe missing-type correction
 
-**row:** `type-consumer-not-found-public-guidance` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `type-consumer-not-found-public-guidance` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

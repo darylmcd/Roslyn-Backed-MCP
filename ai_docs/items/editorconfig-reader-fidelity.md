@@ -1,6 +1,6 @@
 # editorconfig-reader-fidelity — Make the editorconfig reader agree with the Roslyn parser
 
-**row:** `editorconfig-reader-fidelity` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `editorconfig-reader-fidelity` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

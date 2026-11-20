@@ -1,6 +1,6 @@
 # di-registration-framework-symbol-identity — Bind DI discovery to framework symbols
 
-**row:** `di-registration-framework-symbol-identity` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `di-registration-framework-symbol-identity` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

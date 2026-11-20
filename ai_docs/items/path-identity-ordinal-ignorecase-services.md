@@ -1,6 +1,6 @@
 # path-identity-ordinal-ignorecase-services — Replace unconditional OrdinalIgnoreCase file-path identity with FileSystemPath in the remaining services
 
-**row:** `path-identity-ordinal-ignorecase-services` · **pri:** `Medium` · **size:** `L` · **deps:** `release-policy-correction-rule-adr`
+**row:** `path-identity-ordinal-ignorecase-services` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 

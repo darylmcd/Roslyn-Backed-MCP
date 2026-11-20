@@ -1,6 +1,6 @@
 # change-signature-unrelated-invocation-rewrite — Limit change_signature add/remove/reorder to the target call sites
 
-**row:** `change-signature-unrelated-invocation-rewrite` · **pri:** `High` · **size:** `M` · **verified:** `d3ab02228685f3cc015691f32c0292c6e6526b43`
+**row:** `change-signature-unrelated-invocation-rewrite` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
@@ -11,7 +11,7 @@
 ## Acceptance
 
 - [ ] Red first on SampleSolution: `change_signature_preview(op=add, metadataName=SampleLib.AnimalService.CountAnimals, name=strict, parameterType=bool, defaultValue=false)` must leave `Assert.AreEqual(2, count);` in `SampleLib.Tests/AnimalServiceTests.cs` untouched (today it becomes an explicit named-argument generic call).
-- [ ] Red first on this solution: `op=add` on `RoslynMcp.Roslyn.Helpers.PhysicalPathResolver.CanonicalizeDriveRoot` returns a preview instead of "An existing argument has no original semantic parameter binding."
+- [x] Red first on this solution: `op=add` on `RoslynMcp.Roslyn.Helpers.PhysicalPathResolver.CanonicalizeDriveRoot` returns a preview instead of "An existing argument has no original semantic parameter binding." Done in PR1 (#2173, merged 2026-11-20T23:48:38Z) via the shared `ArgumentOperationResolver`.
 - [ ] Re-derive which invocations the builder visits; only invocations bound to the target symbol are rewritten or validated. Cover add, remove and reorder.
 - [ ] A failed preview returns well inside the writer budget (failures took 14-48 s).
 
@@ -24,3 +24,18 @@
 ## Context
 
 - Both symptoms point at the same mechanism (argument binding walked for invocations that are not call sites of the target); that link is inferred from the throw site, not proven.
+
+## Notes
+
+### PR2 plan (reviewed design, 2026-11-20)
+
+PR1 (#2173) landed `src/RoslynMcp.Roslyn/Helpers/ArgumentOperationResolver.cs` (context only; consumed by `ChangeSignatureAddRemovePreviewBuilder.cs` and `BulkRefactoringService.cs`). Open: acceptance bullets 1, 3, 4.
+
+- Build the candidate without freezing unrelated calls.
+- Compile-driven drift check on the FINAL candidate (after `AddAliasDirectives` and `AddAliasDirectivesToScope`): read caller-info constants from `IArgumentOperation.Value.ConstantValue` for unrelated caller-info calls in changed documents only.
+- Minimal `param: literal` freeze only for drifted caller-info parameters. Never use `NameOriginalArguments` / `RetainTypeSubstitution` for them.
+- The gate at `ChangeSignatureAddRemovePreviewBuilder.cs:428` becomes `editedCall` only; delete the `:466-470` cleanup.
+- Call-node binding evidence is KEPT for all invocations: the overload-rebinding refusal is pinned by `CrossDocument_DefaultStructAndUnrelatedOverloadStayBound`. This is a stated deviation from bullet 3's literal wording ("only invocations bound to the target are validated").
+- When an unrelated call's `BindingTag` is missing in the candidate: skip if its containing argument was removed, refuse if unexplained.
+- Tests: `Assert.AreEqual(2, count)` byte-identical on `CreateLibraryTestsWorkspace`; `Log.Tag(Compute(1,2))` drift frozen with only that parameter named; multi-line removal shifting `Line()`; alias-only line shift; `MemberName` / struct construction; `CallerFilePath` after a struct move.
+- Latency: success path measured 53-73 s on `RoslynMcp.slnx` after PR1 (baseline compile `:297` + candidate compile `:1191` + per-document bind; method: throwaway harness with `RealWorkspaceLifecycleFixture` + `Stopwatch`). This exceeds the 30 s yardstick (`skills/mcp-server-surface-test/prompts/phases/output-and-close.md:337`). Decide in PR2 whether short-circuiting pre-checks before `:297` is possible; otherwise file a perf row. Hard cap: `ExecutionGateOptions.RequestTimeout` 2 min.

@@ -1,6 +1,6 @@
 # extract-type-nested-namespace-identity — Preserve the full extracted type namespace
 
-**row:** `extract-type-nested-namespace-identity` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `extract-type-nested-namespace-identity` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # native-test-filter-public-projection — Redact native MTP filters on the public response
 
-**row:** `native-test-filter-public-projection` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `native-test-filter-public-projection` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

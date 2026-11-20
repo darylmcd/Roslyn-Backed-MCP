@@ -1,6 +1,6 @@
 # document-set-native-default-compile-policy — Preserve native Compile membership during source apply
 
-**row:** `document-set-native-default-compile-policy` · **pri:** `Medium` · **size:** `L` · **deps:** `release-policy-correction-rule-adr`
+**row:** `document-set-native-default-compile-policy` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 

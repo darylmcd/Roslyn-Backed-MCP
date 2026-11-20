@@ -1,6 +1,6 @@
 # workspace-load-unresolved-sdk-diagnostic — Surface an unavailable workspace SDK
 
-**row:** `workspace-load-unresolved-sdk-diagnostic` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `workspace-load-unresolved-sdk-diagnostic` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

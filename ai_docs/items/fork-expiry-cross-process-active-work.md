@@ -1,6 +1,6 @@
 # fork-expiry-cross-process-active-work — Verify atomic peer admission versus fork expiry
 
-**row:** `fork-expiry-cross-process-active-work` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `fork-expiry-cross-process-active-work` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

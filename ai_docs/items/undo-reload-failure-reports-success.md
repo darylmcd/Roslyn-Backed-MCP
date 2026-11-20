@@ -1,6 +1,6 @@
 # undo-reload-failure-reports-success — Retain retryable undo when workspace synchronization fails
 
-**row:** `undo-reload-failure-reports-success` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `undo-reload-failure-reports-success` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

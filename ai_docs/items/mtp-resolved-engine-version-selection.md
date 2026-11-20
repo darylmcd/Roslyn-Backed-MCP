@@ -1,6 +1,6 @@
 # mtp-resolved-engine-version-selection — Gate MTP filters on every applicable resolved engine
 
-**row:** `mtp-resolved-engine-version-selection` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `mtp-resolved-engine-version-selection` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
