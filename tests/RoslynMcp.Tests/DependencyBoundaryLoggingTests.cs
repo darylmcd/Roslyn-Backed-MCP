@@ -38,7 +38,7 @@ public sealed class DependencyBoundaryLoggingTests
             var logDirectory = Path.Combine(TestTempRoot.Current, nameof(DependencyBoundaryLoggingTests), Guid.NewGuid().ToString("N"));
             _provider = new JsonLinesFileLoggerProvider(
                 logDirectory,
-                JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes * 64, maxSegments: 2),
+                JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes * 64, maxSegments: 2, retentionDays: JsonLinesRetentionOptions.DefaultRetentionDays, maxTotalBytes: JsonLinesRetentionOptions.DefaultMaxTotalBytes),
                 processId: 4321,
                 utcNow: () => DateTimeOffset.UtcNow);
             Factory = LoggerFactory.Create(logging =>

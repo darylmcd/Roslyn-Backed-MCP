@@ -127,6 +127,8 @@ are optional literal `env` overrides. Copy-ready examples live in
 | `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Operator-side diagnostics: `disabled`, structured unexpected failures on `stderr`, or the full enabled `ILogger` stream as bounded JSON lines with `file` |
 | `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENT_BYTES` | `5242880` | With `file`: rotation threshold in bytes for one JSON-lines segment (minimum 8192); a larger record is replaced by a bounded truncation marker |
 | `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENTS` | `3` | With `file`: rotated numbered segments kept beside the active file per process (1 to 100); rotation deletes only the oldest |
+| `ROSLYNMCP_OBSERVABILITY_RETENTION_DAYS` | `14` | With `file`: at startup, files of other processes that are no longer running and were last written more than this many days ago are deleted (1 to 3650); never this process's files, a running process's files, or a file held open (detected on Windows only) |
+| `ROSLYNMCP_OBSERVABILITY_MAX_TOTAL_BYTES` | `67108864` | With `file`: after the age pass, the oldest files of finished processes are deleted at startup until all sink files total at most this many bytes (1048576 to 1099511627776); this process's and running processes' files count toward the total but are never deleted |
 
 The complete variable list (script, rate-limit, preview-store, validation-timeout, and fork settings) is [ai_docs/references/environment-variables.md](../ai_docs/references/environment-variables.md). For log
 destinations, verbosity controls, correlation identifiers, and health probes, see the

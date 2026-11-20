@@ -265,6 +265,9 @@
 | `bulk-reference-truncation-and-source-text-end-line` | Medium | — | **Make truncated read results consistent with their paging fields** — find_references_bulk first-N differs from find_references; get_source_text reports the wrong end line when truncated. [type: bug] [source: surface-audit 20261120] | M | items/bulk-reference-truncation-and-source-text-end-line.md |
 | `review-test-coverage-prompt-project-filter` | Medium | — | **Apply projectName in the review_test_coverage prompt** — the header shows the filter but the test list spans every project. [type: bug] [source: surface-audit 20261120] | S | items/review-test-coverage-prompt-project-filter.md |
 | `split-service-with-di-preview-host-hang-triage` | Medium | — | **Triage split_service_with_di_preview after a host hang** — the machine hung and rebooted while two calls were in flight; attribution unknown. [type: bug] [source: surface-audit 20261120] | S | items/split-service-with-di-preview-host-hang-triage.md |
+| `symbol-info-strict-mode-resolves-at-whitespace` | Medium | — | **Return NotFound from strict symbol_info at a whitespace position** — it resolved the enclosing class where the schema promises NotFound. [type: bug] [source: surface-audit 20261120] | S | items/symbol-info-strict-mode-resolves-at-whitespace.md |
+| `find-type-consumers-limit-silent-truncation` | Medium | — | **Signal truncation in find_type_consumers** — limit cuts the list with no total or hasMore. [type: bug] [source: surface-audit 20261120] | S | items/find-type-consumers-limit-silent-truncation.md |
+| `tests-pwsh-nonascii-stdout-encoding-sites` | Medium | — | **Make non-ASCII pwsh stdout deterministic at the remaining spawn sites** — script-side UTF-8 plus matching test decode, or migrate raw spawns to PwshScriptRunner. [type: quality] [source: split from fix rem/fix-scorecard-encoding 2026-11-20] | M | items/tests-pwsh-nonascii-stdout-encoding-sites.md |
 
 ## Low
 
@@ -594,6 +597,9 @@
 | `tool-consolidation-retirement-record` | Low | — | **Record the retirement of tool-surface consolidation** — supersede the merge plan in ADR 0009/0011 and trim the release-policy section. [type: docs] [source: operator 2026-11-20] | S | items/tool-consolidation-retirement-record.md |
 | `surface-test-prompt-drift-and-apply-dispatch` | Low | — | **Correct the surface-test prompt where it disagrees with the server** — four drift items plus the Phase 6 dispatch contradiction. [type: docs] [source: surface-audit 20261120] | S | items/surface-test-prompt-drift-and-apply-dispatch.md |
 | `surface-audit-20261120-remaining-findings-intake` | Low | — | **Intake the remaining 2026-11-20 surface-audit findings** — about 35 P3 items and three unfiled P2 items are only in the local report. [type: planning] [source: surface-audit 20261120] | S | items/surface-audit-20261120-remaining-findings-intake.md |
+| `change-signature-preview-builder-build-async-decomposition` | Low | — | **Decompose ChangeSignatureAddRemovePreviewBuilder.BuildAsync** — one method of about 360 lines, cyclomatic complexity 108. [type: refactor] [source: surface-audit 20261120] | S | items/change-signature-preview-builder-build-async-decomposition.md |
+| `test-dead-locals-analysis-tools-and-interface-route` | Low | — | **Remove two dead locals in tests** — one discards an awaited setup result that may have been meant for an assertion. [type: test-refactor] [source: surface-audit 20261120] | S | items/test-dead-locals-analysis-tools-and-interface-route.md |
+| `mutation-analysis-cached-root-model-duplicate` | Low | — | **Share the cached root/model lookup in MutationAnalysisService** — GetCachedSyntaxRootAsync and GetCachedSemanticModelAsync are structural copies. [type: refactor] [source: surface-audit 20261120] | S | items/mutation-analysis-cached-root-model-duplicate.md |
 
 ## Defer
 

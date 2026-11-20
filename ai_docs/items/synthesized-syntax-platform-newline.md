@@ -30,3 +30,5 @@
 ## Notes
 
 Current-session split-service fixture confirms the generated partition path emits CRLF for an LF source on Windows (SymbolRefactorService.BuildPartitionFile, NormalizeWhitespace plus Environment.NewLine). Existing acceptance already owns this path. Preserve the distinct source-facade behavior.
+
+Surface audit 2026-11-20 (server 5.1.1): three more instances. extract_shared_expression_to_helper_preview wrote the helper with LF endings into a CRLF file; change_type_namespace_preview inserted a CRLF using directive into an LF file; move_type_to_file, extract-interface, split_class and scaffold outputs are CRLF with no final newline although the repo .editorconfig sets end_of_line = lf and insert_final_newline = true. format_document_preview also adds an LF blank line to a CRLF file.

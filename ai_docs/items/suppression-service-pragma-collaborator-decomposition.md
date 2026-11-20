@@ -19,3 +19,7 @@
 ## Evidence
 
 Observed during the 2026-08-16 suppression root-boundary remediation: `SuppressionService.cs` exceeds 700 lines and owns editorconfig mutation, disk reads, pragma syntax scanning, text-edit construction, widening safety, and live-compilation confirmation. The security fix added only a canonical-write seam; folding this decomposition into it would obscure the boundary invariant and exceed the current row's value.
+
+## Notes
+
+Surface audit 2026-11-20 (server 5.1.1): find_duplicated_methods reports SuppressionService.AddPragmaWarningDisableAsync and WidenPragmaScopeAsync (overload bodies at about lines 88-101 and 251-264 at the audited commit) as structural copies; fold the shared body into the collaborator.
