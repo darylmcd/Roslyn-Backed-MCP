@@ -146,7 +146,7 @@ public sealed class ServerObservabilitySinkTests
         var timestamp = new DateTimeOffset(2026, 8, 26, 12, 34, 56, 789, TimeSpan.Zero);
         using var provider = new JsonLinesFileLoggerProvider(
             logDirectory,
-            JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2),
+            JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2, retentionDays: JsonLinesRetentionOptions.DefaultRetentionDays, maxTotalBytes: JsonLinesRetentionOptions.DefaultMaxTotalBytes),
             processId: 1234,
             utcNow: () => timestamp);
         using var loggerFactory = LoggerFactory.Create(logging =>
@@ -198,7 +198,7 @@ public sealed class ServerObservabilitySinkTests
     [TestMethod]
     public void FileProvider_RotationKeepsFirstRecordReachableAcrossThreeThresholds()
     {
-        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 3);
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 3, retentionDays: JsonLinesRetentionOptions.DefaultRetentionDays, maxTotalBytes: JsonLinesRetentionOptions.DefaultMaxTotalBytes);
         using var provider = NewProvider(retention);
         var logger = provider.CreateLogger("evidence");
         logger.LogInformation(new EventId(1, "First"), "first-written-record");
@@ -224,7 +224,7 @@ public sealed class ServerObservabilitySinkTests
     [TestMethod]
     public void FileProvider_RotationDeletesOnlyTheOldestSegmentAndRespectsCount()
     {
-        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2);
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2, retentionDays: JsonLinesRetentionOptions.DefaultRetentionDays, maxTotalBytes: JsonLinesRetentionOptions.DefaultMaxTotalBytes);
         using var provider = NewProvider(retention);
         var logger = provider.CreateLogger("count");
         for (var i = 0; i < 80; i++)
@@ -257,7 +257,7 @@ public sealed class ServerObservabilitySinkTests
     [TestMethod]
     public void FileProvider_OversizedRecordBecomesBoundedValidMarkerInFirstEmptyAndNonEmptyFiles()
     {
-        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2);
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2, retentionDays: JsonLinesRetentionOptions.DefaultRetentionDays, maxTotalBytes: JsonLinesRetentionOptions.DefaultMaxTotalBytes);
         var hugeCategory = new string('c', 50_000);
         var hugeCorrelation = new string('k', 50_000);
         var timestamp = new DateTimeOffset(2026, 8, 26, 12, 34, 56, 789, TimeSpan.Zero);
@@ -315,8 +315,12 @@ public sealed class ServerObservabilitySinkTests
         Assert.AreEqual(3, defaults.MaxSegments);
         Assert.AreEqual(5L * 1024 * 1024, JsonLinesRetentionOptions.Parse(static _ => " ").MaxSegmentBytes);
 
-        var parsed = JsonLinesRetentionOptions.Parse(name =>
-            name == JsonLinesRetentionOptions.MaxSegmentBytesVariable ? " 16384 " : "7");
+        var parsed = JsonLinesRetentionOptions.Parse(name => name switch
+        {
+            JsonLinesRetentionOptions.MaxSegmentBytesVariable => " 16384 ",
+            JsonLinesRetentionOptions.MaxSegmentsVariable => "7",
+            _ => null,
+        });
         Assert.AreEqual(16384L, parsed.MaxSegmentBytes);
         Assert.AreEqual(7, parsed.MaxSegments);
 
@@ -339,15 +343,15 @@ public sealed class ServerObservabilitySinkTests
         }
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes - 1, 1));
+            () => JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes - 1, 1, JsonLinesRetentionOptions.DefaultRetentionDays, JsonLinesRetentionOptions.DefaultMaxTotalBytes));
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, 0));
+            () => JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, 0, JsonLinesRetentionOptions.DefaultRetentionDays, JsonLinesRetentionOptions.DefaultMaxTotalBytes));
     }
 
     [TestMethod]
     public void SegmentWriter_FailedRotationNeverLosesSegmentContentAcrossTheRetry()
     {
-        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 3);
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 3, retentionDays: JsonLinesRetentionOptions.DefaultRetentionDays, maxTotalBytes: JsonLinesRetentionOptions.DefaultMaxTotalBytes);
         var directory = Path.Combine(TestTempRoot.Current, nameof(ServerObservabilitySinkTests), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var writer = new JsonLinesSegmentWriter(directory, 4321, retention);
