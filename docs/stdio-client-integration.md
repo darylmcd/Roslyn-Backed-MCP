@@ -72,7 +72,33 @@ The threshold is a rotation trigger, not a hard file-size guarantee: a segment i
 `max(threshold, marker size)` for files this process wrote (the 8192-byte floor keeps the marker under the
 threshold), and a file left by an earlier process with the same pid or a larger setting can exceed it
 until it ages out of the segment set. Per-process disk use is therefore at most
-`(MAX_SEGMENTS + 1) x` that bound. Files of other (dead) processes are not pruned by this setting.
+`(MAX_SEGMENTS + 1) x` that bound. Files of other (dead) processes are not pruned by these settings; the
+startup sweep below prunes them.
+
+Each `file`-sink host runs one sweep in the background at startup and logs a single
+`LogRetentionSweepCompleted` record (`deleted`, `deletedBytes`, `skippedLive`, `skippedHeld`, `failed`),
+or one `LogRetentionSweepFailed` warning carrying only the exception type. The sweep only considers file
+names this writer can emit (`roslyn-mcp-{pid}.jsonl` and `roslyn-mcp-{pid}.{n}.jsonl`, canonical decimal
+pid, `n` at least 1); every other file in the directory is left alone. It first deletes files of other
+processes last written more than `ROSLYNMCP_OBSERVABILITY_RETENTION_DAYS` days ago (default 14, range 1 to
+3650), then deletes the oldest remaining ones until all sink files in the directory total at most
+`ROSLYNMCP_OBSERVABILITY_MAX_TOTAL_BYTES` (default 64 MiB, range 1 MiB to 1 TiB). It never deletes this
+process's files, files of a live pid, a file written within the last 60 seconds, or a file another process
+holds open. The sweep never rotates or rewrites a file. Invalid values fail startup without echoing the value.
+
+Limits of that protection:
+
+- Held-file detection (an `IOException` on delete means another process holds the file open) works on
+  Windows only. On Linux and macOS deleting an open file succeeds, so a file there is protected only by its
+  pid being live and by the 60-second write grace.
+- Liveness is a pid lookup in the host's own pid namespace. A live host in another namespace (for example a
+  container sharing the log directory) can look dead; only the 60-second grace protects the file it is writing.
+- Live and own files count toward the cap but are never deleted. A cap smaller than their size makes every
+  next start delete a crashed host's older evidence, oldest first.
+- A pid reused by an unrelated live process keeps that pid's old files, which over-retains at most
+  `MAX_SEGMENTS + 1` files per pid.
+- A file whose delete cannot be completed (held open on Windows, or access denied) is skipped and counted in
+  `skippedHeld` or `failed`; the next start retries it.
 
 JSON-lines records contain `ts`, `level`, `category`, `eventId`, `message`, `correlationId`,
 `eventName`, and `fields`. `eventName` is null when the logger has no named event.
@@ -118,6 +144,8 @@ Published ids are never renumbered; select on `eventName`, which is stable per e
 | 6 | WorkspaceLoadCompleted | workspace |
 | 1001 | UnexpectedFailure | host |
 | 1002 | LogTransportDisconnected | host |
+| 1003 | LogRetentionSweepCompleted | host |
+| 1004 | LogRetentionSweepFailed | host |
 | 2101 | ToolCompleted | tool |
 | 2102 | ToolCancelled | tool |
 | 2103 | ToolInputRequired | tool |

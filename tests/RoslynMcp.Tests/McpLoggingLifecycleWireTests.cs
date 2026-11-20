@@ -25,6 +25,16 @@ public sealed class McpLoggingLifecycleWireTests
         var stateRoot = Path.Combine(testRoot, "state");
         Directory.CreateDirectory(foreignWorkingDirectory);
 
+        // Seed the sink directory before launch. The dead pid is proven dead (an exited child, never a
+        // hardcoded number); the Process object stays undisposed until the method ends so Windows cannot
+        // recycle the pid. The live control is this test host's own pid: aged equally, it must survive.
+        var logDirectory = Path.Combine(stateRoot, "roslyn-mcp", "logs");
+        Directory.CreateDirectory(logDirectory);
+        using var deadChild = ExitedProcess.StartAndAwaitExit();
+        var agedStamp = DateTime.UtcNow - TimeSpan.FromDays(30);
+        var deadSeed = SeedLogFile(logDirectory, deadChild.Id, agedStamp);
+        var liveSeed = SeedLogFile(logDirectory, Environment.ProcessId, agedStamp);
+
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo("dotnet", $"\"{hostDll}\"")
@@ -51,6 +61,16 @@ public sealed class McpLoggingLifecycleWireTests
             await WaitForLineAsync(stderr, "Startup surface:");
             await Task.Delay(TimeSpan.FromMilliseconds(100));
             Assert.IsEmpty(stdout.Snapshot(), "The host emitted a protocol frame before initialize.");
+
+            // The startup sweep runs off the startup path: wait for its observable effect (the dead file gone
+            // and its summary record written), never a fixed delay.
+            var ownFile = Path.Combine(logDirectory, $"roslyn-mcp-{process.Id}.jsonl");
+            await WaitForConditionAsync(
+                () => !File.Exists(deadSeed) && ReadSweepSummary(ownFile) is { } summary &&
+                    summary.GetProperty("fields").GetProperty("deleted").GetInt32() >= 1,
+                "the startup sweep to delete the dead-pid file and log its summary",
+                TimeSpan.FromSeconds(20),
+                () => DescribeSweepState(logDirectory, ownFile));
 
             await WriteMessageAsync(
                 process,
@@ -124,14 +144,23 @@ public sealed class McpLoggingLifecycleWireTests
 
         Assert.IsNotEmpty(stderr.Snapshot(), "Operational host logs must remain available on stderr.");
 
-        var logDirectory = Path.Combine(stateRoot, "roslyn-mcp", "logs");
-        var logFiles = Directory.GetFiles(logDirectory, "roslyn-mcp-*.jsonl");
-        Assert.HasCount(1, logFiles);
-        var records = File.ReadLines(logFiles[0])
+        var hostLogFile = Path.Combine(logDirectory, $"roslyn-mcp-{process.Id}.jsonl");
+        Assert.IsTrue(File.Exists(hostLogFile), "The host must write its own pid-named file.");
+        CollectionAssert.AreEquivalent(
+            new[] { hostLogFile, liveSeed },
+            Directory.GetFiles(logDirectory, "roslyn-mcp-*.jsonl"),
+            "After the sweep only the host's own file and the live-pid control remain.");
+        Assert.IsFalse(File.Exists(deadSeed));
+        var records = File.ReadLines(hostLogFile)
             .Select(static line => JsonDocument.Parse(line))
             .ToArray();
         try
         {
+            var sweep = records.Single(static record =>
+                record.RootElement.GetProperty("eventName").GetString() == "LogRetentionSweepCompleted").RootElement;
+            Assert.AreEqual("Information", sweep.GetProperty("level").GetString());
+            Assert.AreEqual(1, sweep.GetProperty("fields").GetProperty("deleted").GetInt32());
+            Assert.IsGreaterThanOrEqualTo(1, sweep.GetProperty("fields").GetProperty("skippedLive").GetInt32());
             Assert.IsTrue(records.Length > 1, "The file sink must capture the full ILogger stream.");
             Assert.IsTrue(
                 records.Select(static record => record.RootElement.GetProperty("category").GetString())
@@ -204,6 +233,110 @@ public sealed class McpLoggingLifecycleWireTests
         Assert.AreEqual(32, correlationId.Length);
         Assert.IsTrue(correlationId.All(static character =>
             character is >= '0' and <= '9' or >= 'a' and <= 'f'));
+    }
+
+    private static string SeedLogFile(string logDirectory, int pid, DateTime lastWriteUtc)
+    {
+        var path = Path.Combine(logDirectory, $"roslyn-mcp-{pid}.jsonl");
+        File.WriteAllText(path, "{\"seed\":true}\n");
+        File.SetLastWriteTimeUtc(path, lastWriteUtc);
+        return path;
+    }
+
+    private static async Task WaitForConditionAsync(
+        Func<bool> condition,
+        string description,
+        TimeSpan timeout,
+        Func<string> diagnostics)
+    {
+        var clock = Stopwatch.StartNew();
+        while (true)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            if (clock.Elapsed >= timeout)
+            {
+                Assert.Fail($"Timed out after {timeout.TotalSeconds:0}s waiting for {description}. {diagnostics()}");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+    }
+
+    /// <summary>
+    /// Reads the host's own, still-open log without blocking its writer (FileShare.ReadWrite | Delete).
+    /// A partially written last line fails to parse and is skipped; a file that is not there yet yields no records.
+    /// </summary>
+    private static IEnumerable<JsonElement> ReadOwnLogRecords(string ownFile)
+    {
+        var records = new List<JsonElement>();
+        try
+        {
+            using var stream = new FileStream(ownFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(line);
+                    records.Add(document.RootElement.Clone());
+                }
+                catch (JsonException)
+                {
+                    // Partial last line while the host is mid-write.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Not created yet, or briefly unavailable: treated as "no records yet".
+        }
+
+        return records;
+    }
+
+    private static JsonElement? ReadSweepSummary(string ownFile)
+    {
+        foreach (var record in ReadOwnLogRecords(ownFile))
+        {
+            if (record.TryGetProperty("eventName", out var name) &&
+                name.ValueKind == JsonValueKind.String &&
+                name.GetString() == "LogRetentionSweepCompleted")
+            {
+                return record;
+            }
+        }
+
+        return null;
+    }
+
+    private static string DescribeSweepState(string logDirectory, string ownFile)
+    {
+        var listing = Directory.Exists(logDirectory)
+            ? string.Join(", ", Directory.GetFileSystemEntries(logDirectory).Select(Path.GetFileName))
+            : "<log directory missing>";
+        string tail;
+        try
+        {
+            using var stream = new FileStream(ownFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            var lines = new List<string>();
+            while (reader.ReadLine() is { } line)
+            {
+                lines.Add(line);
+            }
+
+            tail = string.Join(" | ", lines.TakeLast(10));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            tail = $"<own log unreadable: {ex.GetType().Name}>";
+        }
+
+        return $"Directory: [{listing}]. Own log tail: [{tail}].";
     }
 
     private static bool HasResponseId(string message, int id)

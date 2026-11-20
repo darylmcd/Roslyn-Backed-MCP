@@ -45,6 +45,10 @@ public static class LogEvents
     public const string UnexpectedFailureName = "UnexpectedFailure";
     public const int TransportDisconnected = 1002;
     public const string TransportDisconnectedName = "LogTransportDisconnected";
+    public const int RetentionSweepCompleted = 1003;
+    public const string RetentionSweepCompletedName = "LogRetentionSweepCompleted";
+    public const int RetentionSweepFailed = 1004;
+    public const string RetentionSweepFailedName = "LogRetentionSweepFailed";
 
     // Tool-call lifecycle: 2000-2999.
     public const int ToolCompleted = 2101;
