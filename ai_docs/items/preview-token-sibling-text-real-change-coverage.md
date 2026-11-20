@@ -1,6 +1,6 @@
 # preview-token-sibling-text-real-change-coverage — Assert real sibling text changes
 
-**row:** `preview-token-sibling-text-real-change-coverage` · **pri:** `Medium` · **size:** `S` · **deps:** `preview-project-reference-metadata-rebase,watcher-own-cs-write-echo-attribution`
+**row:** `preview-token-sibling-text-real-change-coverage` · **pri:** `Medium` · **size:** `S` · **deps:** `watcher-own-cs-write-echo-attribution`
 
 ## Anchors
 

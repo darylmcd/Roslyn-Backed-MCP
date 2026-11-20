@@ -1,6 +1,6 @@
 # apply-composite-guidance-wave-2 — Migrate refactoring and scaffolding composite-apply guidance
 
-**row:** `apply-composite-guidance-wave-2` · **pri:** `Low` · **size:** `M` · **deps:** `apply-composite-canonical-alias-surface`
+**row:** `apply-composite-guidance-wave-2` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # tool-merge-apply-file-lifecycle — Merge 5 apply tools into `file_lifecycle_apply`
 
-**row:** `tool-merge-apply-file-lifecycle` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-apply-file-lifecycle` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

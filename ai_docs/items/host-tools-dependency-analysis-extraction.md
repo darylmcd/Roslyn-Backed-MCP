@@ -1,6 +1,6 @@
 # host-tools-dependency-analysis-extraction — Extract dependency-analysis tools
 
-**row:** `host-tools-dependency-analysis-extraction` · **pri:** `Low` · **size:** `M` · **deps:** `complexity-metrics-pagination-validation-hoist,di-registration-scan-completeness,nuget-dependency-scan-completeness,host-assembly-marker-foundation`
+**row:** `host-tools-dependency-analysis-extraction` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

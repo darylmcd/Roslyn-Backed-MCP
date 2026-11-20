@@ -1,6 +1,6 @@
 # tool-merge-preview-code-fix — Merge 2 preview tools into `code_fix_preview`
 
-**row:** `tool-merge-preview-code-fix` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-code-fix` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

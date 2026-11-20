@@ -1,6 +1,6 @@
 # test-local-manager-sync-dispose-shutdown-qualification — Qualify inner-scope synchronous shutdown before fixture deletion
 
-**row:** `test-local-manager-sync-dispose-shutdown-qualification` · **pri:** `Medium` · **size:** `L` · **deps:** `test-local-manager-dispose-before-copy-delete`
+**row:** `test-local-manager-sync-dispose-shutdown-qualification` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 

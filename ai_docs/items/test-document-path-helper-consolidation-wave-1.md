@@ -1,6 +1,6 @@
 # test-document-path-helper-consolidation-wave-1 — Centralize document lookup semantics
 
-**row:** `test-document-path-helper-consolidation-wave-1` · **pri:** `Low` · **size:** `S` · **deps:** `test-base-static-service-locator-decomposition`
+**row:** `test-document-path-helper-consolidation-wave-1` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

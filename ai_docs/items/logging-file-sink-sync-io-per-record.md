@@ -1,6 +1,6 @@
 # logging-file-sink-sync-io-per-record — Keep the JSON-lines file open instead of open/stat/append per record
 
-**row:** `logging-file-sink-sync-io-per-record` · **pri:** `Low` · **size:** `S` · **deps:** `logging-retention-destroys-repro-evidence`
+**row:** `logging-file-sink-sync-io-per-record` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

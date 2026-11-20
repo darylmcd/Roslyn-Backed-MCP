@@ -1,6 +1,6 @@
 # tool-merge-apply-code-transform-1 — Merge 3 apply tools into `code_transform_apply`
 
-**row:** `tool-merge-apply-code-transform-1` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-apply-code-transform-1` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

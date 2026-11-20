@@ -1,6 +1,6 @@
 # relocation-selected-enum-delegate-reported-not-found — Name the unsupported kind for enum or delegate selection
 
-**row:** `relocation-selected-enum-delegate-reported-not-found` · **pri:** `Medium` · **size:** `S` · **deps:** `relocation-source-delete-preserves-other-members`
+**row:** `relocation-selected-enum-delegate-reported-not-found` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

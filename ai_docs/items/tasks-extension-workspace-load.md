@@ -1,6 +1,6 @@
 # tasks-extension-workspace-load — Task-augmented execution for workspace_load / workspace_warm
 
-**row:** `tasks-extension-workspace-load` · **pri:** `Low` · **size:** `M` · **deps:** `tasks-extension-compatibility-decision`
+**row:** `tasks-extension-workspace-load` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

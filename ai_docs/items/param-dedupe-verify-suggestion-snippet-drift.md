@@ -1,6 +1,6 @@
 # param-dedupe-verify-suggestion-snippet-drift — parameter-description dedupe: Apply-with-verify, suggestion and snippet slice
 
-**row:** `param-dedupe-verify-suggestion-snippet-drift` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-verify-suggestion-snippet-drift` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

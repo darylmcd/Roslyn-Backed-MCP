@@ -1,6 +1,6 @@
 # param-dedupe-cohesion-orchestration-consumer — parameter-description dedupe: Cohesion, orchestration and consumer slice
 
-**row:** `param-dedupe-cohesion-orchestration-consumer` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-cohesion-orchestration-consumer` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

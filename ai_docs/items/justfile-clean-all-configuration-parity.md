@@ -1,6 +1,6 @@
 # justfile-clean-all-configuration-parity — Clean Debug and Release outputs
 
-**row:** `justfile-clean-all-configuration-parity` · **pri:** `Low` · **size:** `S` · **deps:** `justfile-powershell-recipe-portability,local-ci-informational-coverage-separation`
+**row:** `justfile-clean-all-configuration-parity` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

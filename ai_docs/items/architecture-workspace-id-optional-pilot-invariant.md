@@ -1,6 +1,6 @@
 # architecture-workspace-id-optional-pilot-invariant — Align the architecture invariant with the optional pilot
 
-**row:** `architecture-workspace-id-optional-pilot-invariant` · **pri:** `Low` · **size:** `M` · **deps:** `workspace-id-optional-adoption-evidence`
+**row:** `architecture-workspace-id-optional-pilot-invariant` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

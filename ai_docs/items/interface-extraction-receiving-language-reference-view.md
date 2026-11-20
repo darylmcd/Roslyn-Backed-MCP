@@ -1,6 +1,6 @@
 # interface-extraction-receiving-language-reference-view — Language parity check over union receiving+source references
 
-**row:** `interface-extraction-receiving-language-reference-view` · **pri:** `Medium` · **size:** `M` · **deps:** `interface-extraction-receiving-language-compatibility`
+**row:** `interface-extraction-receiving-language-reference-view` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

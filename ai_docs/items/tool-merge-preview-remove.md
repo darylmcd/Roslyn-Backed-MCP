@@ -1,6 +1,6 @@
 # tool-merge-preview-remove — Merge 2 preview tools into `remove_preview`
 
-**row:** `tool-merge-preview-remove` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-remove` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

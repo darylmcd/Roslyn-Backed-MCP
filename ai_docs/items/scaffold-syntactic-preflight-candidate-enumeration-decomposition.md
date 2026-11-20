@@ -1,6 +1,6 @@
 # scaffold-syntactic-preflight-candidate-enumeration-decomposition — Separate syntactic preflight candidate enumeration
 
-**row:** `scaffold-syntactic-preflight-candidate-enumeration-decomposition` · **pri:** `Low` · **size:** `S` · **deps:** `scaffold-fqn-target-type-disambiguation`
+**row:** `scaffold-syntactic-preflight-candidate-enumeration-decomposition` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

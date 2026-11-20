@@ -1,6 +1,6 @@
 # tool-merge-apply-undo-revert — Merge 2 apply tools into `revert_apply`
 
-**row:** `tool-merge-apply-undo-revert` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-apply-undo-revert` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

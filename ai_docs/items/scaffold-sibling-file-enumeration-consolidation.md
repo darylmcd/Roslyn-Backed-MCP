@@ -1,6 +1,6 @@
 # scaffold-sibling-file-enumeration-consolidation — Consolidate sibling test discovery
 
-**row:** `scaffold-sibling-file-enumeration-consolidation` · **pri:** `Low` · **size:** `S` · **deps:** `sibling-test-name-discovery-warning`
+**row:** `scaffold-sibling-file-enumeration-consolidation` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

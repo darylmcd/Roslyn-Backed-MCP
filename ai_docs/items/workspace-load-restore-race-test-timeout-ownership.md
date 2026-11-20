@@ -1,6 +1,6 @@
 # workspace-load-restore-race-test-timeout-ownership — Settle restore race timeout
 
-**row:** `workspace-load-restore-race-test-timeout-ownership` · **pri:** `Medium` · **size:** `S` · **deps:** `timing-test-guard-operation-ownership`
+**row:** `workspace-load-restore-race-test-timeout-ownership` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

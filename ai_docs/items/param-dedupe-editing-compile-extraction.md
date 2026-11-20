@@ -1,6 +1,6 @@
 # param-dedupe-editing-compile-extraction — parameter-description dedupe: Editing, compile-check and extraction slice
 
-**row:** `param-dedupe-editing-compile-extraction` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-editing-compile-extraction` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

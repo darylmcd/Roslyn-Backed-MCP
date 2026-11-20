@@ -1,6 +1,6 @@
 # tool-merge-preview-cross-project — Merge 3 preview tools into `cross_project_preview`
 
-**row:** `tool-merge-preview-cross-project` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-cross-project` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

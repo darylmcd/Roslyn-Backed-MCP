@@ -1,6 +1,6 @@
 # logging-observability-contract-doc-incomplete — Complete the observability contract docs with agent recipes
 
-**row:** `logging-observability-contract-doc-incomplete` · **pri:** `Medium` · **size:** `S` · **deps:** `logging-jsonl-drops-structured-state`
+**row:** `logging-observability-contract-doc-incomplete` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

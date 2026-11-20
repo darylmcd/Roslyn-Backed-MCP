@@ -1,6 +1,6 @@
 # prompt-smoke-tests-concern-split — Split prompt smoke-test concerns
 
-**row:** `prompt-smoke-tests-concern-split` · **pri:** `Low` · **size:** `S` · **deps:** `prompt-workflows-missing-test-coverage,prompt-shim-parameter-binding-complexity-extraction,prompt-error-catch-retirement-core-analysis,prompt-error-catch-retirement-refactoring-guided`
+**row:** `prompt-smoke-tests-concern-split` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

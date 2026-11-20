@@ -1,6 +1,6 @@
 # scaffolding-async-sibling-io-boundary — Make sibling IO cancellation-aware
 
-**row:** `scaffolding-async-sibling-io-boundary` · **pri:** `Low` · **size:** `M` · **deps:** `sibling-test-name-discovery-warning, scaffold-sibling-file-enumeration-consolidation`
+**row:** `scaffolding-async-sibling-io-boundary` · **pri:** `Low` · **size:** `M` · **deps:** `scaffold-sibling-file-enumeration-consolidation`
 
 ## Anchors
 

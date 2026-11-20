@@ -1,6 +1,6 @@
 # composite-token-cross-host-closeout — Close the portable composite token contract
 
-**row:** `composite-token-cross-host-closeout` · **pri:** `Medium` · **size:** `S` · **deps:** `composite-preview-source-fingerprint-refusal, composite-redemption-admission-boundary`
+**row:** `composite-token-cross-host-closeout` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # extract-type-external-construction-sites — Report construction sites broken by the added constructor parameter
 
-**row:** `extract-type-external-construction-sites` · **pri:** `Medium` · **size:** `S` · **deps:** `extract-type-static-source-composition,type-extraction-service-refusals-public-message`
+**row:** `extract-type-external-construction-sites` · **pri:** `Medium` · **size:** `S` · **deps:** `type-extraction-service-refusals-public-message`
 
 ## Anchors
 

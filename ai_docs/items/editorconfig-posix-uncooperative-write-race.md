@@ -1,6 +1,6 @@
 # editorconfig-posix-uncooperative-write-race — Define external writer coordination on POSIX
 
-**row:** `editorconfig-posix-uncooperative-write-race` · **pri:** `Defer` · **size:** `M` · **deps:** `editorconfig-owned-write-external-race`
+**row:** `editorconfig-posix-uncooperative-write-race` · **pri:** `Defer` · **size:** `M`
 
 ## Anchors
 

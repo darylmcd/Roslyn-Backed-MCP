@@ -1,6 +1,6 @@
 # param-dedupe-flow-exception-security-interface — parameter-description dedupe: Flow, exception, security and interface slice
 
-**row:** `param-dedupe-flow-exception-security-interface` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-flow-exception-security-interface` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # structured-call-filter-owner-documentation-drift — Correct structured-call ownership comments
 
-**row:** `structured-call-filter-owner-documentation-drift` · **pri:** `Low` · **size:** `M` · **deps:** `structured-call-tool-filter-pipeline-decomposition`
+**row:** `structured-call-filter-owner-documentation-drift` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

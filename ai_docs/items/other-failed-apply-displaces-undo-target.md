@@ -1,6 +1,6 @@
 # other-failed-apply-displaces-undo-target — Preserve prior undo across failed mutators
 
-**row:** `other-failed-apply-displaces-undo-target` · **pri:** `Medium` · **size:** `L` · **deps:** `editorconfig-failed-write-displaces-undo-target`
+**row:** `other-failed-apply-displaces-undo-target` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 

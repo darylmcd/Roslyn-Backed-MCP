@@ -1,6 +1,6 @@
 # param-dedupe-deadcode-fixall-workflow-editorconfig — parameter-description dedupe: Dead-code, fix-all and workflow slice
 
-**row:** `param-dedupe-deadcode-fixall-workflow-editorconfig` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-deadcode-fixall-workflow-editorconfig` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

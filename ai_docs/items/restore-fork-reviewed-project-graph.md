@@ -1,6 +1,6 @@
 # restore-fork-reviewed-project-graph — Replay and restore the reviewed fork graph
 
-**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `L` · **deps:** `fork-evaluated-source-isolation`
+**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 

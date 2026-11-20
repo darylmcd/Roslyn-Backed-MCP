@@ -1,6 +1,6 @@
 # tool-merge-preview-move — Merge 2 preview tools into `move_preview`
 
-**row:** `tool-merge-preview-move` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-move` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

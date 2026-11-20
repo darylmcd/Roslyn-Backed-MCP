@@ -1,6 +1,6 @@
 # tool-merge-apply-text-edit — Merge 3 apply tools into `text_edit_apply`
 
-**row:** `tool-merge-apply-text-edit` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-apply-text-edit` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

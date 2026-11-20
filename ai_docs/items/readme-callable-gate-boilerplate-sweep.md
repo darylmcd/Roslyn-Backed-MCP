@@ -1,6 +1,6 @@
 # readme-callable-gate-boilerplate-sweep — Correct the false "gated" boilerplate in item files
 
-**row:** `readme-callable-gate-boilerplate-sweep` · **pri:** `Low` · **size:** `S` · **deps:** `readme-stable-callable-count-ungated`
+**row:** `readme-callable-gate-boilerplate-sweep` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

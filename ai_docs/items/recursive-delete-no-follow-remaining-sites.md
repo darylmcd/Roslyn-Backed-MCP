@@ -1,6 +1,6 @@
 # recursive-delete-no-follow-remaining-sites — Route the remaining recursive directory deletes through NoFollowDirectoryDeleter
 
-**row:** `recursive-delete-no-follow-remaining-sites` · **pri:** `Medium` · **size:** `M` · **deps:** `analyzer-shadow-lease-disposal-no-follow`
+**row:** `recursive-delete-no-follow-remaining-sites` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

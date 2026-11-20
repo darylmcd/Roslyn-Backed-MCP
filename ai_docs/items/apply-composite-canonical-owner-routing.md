@@ -1,6 +1,6 @@
 # apply-composite-canonical-owner-routing — Canonicalize composite-apply ownership and workflow hints
 
-**row:** `apply-composite-canonical-owner-routing` · **pri:** `Low` · **size:** `M` · **deps:** `apply-composite-canonical-alias-surface`
+**row:** `apply-composite-canonical-owner-routing` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

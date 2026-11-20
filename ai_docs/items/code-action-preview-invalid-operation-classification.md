@@ -1,6 +1,6 @@
 # code-action-preview-invalid-operation-classification - Classify preview caller failures and provider invariants
 
-**row:** `code-action-preview-invalid-operation-classification` · **pri:** `Medium` · **size:** `S` · **deps:** `code-action-index-public-refusal`
+**row:** `code-action-preview-invalid-operation-classification` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

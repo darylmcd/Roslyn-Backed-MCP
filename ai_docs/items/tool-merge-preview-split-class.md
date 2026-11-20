@@ -1,6 +1,6 @@
 # tool-merge-preview-split-class — Merge 1 preview tool into `restructure_preview`
 
-**row:** `tool-merge-preview-split-class` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery,tool-merge-preview-restructure`
+**row:** `tool-merge-preview-split-class` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-merge-preview-restructure`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # param-dedupe-advanced-analysis — parameter-description dedupe: Advanced-analysis slice
 
-**row:** `param-dedupe-advanced-analysis` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-advanced-analysis` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

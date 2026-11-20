@@ -1,6 +1,6 @@
 # tool-merge-preview-extract — Merge 4 preview tools into `extract_preview`
 
-**row:** `tool-merge-preview-extract` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-extract` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
