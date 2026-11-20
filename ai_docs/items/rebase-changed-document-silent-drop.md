@@ -1,6 +1,6 @@
 # rebase-changed-document-silent-drop — Warn when rebase drops a changed document
 
-**row:** `rebase-changed-document-silent-drop` · **pri:** `Medium` · **size:** `S`
+**row:** `rebase-changed-document-silent-drop` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -24,3 +24,5 @@ Release impact UNCERTAIN. The complete fix must refuse (PublicInvalidOperationEx
 Complete scope (RefactoringService.cs, after PR #2055 FindRebaseTargetDocument): throw at RebaseChangedDocumentsAsync missing current document (and the unreachable modifiedDocument-null continue); RebaseAddedDocumentsAsync null doc/FilePath and missing target project; RebaseProjectReferences missing target project and MapReferences dropped references ONLY when the reference participates in affectedTargets/desired set (add test for the unrelated-reference case); null filePath in RebaseRemovedDocuments. Leave removed-document-already-gone alone. Tests in PreviewTokenCrossCouplingTests (sibling delete_file apply then applying an edit preview refuses, disk unchanged, message has no path) plus unit tests; changelog Fixed + Migration sentence.
 
 Trigger to unblock: release-owner decision that the refusal is minor-safe (precedent #1811), or the next major release.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

@@ -1,6 +1,6 @@
 # linux-pwsh-startup-cache-functional-cohort-failure — Identify failing native cache child
 
-**row:** `linux-pwsh-startup-cache-functional-cohort-failure` · **pri:** `High` · **size:** `S`
+**row:** `linux-pwsh-startup-cache-functional-cohort-failure` · **pri:** `Defer` · **size:** `S`
 
 ## Anchors
 
@@ -26,3 +26,5 @@
 ## Notes
 
 2026-11-08: PR #2023 fixed a demonstrated module-cache file-sharing/readiness race in the native startup verifier and added bounded writer playback tests. The PR #1971 functional cohort's failing child was not logged, so that occurrence remains unattributed; retain this row until its exact parent/error and causal witness are established.
+
+Operator decision 2026-11-20: re-banded High to Defer. Reopen at High on a recurrence with retained evidence.

@@ -1,6 +1,6 @@
 # fork-expiry-cross-process-active-work — Verify atomic peer admission versus fork expiry
 
-**row:** `fork-expiry-cross-process-active-work` · **pri:** `Medium` · **size:** `M`
+**row:** `fork-expiry-cross-process-active-work` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -28,3 +28,5 @@
 ## Notes
 
 2026-11-17 screen at c705e2e1. Release impact unqualified. A process-local semaphore separates the expiry and cleanup marker scan from deletion, while peer admission publishes its marker under another process-local lock. Screen both deletion paths, ancestor admission, retained fork copy/replay and cleanup-failure companions. Require deterministic peer-ordering proof and preserve stable load/build/test admission deadlines, cancellation and refusal shapes. Decide mixed-version ownership before selecting in 5.x.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

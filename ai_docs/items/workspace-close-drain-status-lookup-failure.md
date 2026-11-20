@@ -1,6 +1,6 @@
 # workspace-close-drain-status-lookup-failure — Distinguish workspace lookup failures before close drain
 
-**row:** `workspace-close-drain-status-lookup-failure` · **pri:** `Medium` · **size:** `S` · **verified:** `c705e2e1942602c653cac44e1c2ae17d92e17af3`
+**row:** `workspace-close-drain-status-lookup-failure` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -19,3 +19,7 @@
 ## Context
 
 - Separate from Linux fixture startup, PID reuse, and the major-only global build-server shutdown row. Qualify an owned path lookup and safe failure reporting within the existing stable workspace_close contract.
+
+## Notes
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

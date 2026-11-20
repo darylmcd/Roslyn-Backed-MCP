@@ -1,6 +1,6 @@
 # type-consumer-not-found-public-guidance — Preserve safe missing-type correction
 
-**row:** `type-consumer-not-found-public-guidance` · **pri:** `Medium` · **size:** `S`
+**row:** `type-consumer-not-found-public-guidance` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -27,3 +27,5 @@
 5.x screen at a12412bb: the stale InvalidOperation acceptance conflicts with current NotFound/KeyNotFoundException on the experimental find_type_consumers tool. The installed 5.0.1 server reproduced a misleading metadata-only message when an unknown name contained that phrase. Leave unselected while assessing the shared classifier and stable navigation companions. See not-found-metadata-only-message-classification.
 
 TypeConsumersService.cs:52 now throws KeyNotFoundException. ToolErrorHandler.cs:118,564 shares caller-influenced classification with stable navigation (SymbolNavigationService.cs:93). Qualify companion not-found-metadata-only-message-classification across stable callers before selecting. If the complete fix changes the stable response, reopen at the next operator-approved major with ADR, migration note and both raw protocol eras.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

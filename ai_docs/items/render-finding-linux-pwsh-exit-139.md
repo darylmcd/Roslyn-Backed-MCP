@@ -1,6 +1,6 @@
 # render-finding-linux-pwsh-exit-139 — Diagnose and repair the Linux renderer child failure
 
-**row:** `render-finding-linux-pwsh-exit-139` · **pri:** `High` · **size:** `S`
+**row:** `render-finding-linux-pwsh-exit-139` · **pri:** `Defer` · **size:** `S`
 
 ## Anchors
 
@@ -26,3 +26,5 @@
 ## Notes
 
 Investigation 2026-11-05 (read-only, HEAD f15e28e7): 400 ci.yml runs 2026-10-10..11-05 scanned incl. all 47 failed logs; 139/134 occurred only on pre-PR 1849 heads (139: run 40359428470; 134: cancelled run 40373606428); 219 runs after 1849 merged (2026-10-26 21:03Z) have zero. ~6,900 concurrent pwsh launches in Docker (pwsh 7.6.8, 16 concurrent) across 3 cache modes: 0 failures (non-reproduction only; version differs from hosted 7.6.6). PowerShell#28119 closed as duplicate of #26528; dotnet/runtime#121977 open with no fix PR; PowerShell 7.6.9 and 7.7.0-rc.1 contain no fix. CI does not pin pwsh (ubuntu-latest image: 7.6.6 on image 20261012, 7.6.9 on 20261101). A comment on PowerShell#26528 shows the same truncated PublicKeyToken=b03f5f7f11d50a3, cleared by deleting ~/.cache/powershell. Possible evidence-retaining change (on pwsh exit >=128 capture startup-profile cache listing/hash/hexdump, optional minidump) adds CI surface and needs an operator decision; it would not close the rows.
+
+Operator decision 2026-11-20: re-banded High to Defer. Reopen at High on a recurrence with retained evidence.

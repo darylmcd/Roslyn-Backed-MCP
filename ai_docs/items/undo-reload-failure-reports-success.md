@@ -1,6 +1,6 @@
 # undo-reload-failure-reports-success — Retain retryable undo when workspace synchronization fails
 
-**row:** `undo-reload-failure-reports-success` · **pri:** `Medium` · **size:** `S`
+**row:** `undo-reload-failure-reports-success` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -37,3 +37,5 @@ Release impact UNCERTAIN. The complete fix turns `reverted:true` / success into 
 Complete scope (planner): UndoService.cs reload/RestoreVersion catches (file path and solution path), reload even when the created file is already absent, a sync marker on UndoSnapshot so a retry reloads before consuming, claim restore on any exception in RevertBySequenceAsync (currently restored only on cancellation or !reverted), tests via a virtual ReloadAsync/RestoreVersion decorator (DelegatingWorkspaceManager methods are non-virtual).
 
 Trigger to unblock: operator/release-owner decision that an error-path success->failure correction is minor-safe (record ADR + CHANGELOG note), or the next major release. Dep undo-sequence-claim-exclusivity merged (PR #2056); edge cleared.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

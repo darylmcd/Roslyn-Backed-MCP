@@ -29,3 +29,7 @@ Split from `promotion-tier-execution-batch` (2026-09-02) to separate the blocked
 
 **No staleness alarm exists.** Nothing compares `generatedAt` / `serverVersion` against the current build; tracked by `surface-test-audit-artifact-gate-and-scorecard-staleness`.
 2026-09-10 attempted top-level full audit stopped before closure: the client exposed get_prompt_text but not prompts/get, and unfiltered test_run returned isError after ~120s with no structured envelope. No scorecard was authored from partial evidence; reproducible defects were filed separately.
+
+## Notes
+
+2026-11-20 re-derivation: audit-reports/_latest-promotion-scorecard.json reads generatedAt 2026-09-24T14:10:25Z, serverVersion 4.2.1, not the 1.38.1 snapshot the row text names; it is still stale against 5.1.1. Operator decision 2026-11-20: run the --full audit from a top-level session.

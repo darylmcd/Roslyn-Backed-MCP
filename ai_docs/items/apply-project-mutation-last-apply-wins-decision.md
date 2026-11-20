@@ -16,3 +16,7 @@
 ## Evidence
 
 - PR #2015 plan/review: composite previews now refuse on drift; `ProjectMutationService` deliberately documents last-apply-wins with a memory-only store. Needs an operator decision before code.
+
+## Notes
+
+Operator decision 2026-11-20: refuse on drift everywhere. apply_project_mutation and the solution-store apply routes refuse a project file edited after preview, reusing CompositeSourceFingerprint; no write on refusal. One ADR shared with undo-service-revert-unconditional-restore.

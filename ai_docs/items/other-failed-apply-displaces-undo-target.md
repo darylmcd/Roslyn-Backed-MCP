@@ -1,6 +1,6 @@
 # other-failed-apply-displaces-undo-target — Preserve prior undo across failed mutators
 
-**row:** `other-failed-apply-displaces-undo-target` · **pri:** `Medium` · **size:** `L`
+**row:** `other-failed-apply-displaces-undo-target` · **pri:** `Medium` · **size:** `L` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -25,3 +25,5 @@
 5.x compatibility screen (52f2c418): UndoService.cs:89 replaces the current LIFO target on capture. UndoServiceTests.FailedApply_LeavesPendingCaptureUndoable_AndAuditDoesNotPromoteIt explicitly requires stable revert_last_apply to compensate surviving writes, and MultiFileEditTools.cs documents partial recovery. Before selection, demonstrate the complete caller-specific fix preserves retryable recovery of surviving owned effects as well as the prior successful target when there are no effects. A blanket change to target only successful operations would break the stable recovery contract; reconsider only at an operator-approved major with ADR, migration and raw-wire coverage.
 
 Capture owners at ddf4cc6d: EditService.cs:103,167; ProjectMutationService.cs:573; RefactoringService.cs:350; CompositeApplyOrchestrator.cs:165. UndoServiceTests.FailedApply_LeavesPendingCaptureUndoable_AndAuditDoesNotPromoteIt requires compensation for surviving effects. Qualify each commit boundary before selecting. If the complete fix changes the stable response, reopen at the next operator-approved major with ADR, migration note and both raw protocol eras.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

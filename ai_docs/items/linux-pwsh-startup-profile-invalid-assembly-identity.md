@@ -1,6 +1,6 @@
 # linux-pwsh-startup-profile-invalid-assembly-identity — Diagnose native startup identity corruption
 
-**row:** `linux-pwsh-startup-profile-invalid-assembly-identity` · **pri:** `High` · **size:** `S`
+**row:** `linux-pwsh-startup-profile-invalid-assembly-identity` · **pri:** `Defer` · **size:** `S`
 
 ## Anchors
 
@@ -22,3 +22,7 @@
 - Native ext4, nonroot, portable PowerShell7.6.6/.NET10.0.12 experiment: fresh public-API seed,8 concurrent functional launches plus descendant pass, profile hash unchanged under444/555permissions. Single synthetic structurally validated truncated identity also exits0: causal reproduction FAILED. Fresh cold plan BLOCKED this as a complete CI134 fix because playback branch was not proven and whole powershell directory freeze affects other writes.
 - Historical complete-cure checkpoint: scratch report powershell-profile-cache-proof.md and55-artifact hash manifest retain commands/results. That proposed cure had no product/CI change and PR1849 was then draft/frozen.
 - Current independent ownership correction merged in PR1849 at27f82e450dafeed359022da3555e4c9f2528daab with all required hosted checks green. That does not establish native134 provenance; this causal investigation and every Acceptance condition remain OPEN. See ai_docs/reports/2026-10-26-interface-split-delivery.md.
+
+## Notes
+
+Operator decision 2026-11-20: re-banded High to Defer. Reopen at High on a recurrence with retained evidence.

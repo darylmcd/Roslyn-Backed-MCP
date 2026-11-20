@@ -17,3 +17,7 @@
 
 - 2026-11-11 re-derivation: THREE texts exist, not two: McpToolMetadata summary == catalog entry (drift-gated), and the `[Description]` attribute differs by design. The earlier 200-char budget claim is false: the only budget test (`DietedToolMethodDescriptions_StayWithinSliceCeiling`, SurfaceCatalogTests.cs:482) covers only SymbolTools, AdvancedAnalysisTools and AnalysisTools at 250 chars.
 - Single-tool dedupe is not a correct fix: it would leave every other tool duplicated. Operator decision needed on wire-visible description changes before the all-tools derivation.
+
+## Notes
+
+Operator decision 2026-11-20: approved. Derive every catalog summary from tool attributes; the resulting wire-visible description text changes are accepted as metadata changes (changelog note, no major).

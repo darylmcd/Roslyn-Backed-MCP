@@ -1,6 +1,6 @@
 # not-found-metadata-only-message-classification — Classify metadata-only lookup failures from typed evidence
 
-**row:** `not-found-metadata-only-message-classification` · **pri:** `Low` · **size:** `M` · **verified:** `a12412bbe4bd31a18cbdd8f481475587e1697c97`
+**row:** `not-found-metadata-only-message-classification` · **pri:** `Low` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -20,3 +20,5 @@
 ## Notes
 
 - Release impact uncertain. Re-screen other stable KeyNotFoundException producers before selection. If correcting their observable messages requires a major, include the ADR, migration and both raw-wire eras at the next major.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

@@ -1,6 +1,6 @@
 # project-reference-reload-embed-metadata — Preserve evaluated embed metadata when loading references
 
-**row:** `project-reference-reload-embed-metadata` · **pri:** `Medium` · **size:** `M`
+**row:** `project-reference-reload-embed-metadata` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -35,3 +35,5 @@
 2026-11-17 screen at c705e2e1. Release impact unqualified. Qualify the loader-owned evaluated metadata path through stable workspace_load/reload and preview redemption with aliases, conditions and target selection. Confirm 5.x contract compatibility before selecting an integration or upstream correction.
 
 Pair manager-corrected solutions with preview-store-explicit-original-snapshot. PreviewStore still derives the original snapshot from modifiedSolution.Workspace.CurrentSolution, which would lose manager-owned corrections.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

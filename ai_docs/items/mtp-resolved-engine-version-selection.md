@@ -1,6 +1,6 @@
 # mtp-resolved-engine-version-selection — Gate MTP filters on every applicable resolved engine
 
-**row:** `mtp-resolved-engine-version-selection` · **pri:** `Medium` · **size:** `M`
+**row:** `mtp-resolved-engine-version-selection` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -21,3 +21,5 @@
 ## Notes
 
 Current restore planning and package inspection use default assets. Match native test execution TFM, RID and property contexts and verify the stable TUnit version refusal. If the complete fix changes the released acceptance or error contract, resume at the next operator-approved major with ADR, migration note and both raw eras.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

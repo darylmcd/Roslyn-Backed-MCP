@@ -1,6 +1,6 @@
 # restore-fork-reviewed-project-graph — Replay and restore the reviewed fork graph
 
-**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `L`
+**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `L` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -69,3 +69,5 @@ This is an independent open remainder under the operator's finite closeout direc
 At 573540d5 the fork route refuses a stale source token and admits reviewed document snapshots. The acceptance changes both fork outcomes, with native planning, project/reference semantics and retained source authority. Decompose into complete dependency-chained pieces.
 
 Qualification: workspace_fork_apply itself is experimental. Changing only that route does not establish a major bump. Assess required shared rebase and physical-intent companions against stable source-token redemption and persistence. Resume at the next operator-approved major only if a stable break is established; otherwise reopen once a compatible decomposed plan preserves the stable contract.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

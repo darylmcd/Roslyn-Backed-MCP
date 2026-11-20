@@ -21,3 +21,5 @@
 ## Notes
 
 Remediation run 2026-11-18 (PR 2140 attempt): not implemented. Needs operator decision: refuse/report conflict when a file no longer matches the applied post-state, or document last-writer-wins. Recommended: enforce, reusing the persistence ownership ledger semantics. A contingent plan was drafted in the undo-a session (D:/Roslyn-Backed-MCP/.worktrees/undo-a.report.md only records that the row was left untouched pending this decision). Note PR 2140 now scopes solution-snapshot revert to the apply own documents, which narrows but does not remove the clobber of same-file external edits.
+
+Operator decision 2026-11-20: refuse on drift everywhere. Undo refuses or reports a conflict when a file no longer matches the applied post-state, reusing the persistence ownership ledger. One ADR shared with apply-project-mutation-last-apply-wins-decision.
