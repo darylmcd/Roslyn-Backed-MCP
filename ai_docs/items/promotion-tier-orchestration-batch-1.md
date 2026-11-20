@@ -1,6 +1,6 @@
 # promotion-tier-orchestration-batch-1 — Promote qualifying experimental tools in the Orchestration catalog partial (batch 1 of 2)
 
-**row:** `promotion-tier-orchestration-batch-1` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-orchestration-batch-1` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -33,3 +33,7 @@ Split from `promotion-tier-batches-post-refresh` (2026-09-02), itself split from
 **Gate-forced companions (NOT anchored above, but they WILL be edited).** The tier/name string lives in BOTH the `[McpToolMetadata]` attribute on the `Tools/*.cs` method AND the `Tool(...)` row in the matching `ServerSurfaceCatalog.*.cs` partial; the **RMCP001/RMCP002** analyzers fail the build when they disagree (`analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs:72,87`). `README.md`'s surface-count line (`README.md:239`) plus the stable-only callable count (`README.md:186`) are gated by `tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs`. `README.md` is deliberately left OUT of `## Anchors` so this row's anchor-derived size stays honest; the plan stanza MUST still count it in `productionFilesTouched` and cite the **gate-forced-companion** Rule 3 exemption with REAL captured gate output — the exemption is not valid on this row's say-so.
 
 Ship via the `/promote-tier` skill (`.claude/skills/promote-tier/SKILL.md`).
+
+## Notes
+
+Unblocked 2026-11-20: scorecard refreshed from a --full surface-test run against server 5.1.1 (audit-reports/_latest-promotion-scorecard.json: promote 24 = 10 tools + 14 prompts, keep-experimental 57, needs-more-evidence 4, blocked 1). Re-derive this batch's candidate list from that scorecard before promoting; the quorum rule (two workspaces) and docs/release-policy.md still apply, and this run covers one workspace.

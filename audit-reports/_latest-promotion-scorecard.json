@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-24T14:10:25Z",
+  "generatedAt": "2026-11-20T20:32:52Z",
   "noWorktree": false,
   "auditedRepo": "roslyn-backed-mcp",
-  "auditReportPath": "audit-reports/20260924T130517Z_roslyn-backed-mcp_mcp-server-surface-test.md",
-  "serverVersion": "4.2.1+4eba260102e41747ecaa75511acd8ff0f119b75d",
+  "auditReportPath": "audit-reports/20261120T171538Z_roslynmcp_mcp-server-surface-test.md",
+  "serverVersion": "5.1.1+3582e389d56c209b67a7af896c2749c2b13b2de3",
   "catalogVersion": "2026.04",
   "experimentalSurface": {
     "tools": 61,
@@ -14,86 +14,18 @@
   "scorecard": [
     {
       "kind": "tool",
-      "name": "workspace_warm",
-      "category": "workspace",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "no negative probe recorded (unknown project silently skipped by design)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "workspace_drift_check",
-      "category": "workspace",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "no negative probe recorded"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "find_overloads",
-      "category": "symbols",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
-      "evidence": [
-        "closure probe: base 2 overloads, derived+includeInherited 1 (private excluded), includeInherited=false 0",
-        "negative: unknown type -> structured NotFound",
-        "p50 7 ms"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "find_type_consumers",
-      "category": "symbols",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "find-type-consumers-mutations-generator-blind (High); find-type-consumers-no-pagination-metadata"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "probe_position",
-      "category": "symbols",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
-      "evidence": [
-        "G2/G3: identifier + whitespace trivia correct; agrees with symbol_info",
-        "negative: whitespace probe reported as Whitespace (actionable)",
-        "p50 5 ms"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
       "name": "trace_exception_flow",
       "category": "advanced-analysis",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-4 catch/throw sites listed for OperationCanceledException with maxResults=2"
       ],
       "blockers": [
-        "trace-exception-flow-catch-ranking"
+        "maxResults also caps throw sites (schema drift)",
+        "unknown exception type returns empty success",
+        "isUnhandledAtBoundary not verified"
       ]
     },
     {
@@ -104,10 +36,11 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-2 scan 155 ms; non-default excludeFrameworkWrappers probed; unknown project rejected actionably"
       ],
       "blockers": [
-        "find-duplicate-helpers-outermost-call-false-positive (>=50% FP)"
+        "sole hit is a false positive (G1-F4)",
+        "limit=-1 silently empty"
       ]
     },
     {
@@ -115,14 +48,16 @@
       "name": "find_dead_locals",
       "category": "advanced-analysis",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "recommendation": "promote",
+      "evidenceCount": 5,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-2 2/2 hits verified against source",
+        "project-scoped non-default path",
+        "unknown project → actionable InvalidArgument",
+        "5.3 s solution scan within 15 s budget",
+        "schema matched behaviour"
       ],
-      "blockers": [
-        "find-dead-locals-captured-by-local-function (4/5 false positives)"
-      ]
+      "blockers": []
     },
     {
       "kind": "tool",
@@ -132,10 +67,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-2 scan 397 ms; usageKind/includePublic probed; bad usageKind actionable"
       ],
       "blockers": [
-        "compilation-cache-generator-rerun-blinds-unused-analysis (High: live fields safelyRemovable)"
+        "G1-F2: interop struct fields marked safelyRemovable; remove_dead_code_preview previews their removal"
       ]
     },
     {
@@ -144,12 +79,14 @@
       "category": "analysis",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "evidenceCount": 2,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-3 references identical to find_references on 3 types + 1 property",
+        "maxItemsPerCategory and summary probed"
       ],
       "blockers": [
-        "no negative probe; mapper heuristic false positive on *Serializer param (unfiled, unconfirmed)"
+        "unknown symbol returns noise closestMatches (G2-F9)",
+        "no truncation flag under maxItemsPerCategory"
       ]
     },
     {
@@ -160,10 +97,11 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-8 paging fields and notes present; 9.2 s"
       ],
       "blockers": [
-        "test-reference-map-counts-synthesized-members"
+        "coveragePercent 3.3 for RoslynMcp.Core not cross-checked and looks too low",
+        "no negative probe"
       ]
     },
     {
@@ -172,12 +110,15 @@
       "category": "validation",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "evidenceCount": 3,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-8 correct analyzer-error verdict (MSTEST0032 x2)",
+        "summary, markdown and changedFilePaths paths probed",
+        "fabricated path handled cleanly"
       ],
       "blockers": [
-        "workspace-changes-missing-revert-status (duplicate changedFilePaths by separator)"
+        "28 s wall-clock",
+        "runTests=true path not exercised"
       ]
     },
     {
@@ -185,26 +126,30 @@
       "name": "validate_recent_git_changes",
       "category": "validation",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
       "evidence": [
-        "G5 #29: clean status, 8 git-derived paths normalized, composes compile_check + diagnostics + related tests",
-        "p50 698 ms"
+        "phase-8 changed set derived from git status (24 files), same verdict as validate_workspace"
       ],
-      "blockers": []
+      "blockers": [
+        "36 s wall-clock",
+        "dotnetTestFilter string unbounded in summary mode",
+        "runTests path not exercised"
+      ]
     },
     {
       "kind": "tool",
       "name": "workspace_fork_apply",
       "category": "validation",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "needs-more-evidence",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 two attempts, both refused"
       ],
       "blockers": [
-        "preview-token-store-mismatch-false-stale (false stale for project-mutation tokens; leaves empty forks dir)"
+        "no successful fork on this solution: \"copied project graph refers to files or outputs in the source workspace\"",
+        "composite token rejected with reload wording"
       ]
     },
     {
@@ -215,10 +160,11 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-6k plan correct for FileSnapshotDto"
       ],
       "blockers": [
-        "no negative probe recorded"
+        "duplicate field name accepted (P6-F14)",
+        "unknown record → generic NotFound"
       ]
     },
     {
@@ -226,307 +172,16 @@
       "name": "semantic_grep",
       "category": "analysis",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "semantic-grep-comment-hit-location"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "format_check",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "no negative probe recorded"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "restructure_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "restructure-preview-splice-without-parenthesization (High)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "replace_string_literals_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "replace-string-literals-const-self-reference"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "change_signature_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "change-signature-add-skips-same-document-impls (High)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "parameter_object_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "no negative probe recorded"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "symbol_refactor_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "preview-token-store-mismatch-false-stale (apply route undocumented)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "split_service_with_di_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "needs-more-evidence",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised on fixture without the required repo shape"
-      ],
-      "blockers": [
-        "skipped-repo-shape in G6 (no DI); G4 preview showed data loss (not applied)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "record_field_add_with_satellites_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "record-satellites-line-insert-outside-initializer"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "move_type_to_file_apply",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "new-file-apply-writes-bom-ignoring-editorconfig"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "change_type_namespace_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "change-type-namespace-emits-invalid-syntax (High)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "extract_interface_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "refactor-preview-trivia-nits"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "extract_interface_apply",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "no negative probe recorded"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "bulk_replace_type_apply",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "bulk-replace-type-redundant-using"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "replace_invocation_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "replace-invocation-rewrites-replacement-body (High)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "extract_type_apply",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "extract-type-breaks-interfaces-and-publicizes-fields"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "extract_method_apply",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "extract-method-nullable-return-flow-state"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "extract_shared_expression_to_helper_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "preview-token-store-mismatch-false-stale (no documented apply route)"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "apply_with_verify",
-      "category": "undo",
-      "currentTier": "experimental",
       "recommendation": "promote",
-      "evidenceCount": 2,
+      "evidenceCount": 5,
       "evidence": [
-        "G4 6l: good preview status=applied; 4 known-bad previews rolled_back cleanly with introducedErrors",
-        "p50 1620 ms (writer budget 30 s)"
+        "phase-11 11 identifier hits verified against source",
+        "scope=strings and scope=all non-default paths",
+        "malformed regex and bad scope → actionable InvalidArgument",
+        "bogus pattern → clean empty page",
+        "0-199 ms across 9 calls"
       ],
       "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "fix_all_preview",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "fix-all-analyzer-assembly-provider-not-found"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "fix_all_apply",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "no negative probe recorded"
-      ]
-    },
-    {
-      "kind": "tool",
-      "name": "format_range_apply",
-      "category": "refactoring",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "format-range-refuses-on-unrelated-line-count-change"
-      ]
     },
     {
       "kind": "tool",
@@ -536,7 +191,7 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-6h two 2-file applies, verify status clean, revert_last_apply clean"
       ],
       "blockers": [
         "no negative probe recorded"
@@ -547,13 +202,14 @@
       "name": "preview_multi_file_edit",
       "category": "editing",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
       "evidence": [
-        "G4 6h: per-file diffs + one token; stale-token negative rejected with actionable message",
-        "p50 < 1.6 s"
+        "phase-6h/6l previews across 1-2 files, one token each"
       ],
-      "blockers": []
+      "blockers": [
+        "skipSyntaxCheck non-default path not probed"
+      ]
     },
     {
       "kind": "tool",
@@ -561,10 +217,13 @@
       "category": "editing",
       "currentTier": "experimental",
       "recommendation": "promote",
-      "evidenceCount": 2,
+      "evidenceCount": 5,
       "evidence": [
-        "G4/G6: redeemed multi-file, batch-scaffold and dependency_inversion tokens; stale probe actionable",
-        "p50 514 ms"
+        "phase-6h/6k/12 applied multi-file, restructure, literal and batch-scaffold tokens; compile clean each time",
+        "stale token rejected with \"create a new preview\"",
+        "foreign-family tokens rejected",
+        "no-op apply does not invalidate tokens",
+        "118-454 ms"
       ],
       "blockers": []
     },
@@ -576,10 +235,11 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 created file, compile clean, 441 ms; duplicate path rejected at preview"
       ],
       "blockers": [
-        "new-file-apply-writes-bom-ignoring-editorconfig; invalid-operation-throw-sites-lack-public-message"
+        "no negative probe on the apply itself",
+        "shipped PostToolUse hook halts the agent after this tool"
       ]
     },
     {
@@ -590,10 +250,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 deleted file, compile clean, 457 ms"
       ],
       "blockers": [
-        "invalid-operation-throw-sites-lack-public-message (vague negative)"
+        "no negative probe on the apply itself"
       ]
     },
     {
@@ -602,12 +262,13 @@
       "category": "file-operations",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "evidenceCount": 2,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 moved file with namespace update, compile clean",
+        "consumed token rejected"
       ],
       "blockers": [
-        "no negative probe recorded"
+        "shipped PostToolUse hook halts the agent after this tool"
       ]
     },
     {
@@ -618,10 +279,12 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-6i removed an interface member (2 files) and a property; compile clean; 135-147 ms"
       ],
       "blockers": [
-        "refactor-preview-trivia-nits"
+        "leaves a whitespace-only line (P6-F4)",
+        "no negative probe",
+        "hook halts the agent after this tool"
       ]
     },
     {
@@ -632,10 +295,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-6i previewed with implementationCount 4; token redeemed via remove_dead_code_apply"
       ],
       "blockers": [
-        "no negative probe recorded"
+        "wrong-kind handle → generic InvalidOperation"
       ]
     },
     {
@@ -644,12 +307,14 @@
       "category": "prompts",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "evidenceCount": 2,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-16 rendered all 20 prompts idempotently, 45 calls",
+        "unknown prompt lists all prompts"
       ],
       "blockers": [
-        "invalid-operation-throw-sites-lack-public-message (unknown prompt / missing arg vague); get-prompt-text-description-cites-list-prompts"
+        "malformed JSON error lacks parse position",
+        "missing-parameter error names the C# method, ignores unknown keys (P16-F5)"
       ]
     },
     {
@@ -660,10 +325,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-14x sensible mapping for \"find callers\"; empty task → InvalidArgument"
       ],
       "blockers": [
-        "schema-hint-truncates-on-abbreviation; argument-exception-throw-sites-lack-public-message"
+        "valid intent labels not enumerated; unknown intent ignored silently"
       ]
     },
     {
@@ -674,10 +339,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-13 correct Directory.Packages.props diff"
       ],
       "blockers": [
-        "invalid-operation-throw-sites-lack-public-message (existing version refusal redacted)"
+        "preview only; no negative probe"
       ]
     },
     {
@@ -688,10 +353,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-13 add/remove project reference round trip clean"
       ],
       "blockers": [
-        "no negative probe recorded"
+        "P13-F1: stacked previews, second apply silently discards the first (operator decision: refuse on drift)"
       ]
     },
     {
@@ -699,28 +364,30 @@
       "name": "scaffold_type_preview",
       "category": "scaffolding",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "recommendation": "promote",
+      "evidenceCount": 5,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-12 internal sealed class default, public record, interface stubs",
+        "implementInterface=false and typeKind non-default paths",
+        "bad typeKind → actionable InvalidArgument + schemaHint",
+        "round trip via scaffold_type_apply, compile clean",
+        "122-219 ms"
       ],
-      "blockers": [
-        "argument-exception-throw-sites-lack-public-message (typeKind=struct vague)"
-      ]
+      "blockers": []
     },
     {
       "kind": "tool",
       "name": "scaffold_type_apply",
       "category": "scaffolding",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "recommendation": "promote",
+      "evidenceCount": 3,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-12 applied record scaffold, compile clean, 440 ms",
+        "stale token rejected with clear message",
+        "preview diff matched file on disk"
       ],
-      "blockers": [
-        "scaffold-type-mixed-line-endings"
-      ]
+      "blockers": []
     },
     {
       "kind": "tool",
@@ -730,10 +397,11 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-12 one token for 3 files; applied; tests discoverable"
       ],
       "blockers": [
-        "preview-token-store-mismatch-false-stale (description names wrong apply tool)"
+        "P12-F1: Assert.IsTrue(true) placeholders trip MSTEST0032 (Error)",
+        "description names apply_composite; token applied via preview_multi_file_edit_apply"
       ]
     },
     {
@@ -744,10 +412,11 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-12 fixture + helpful warning for static-only service"
       ],
       "blockers": [
-        "invalid-operation-throw-sites-lack-public-message"
+        "preview only",
+        "instantiates a class with only static members"
       ]
     },
     {
@@ -756,12 +425,13 @@
       "category": "scaffolding",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 1,
+      "evidenceCount": 2,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-12 applied, compile clean, discovered by test_discover",
+        "stale token rejected"
       ],
       "blockers": [
-        "new-file-apply-writes-bom-ignoring-editorconfig"
+        "scaffolded test not executed (test runs skipped-safety)"
       ]
     },
     {
@@ -772,10 +442,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 valid cross-project move diff"
       ],
       "blockers": [
-        "move-type-to-project-unconditional-reference"
+        "preview only; no negative probe"
       ]
     },
     {
@@ -786,10 +456,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 interface in target project + base-list edit"
       ],
       "blockers": [
-        "preview-token-store-mismatch-false-stale (no apply route; same-project target accepted)"
+        "preview only; no negative probe"
       ]
     },
     {
@@ -800,10 +470,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 interface + base list"
       ],
       "blockers": [
-        "preview-token-store-mismatch-false-stale (apply only via undocumented tool)"
+        "preview only; no constructor consumers in the probe"
       ]
     },
     {
@@ -814,10 +484,11 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 CPM-aware csproj + props diff"
       ],
       "blockers": [
-        "migrate-package-removes-shared-central-version"
+        "unknown package → generic InvalidOperation",
+        "preview only"
       ]
     },
     {
@@ -828,10 +499,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-10 valid partial split"
       ],
       "blockers": [
-        "no negative probe recorded; mixed path separators in response"
+        "preview only; token not accepted by workspace_fork_apply"
       ]
     },
     {
@@ -839,93 +510,30 @@
       "name": "extract_and_wire_interface_preview",
       "category": "orchestration",
       "currentTier": "experimental",
-      "recommendation": "needs-more-evidence",
+      "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised on fixture without the required repo shape"
+        "phase-10 6-member interface; static-only type refused actionably"
       ],
       "blockers": [
-        "fixture has no DI registrations; applied via composite but DI rewiring unexercised"
+        "silent about DI registrations",
+        "preview only"
       ]
     },
     {
       "kind": "tool",
-      "name": "apply_composite_preview",
+      "name": "apply_composite",
       "category": "orchestration",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "exercised this run; see report section 11"
+        "phase-6k applied symbol_refactor and satellites tokens, compile clean, 3.9-4.5 s"
       ],
       "blockers": [
-        "apply-composite-no-undo-capture (High)"
+        "no negative probe on it",
+        "hook halts the agent after this tool"
       ]
-    },
-    {
-      "kind": "resource",
-      "name": "server_catalog_full",
-      "category": "server",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 1,
-      "evidence": [
-        "G8: 165 KB full catalog; prompt params match prompts/list; counts match server_info"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "resource",
-      "name": "server_catalog_tools_page",
-      "category": "server",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "catalog-page-slots-silently-clamped"
-      ]
-    },
-    {
-      "kind": "resource",
-      "name": "server_catalog_prompts_page",
-      "category": "server",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 1,
-      "evidence": [
-        "G8: 0/5 and 18/10 pages correct, hasMore correct"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "resource",
-      "name": "server_catalog_version_diff",
-      "category": "server",
-      "currentTier": "experimental",
-      "recommendation": "keep-experimental",
-      "evidenceCount": 1,
-      "evidence": [
-        "exercised this run; see report section 11"
-      ],
-      "blockers": [
-        "catalog-diff-advertised-pair-rejected"
-      ]
-    },
-    {
-      "kind": "resource",
-      "name": "source_file_lines",
-      "category": "workspace",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "G8: // roslyn://... marker present, end clamped, 10-5 and 99999-100000 rejected in ~1 ms (actionable)",
-        "p50 58 ms"
-      ],
-      "blockers": []
     },
     {
       "kind": "prompt",
@@ -935,10 +543,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
       "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
+        "names no server tool"
       ]
     },
     {
@@ -949,10 +557,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
       "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
+        "analysis-only, no tools or verification"
       ]
     },
     {
@@ -963,10 +571,10 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
       "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+        "analysis-only"
       ]
     },
     {
@@ -974,14 +582,13 @@
       "name": "analyze_dependencies",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "needs-more-evidence",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
       "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)",
-        "analyze-dependencies-prompt-unranked-node-cap"
+        "node cap filled by external namespaces (P16-F4)"
       ]
     },
     {
@@ -989,126 +596,109 @@
       "name": "debug_test_failure",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "refactor_and_validate",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "fix_all_diagnostics",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "guided_package_migration",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "guided_extract_interface",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "security_review",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "discover_capabilities",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)",
-        "discover-capabilities-unknown-category-matches-all"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "dead_code_audit",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "review_test_coverage",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "needs-more-evidence",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
       "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+        "projectName filter ignored (P16-F1)"
       ]
     },
     {
@@ -1116,84 +706,72 @@
       "name": "review_complexity",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "cohesion_analysis",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "consumer_impact",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "guided_extract_method",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "msbuild_inspection",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
       "name": "session_undo",
       "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "keep-experimental",
+      "recommendation": "promote",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
-      "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
-      ]
+      "blockers": []
     },
     {
       "kind": "prompt",
@@ -1203,18 +781,462 @@
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+        "phase-16 rendered via get_prompt_text; schema matches source; zero hallucinated tool names; idempotent (sha256)"
       ],
       "blockers": [
-        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+        "stage count and version prose stale (P16-F7)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "format_check",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6e project-scoped 0 of 223; unknown project actionable"
+      ],
+      "blockers": [
+        "P6-F3: reports a NuGet-cache document"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "restructure_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6k file and project scopes; kind mismatch actionable; applied via preview_multi_file_edit_apply"
+      ],
+      "blockers": [
+        "zero-match pattern → generic InvalidOperation (P6-F11)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "replace_string_literals_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 5,
+      "evidence": [
+        "phase-6k replaced 4 literals in one file",
+        "no-match → explicit \"No matching string literals\" result",
+        "empty replacements → InvalidArgument",
+        "applied via preview_multi_file_edit_apply, compile clean",
+        "242-552 ms"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "change_signature_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-6k op=rename works; argument validation messages excellent",
+        "op=add works on SampleSolution"
+      ],
+      "blockers": [
+        "P6-F8 (P1): add/remove/reorder fail 11/11 on RoslynMcp.slnx",
+        "P18-F1 (P1): rewrites unrelated Assert.AreEqual invocation",
+        "failures take 14-48 s"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "parameter_object_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "needs-more-evidence",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6k unknown-parameter error actionable"
+      ],
+      "blockers": [
+        "no preview obtained on two targets; refusal reason not delivered (P6-F12)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_refactor_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6k 3-op composite preview; applied via apply_composite; preview_multi_file_edit_apply rejects its token"
+      ],
+      "blockers": [
+        "no negative probe on operations"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "record_field_add_with_satellites_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6k tuple-snapshot satellite detected and applied via apply_composite"
+      ],
+      "blockers": [
+        "expression-bodied Clone/Reset satellites unsupported",
+        "unknown type → generic NotFound"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "move_type_to_file_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-10 applied, compile clean"
+      ],
+      "blockers": [
+        "output ignores .editorconfig end_of_line / insert_final_newline",
+        "no negative probe",
+        "hook halts the agent after this tool"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "change_type_namespace_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6k preview + apply_with_verify clean"
+      ],
+      "blockers": [
+        "unknown type → generic InvalidOperation",
+        "inserts CRLF using into an LF file"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6c 2-member interface; apply clean; type_hierarchy shows implementor"
+      ],
+      "blockers": [
+        "no negative probe"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6c applied 2 files, compile clean"
+      ],
+      "blockers": [
+        "no negative probe on it",
+        "hook halts the agent after this tool"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "bulk_replace_type_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6c applied 3 files; revert clean"
+      ],
+      "blockers": [
+        "P6-F1 (P2): apply left 13 CS1061 errors; preview has no compile gate"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "replace_invocation_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6k one successful preview; binding refusal actionable"
+      ],
+      "blockers": [
+        "most failures are the generic InvalidOperation text",
+        "preview only"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_type_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6d applied 2 files, compile clean"
+      ],
+      "blockers": [
+        "cross-family token rejection advises workspace_reload (misleading)",
+        "new file carries unused usings"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_method_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6j applied valid extraction, compile clean, 1 call site"
+      ],
+      "blockers": [
+        "P6-F9 (P2): mid-statement selection applies and introduces CS8604"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_shared_expression_to_helper_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6k 3 sites rewritten; applied via apply_with_verify"
+      ],
+      "blockers": [
+        "single-occurrence refusal is generic",
+        "helper written with LF in a CRLF file"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "apply_with_verify",
+      "category": "undo",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 5,
+      "evidence": [
+        "phase-6l/6k/12 status applied on 6 tokens, pre/post error counts reported",
+        "status rolled_back with introducedErrors on 2 breaking previews; created file removed",
+        "bad and excluded-family tokens rejected",
+        "rollbackOnError parameter exercised",
+        "1.3-6.1 s"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "fix_all_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-6a solution and project scopes; guidance message on partial fix"
+      ],
+      "blockers": [
+        "occurrence count (224) disagrees with project_diagnostics (28)",
+        "no negative probe"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "fix_all_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 4,
+      "evidence": [
+        "phase-6a applied 128 fixes in 5 files, compile clean, 163 ms",
+        "stale token → success:false with \"create a new preview\"",
+        "consumed token → PreviewTokenStale",
+        "post-apply diagnostic count dropped 28 → 12 as guided"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "format_range_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-6e applied range format, 116 ms",
+        "consumed token rejected",
+        "format_check clean for the project afterwards"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_full",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-15 full catalog returned"
+      ],
+      "blockers": [
+        "173 KB vs documented \"~80 KB\"; exceeds client inline cap"
+      ]
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_tools_page",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-15 tail page offset 170: returnedCount 1, hasMore false"
+      ],
+      "blockers": [
+        "no invalid-slot probe"
+      ]
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_prompts_page",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-15 page 0/2 with parameters populated"
+      ],
+      "blockers": [
+        "no invalid-slot probe"
+      ]
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_version_diff",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-15 2.3.1 → current diff valid"
+      ],
+      "blockers": [
+        "only one historical snapshot ships; 5.0.0 → current unavailable",
+        "145 KB payload"
+      ]
+    },
+    {
+      "kind": "resource",
+      "name": "source_file_lines",
+      "category": "workspace",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-15 lines/1-10 exact with marker"
+      ],
+      "blockers": [
+        "invalid range and relative path surface as generic \"Resource not found\" at the client",
+        "marker CRLF / body LF"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "find_overloads",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-3 includeInherited as documented"
+      ],
+      "blockers": [
+        "G2-F2: 0 overloads for System.Math.Clamp without projectName",
+        "missing member silent, missing type vague"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "find_type_consumers",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-3 site counts reconcile with find_references"
+      ],
+      "blockers": [
+        "limit truncates silently (G2-F5)",
+        "kinds describe enclosing syntax (G2-F6)",
+        "vague NotFound"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "probe_position",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 4,
+      "evidence": [
+        "phase-3/17 agrees with every locator used",
+        "whitespace, identifier and type-token positions",
+        "out-of-range line → actionable error with valid range",
+        "64-129 ms"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_warm",
+      "category": "workspace",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-0 warmed 9 projects, 8 cold compilations, 3.1 s"
+      ],
+      "blockers": [
+        "single default call; projects filter and negative path not probed"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_drift_check",
+      "category": "workspace",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-14x no-drift case correct; unknown id → WorkspaceNotFound"
+      ],
+      "blockers": [
+        "drift-positive case not exercised",
+        "no _meta block"
       ]
     }
   ],
   "summary": {
-    "promote": 9,
-    "keep-experimental": 75,
-    "needs-more-evidence": 2,
+    "promote": 24,
+    "keep-experimental": 57,
+    "needs-more-evidence": 4,
     "deprecate": 0,
-    "blocked": 0
+    "blocked": 1
   }
 }
