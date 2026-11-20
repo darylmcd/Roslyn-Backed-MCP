@@ -36,3 +36,7 @@
 - Require existing `tool-refusal-public-message-guard` for its planned inventory asset. Remove only the converted shared-refusal record when that guard is present; re-vet after both predecessors land.
 - Same-mechanism test companions: `ExtractionApplyRouteBindingTests.cs:61,166-167`, `PreviewRouteBindingEditingTests.cs:46,106`, `PreviewRouteBindingFileOpsTests.cs:69,156`. Keep exact public refusal assertions and service-not-called checks; preserve BCL mapping-exhaustiveness checks.
 - Static source/semantic evidence only; no runtime regression, build or full gate claimed for scaffolding.
+
+## Notes
+
+Surface audit 2026-11-20 (server 5.1.1): scaffold_test_batch_preview's description says "apply via apply_composite", but its token was redeemed by preview_multi_file_edit_apply (3 files applied, compile clean). apply_composite was not tried with that token.
