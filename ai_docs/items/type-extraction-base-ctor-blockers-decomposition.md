@@ -13,3 +13,7 @@
 ## Evidence
 
 - TypeExtractionService.cs ~184.
+
+## Notes
+
+Surface audit 2026-11-20 (server 5.1.1): get_complexity_metrics ranks CollectBaseConstructorDispatchBlockers first in the solution: cyclomatic complexity 284, 678 lines (215-892), maintainability index 0.
