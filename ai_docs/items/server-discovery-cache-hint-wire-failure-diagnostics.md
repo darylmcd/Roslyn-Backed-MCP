@@ -1,6 +1,6 @@
 # server-discovery-cache-hint-wire-failure-diagnostics — diagnose cache-hint wire failures
 
-**row:** `server-discovery-cache-hint-wire-failure-diagnostics` · **pri:** `Low` · **size:** `S` · **deps:** `resource-cache-hint-wire-failure-diagnostics`
+**row:** `server-discovery-cache-hint-wire-failure-diagnostics` · **pri:** `Low` · **size:** `S`
 
 
 ## Anchors

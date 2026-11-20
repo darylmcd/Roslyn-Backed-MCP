@@ -1,6 +1,6 @@
 # atomic-file-writer-external-temp-path-swap — Prevent adversarial replacement of atomic-write temp paths
 
-**row:** `atomic-file-writer-external-temp-path-swap` · **pri:** `Defer` · **size:** `M` · **deps:** `editorconfig-write-no-workspace-invalidation`
+**row:** `atomic-file-writer-external-temp-path-swap` · **pri:** `Defer` · **size:** `M`
 
 ## Anchors
 

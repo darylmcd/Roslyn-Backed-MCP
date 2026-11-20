@@ -1,6 +1,6 @@
 # structured-call-pipeline-collaborator-cohesion — Further decompose structured pipeline collaborators
 
-**row:** `structured-call-pipeline-collaborator-cohesion` · **pri:** `Low` · **size:** `M` · **deps:** `structured-call-tool-filter-pipeline-decomposition`
+**row:** `structured-call-pipeline-collaborator-cohesion` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

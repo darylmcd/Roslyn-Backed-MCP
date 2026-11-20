@@ -1,6 +1,6 @@
 # changelog-process-tests-runner-adoption — Move changelog process tests onto the shared runner
 
-**row:** `changelog-process-tests-runner-adoption` · **pri:** `Low` · **size:** `S` · **deps:** `powershell-script-test-runner-foundation,codex-hook-runtime-event-contract`
+**row:** `changelog-process-tests-runner-adoption` · **pri:** `Low` · **size:** `S` · **deps:** `codex-hook-runtime-event-contract`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # param-dedupe-testmap-coupling-record-typeextract — parameter-description dedupe: Test-map, coupling and record slice
 
-**row:** `param-dedupe-testmap-coupling-record-typeextract` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-testmap-coupling-record-typeextract` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

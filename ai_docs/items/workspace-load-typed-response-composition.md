@@ -1,6 +1,6 @@
 # workspace-load-typed-response-composition — Compose workspace-load responses as typed DTOs
 
-**row:** `workspace-load-typed-response-composition` · **pri:** `Low` · **size:** `S` · **deps:** `workspace-close-postcommit-drain-contract`
+**row:** `workspace-load-typed-response-composition` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # param-dedupe-symbol-tools — parameter-description dedupe: Symbol tools slice
 
-**row:** `param-dedupe-symbol-tools` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-symbol-tools` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

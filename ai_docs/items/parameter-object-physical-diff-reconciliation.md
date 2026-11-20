@@ -1,6 +1,6 @@
 # parameter-object-physical-diff-reconciliation — Reconcile parameter-object preview by physical file
 
-**row:** `parameter-object-physical-diff-reconciliation` · **pri:** `Medium` · **size:** `S` · **deps:** `cross-project-interface-signature-compile-gate`
+**row:** `parameter-object-physical-diff-reconciliation` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

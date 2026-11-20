@@ -1,6 +1,6 @@
 # apply-composite-operator-guidance-and-hook — Migrate operator guidance and retain alias hook coverage
 
-**row:** `apply-composite-operator-guidance-and-hook` · **pri:** `Low` · **size:** `M` · **deps:** `apply-composite-canonical-alias-surface`
+**row:** `apply-composite-operator-guidance-and-hook` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

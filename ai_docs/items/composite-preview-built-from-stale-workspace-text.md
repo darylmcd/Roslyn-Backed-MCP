@@ -1,6 +1,6 @@
 # composite-preview-built-from-stale-workspace-text — Composite producers hash the workspace snapshot, not the disk bytes they read
 
-**row:** `composite-preview-built-from-stale-workspace-text` · **pri:** `Medium` · **size:** `M` · **deps:** `composite-preview-source-fingerprint-refusal`
+**row:** `composite-preview-built-from-stale-workspace-text` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

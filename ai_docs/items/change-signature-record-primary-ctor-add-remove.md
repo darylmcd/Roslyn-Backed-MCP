@@ -1,6 +1,6 @@
 # change-signature-record-primary-ctor-add-remove — Support add/remove on positional records in change_signature_preview
 
-**row:** `change-signature-record-primary-ctor-add-remove` · **pri:** `Medium` · **size:** `M` · **deps:** `change-signature-class-struct-primary-ctor-add-remove`
+**row:** `change-signature-record-primary-ctor-add-remove` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

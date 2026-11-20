@@ -1,6 +1,6 @@
 # analyzer-shadow-linux-no-follow-walk — Add a no-follow directory walk for non-Windows
 
-**row:** `analyzer-shadow-linux-no-follow-walk` · **pri:** `Medium` · **size:** `M` · **deps:** `analyzer-shadow-lease-disposal-no-follow`
+**row:** `analyzer-shadow-linux-no-follow-walk` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # tool-merge-preview-formatting — Merge 3 preview tools into `format_preview`
 
-**row:** `tool-merge-preview-formatting` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-formatting` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

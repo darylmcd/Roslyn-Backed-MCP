@@ -1,6 +1,6 @@
 # param-dedupe-workspace-validation-scaffolding — parameter-description dedupe: Workspace, validation and scaffolding slice
 
-**row:** `param-dedupe-workspace-validation-scaffolding` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-workspace-validation-scaffolding` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

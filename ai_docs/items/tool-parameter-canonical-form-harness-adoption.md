@@ -1,6 +1,6 @@
 # tool-parameter-canonical-form-harness-adoption — Reuse parameter enumeration harness
 
-**row:** `tool-parameter-canonical-form-harness-adoption` · **pri:** `Low` · **size:** `S` · **deps:** `desc-budget-harness-param-family`
+**row:** `tool-parameter-canonical-form-harness-adoption` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

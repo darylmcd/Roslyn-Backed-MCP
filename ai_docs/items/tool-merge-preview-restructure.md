@@ -1,6 +1,6 @@
 # tool-merge-preview-restructure — Merge 2 preview tools into `restructure_preview`
 
-**row:** `tool-merge-preview-restructure` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-restructure` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

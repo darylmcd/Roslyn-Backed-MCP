@@ -1,6 +1,6 @@
 # tool-merge-preview-signature — Merge 3 preview tools into `signature_preview`
 
-**row:** `tool-merge-preview-signature` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-signature` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

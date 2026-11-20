@@ -1,6 +1,6 @@
 # timeout-command-restore-timer-identity — Identify command and restore timers
 
-**row:** `timeout-command-restore-timer-identity` · **pri:** `Medium` · **size:** `L` · **deps:** `timeout-request-timer-envelope`
+**row:** `timeout-command-restore-timer-identity` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 

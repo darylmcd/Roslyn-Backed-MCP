@@ -1,6 +1,6 @@
 # tool-merge-apply-formatting — Merge 3 apply tools into `format_apply`
 
-**row:** `tool-merge-apply-formatting` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-apply-formatting` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

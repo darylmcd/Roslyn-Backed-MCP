@@ -1,6 +1,6 @@
 # workspace-load-registration-test-timeout-ownership — Settle load registration timeouts
 
-**row:** `workspace-load-registration-test-timeout-ownership` · **pri:** `Medium` · **size:** `S` · **deps:** `timing-test-guard-operation-ownership`
+**row:** `workspace-load-registration-test-timeout-ownership` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

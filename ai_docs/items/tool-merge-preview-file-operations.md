@@ -1,6 +1,6 @@
 # tool-merge-preview-file-operations — Merge 3 preview tools into `file_operation_preview`
 
-**row:** `tool-merge-preview-file-operations` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-file-operations` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

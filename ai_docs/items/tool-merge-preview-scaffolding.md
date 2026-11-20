@@ -1,6 +1,6 @@
 # tool-merge-preview-scaffolding — Merge 4 preview tools into `scaffold_preview`
 
-**row:** `tool-merge-preview-scaffolding` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-scaffolding` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

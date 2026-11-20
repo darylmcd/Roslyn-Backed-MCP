@@ -1,6 +1,6 @@
 # param-dedupe-interface-analyzer-coverage-undo — parameter-description dedupe: Interface-member, analyzer and coverage slice
 
-**row:** `param-dedupe-interface-analyzer-coverage-undo` · **pri:** `Low` · **size:** `M` · **deps:** `desc-budget-harness-param-family`
+**row:** `param-dedupe-interface-analyzer-coverage-undo` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

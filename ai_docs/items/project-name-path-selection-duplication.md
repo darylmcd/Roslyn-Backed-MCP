@@ -1,6 +1,6 @@
 # project-name-path-selection-duplication — Centralize project name/path selection
 
-**row:** `project-name-path-selection-duplication` · **pri:** `Low` · **size:** `M` · **deps:** `file-create-and-scaffold-refusals-public-message,cross-project-public-refusals-echo-input`
+**row:** `project-name-path-selection-duplication` · **pri:** `Low` · **size:** `M` · **deps:** `cross-project-public-refusals-echo-input`
 
 ## Anchors
 

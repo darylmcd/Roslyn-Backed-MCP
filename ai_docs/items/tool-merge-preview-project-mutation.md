@@ -1,6 +1,6 @@
 # tool-merge-preview-project-mutation — Merge 10 preview tools into `project_mutation_preview`
 
-**row:** `tool-merge-preview-project-mutation` · **pri:** `Medium` · **size:** `M` · **deps:** `tool-consolidation-adr-and-alias-machinery`
+**row:** `tool-merge-preview-project-mutation` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

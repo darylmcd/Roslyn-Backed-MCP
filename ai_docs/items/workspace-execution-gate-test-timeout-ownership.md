@@ -1,6 +1,6 @@
 # workspace-execution-gate-test-timeout-ownership — Settle gate test timeouts
 
-**row:** `workspace-execution-gate-test-timeout-ownership` · **pri:** `Medium` · **size:** `S` · **deps:** `timing-test-guard-operation-ownership`
+**row:** `workspace-execution-gate-test-timeout-ownership` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

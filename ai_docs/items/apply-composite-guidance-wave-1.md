@@ -1,6 +1,6 @@
 # apply-composite-guidance-wave-1 — Migrate producer and DTO composite-apply guidance
 
-**row:** `apply-composite-guidance-wave-1` · **pri:** `Low` · **size:** `M` · **deps:** `apply-composite-canonical-alias-surface`
+**row:** `apply-composite-guidance-wave-1` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

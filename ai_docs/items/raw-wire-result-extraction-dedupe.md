@@ -1,6 +1,6 @@
 # raw-wire-result-extraction-dedupe — Share raw JSON-RPC result extraction
 
-**row:** `raw-wire-result-extraction-dedupe` · **pri:** `Low` · **size:** `S` · **deps:** `generated-json-schema-matcher-fail-closed,host-assembly-marker-foundation,host-assembly-marker-wire-test-migration`
+**row:** `raw-wire-result-extraction-dedupe` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
