@@ -347,6 +347,47 @@ public sealed class AggregatePromotionScorecardsScriptTests
     }
 
     [TestMethod]
+    public void Aggregator_NonAsciiBlockerText_RoundTripsAsUtf8Stdout()
+    {
+        // Regression guard for the Windows OEM-codepage stdout trap: pwsh encodes stdout with
+        // [Console]::OutputEncoding (cp437 on a default Windows runner), where U+2192 and U+00E9
+        // have no mapping and become 0x1A (SUB) — invalid inside a JSON string. The fixture is a
+        // temp scorecard so the assertion never depends on the repo scorecard's own content.
+        const string blocker = "needs gate → retest café";
+        var auditDir = Path.Combine(_siblingParent, "repo-unicode", "audit-reports");
+        Directory.CreateDirectory(auditDir);
+
+        var scorecard = new Dictionary<string, object>
+        {
+            ["schemaVersion"] = 1,
+            ["generatedAt"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+            ["auditedRepo"] = "repo-unicode",
+            ["scorecard"] = new[]
+            {
+                new
+                {
+                    kind = "tool", name = "unicode_tool", category = "test", currentTier = "experimental",
+                    recommendation = "keep-experimental", evidenceCount = 1,
+                    evidence = new[] { "synthetic test fixture" }, blockers = new[] { blocker }
+                }
+            },
+            ["summary"] = new { promote = 0, deprecate = 0 }
+        };
+        File.WriteAllText(
+            Path.Combine(auditDir, "_latest-promotion-scorecard.json"),
+            JsonSerializer.Serialize(scorecard, new JsonSerializerOptions { WriteIndented = true }));
+
+        var result = RunAggregator();
+        Assert.AreEqual(0, result.ExitCode, $"Aggregator failed: stdout={result.StdOut} stderr={result.StdErr}");
+
+        using var doc = JsonDocument.Parse(result.StdOut);
+        var entry = doc.RootElement.GetProperty("entries").EnumerateArray().Single();
+        var blockers = entry.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()).ToArray();
+        CollectionAssert.AreEqual(new[] { "[repo-unicode] " + blocker }, blockers,
+            $"Non-ASCII blocker text must survive the pwsh stdout round trip. JSON: {result.StdOut}");
+    }
+
+    [TestMethod]
     public void Aggregator_StaleServerVersionAndGeneratedAt_ReportsScorecardStaleness()
     {
         // The scorecard is the release-gating input, but the aggregator historically read
@@ -541,6 +582,10 @@ public sealed class AggregatePromotionScorecardsScriptTests
             FileName = pwshExecutable,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // The scripts emit UTF-8; decode explicitly so non-ASCII scorecard text never depends on
+            // the host's default (OEM) codepage.
+            StandardOutputEncoding = new System.Text.UTF8Encoding(false),
+            StandardErrorEncoding = new System.Text.UTF8Encoding(false),
             UseShellExecute = false,
             CreateNoWindow = true
         };

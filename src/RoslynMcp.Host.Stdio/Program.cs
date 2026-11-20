@@ -46,10 +46,15 @@ if (observabilityOptions.Sink == ServerObservabilitySinkKind.File)
 {
     var metadataRoot = Path.GetDirectoryName(HostProcessMetadataStore.ResolveDefaultPath())
         ?? throw new InvalidOperationException("The host-process metadata path has no directory.");
-    fileLoggerProvider = new JsonLinesFileLoggerProvider(
-        Path.Combine(metadataRoot, "logs"),
-        JsonLinesRetentionOptions.Parse(ReadEnv));
+    var logDirectory = Path.Combine(metadataRoot, "logs");
+    var retention = JsonLinesRetentionOptions.Parse(ReadEnv);
+    fileLoggerProvider = new JsonLinesFileLoggerProvider(logDirectory, retention);
     builder.Logging.AddProvider(fileLoggerProvider);
+
+    // Off the startup path: the sweep lists the log directory and probes every distinct pid. SweepAndLog
+    // catches everything it can raise, so the task cannot fault unobserved.
+    var sweepLogger = fileLoggerProvider.CreateLogger("RoslynMcp.LogRetentionSweep");
+    _ = Task.Run(() => JsonLinesRetentionSweeper.SweepAndLog(logDirectory, Environment.ProcessId, retention, sweepLogger));
 }
 
 // Bind options from environment variables (hardcoded defaults used when env vars are absent)

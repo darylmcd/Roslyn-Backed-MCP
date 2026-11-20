@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace RoslynMcp.Host.Stdio.Diagnostics;
 
@@ -10,8 +11,11 @@ namespace RoslynMcp.Host.Stdio.Diagnostics;
 /// Not thread-safe: the owner serializes calls. Later sinks and sweeps reuse this seam instead of
 /// re-implementing rotation.
 /// </summary>
-internal sealed class JsonLinesSegmentWriter
+internal sealed partial class JsonLinesSegmentWriter
 {
+    /// <summary>Prefix shared by every file name this writer emits.</summary>
+    internal const string FileStemPrefix = "roslyn-mcp-";
+
     internal static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private readonly string _directory;
@@ -23,12 +27,28 @@ internal sealed class JsonLinesSegmentWriter
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         ArgumentNullException.ThrowIfNull(options);
         _directory = Path.GetFullPath(directory);
-        _stem = "roslyn-mcp-" + processId.ToString(CultureInfo.InvariantCulture);
+        _stem = FileStemPrefix + processId.ToString(CultureInfo.InvariantCulture);
         _options = options;
         ActivePath = Path.Combine(_directory, _stem + ".jsonl");
     }
 
     internal string ActivePath { get; }
+
+    /// <summary>
+    /// Parses a file name this writer can emit (<c>roslyn-mcp-{pid}.jsonl</c> or <c>roslyn-mcp-{pid}.{n}.jsonl</c>,
+    /// canonical decimal digits, no leading zeros, n &gt;= 1) into its owning pid. Any other name returns false,
+    /// so a sweep never deletes a file this writer did not create.
+    /// </summary>
+    internal static bool TryParseFileName(string name, out int pid)
+    {
+        pid = 0;
+        var match = FileNameRegex().Match(name);
+        return match.Success &&
+            int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out pid);
+    }
+
+    [GeneratedRegex(@"^roslyn-mcp-([1-9][0-9]*)(\.[1-9][0-9]*)?\.jsonl$", RegexOptions.CultureInvariant)]
+    private static partial Regex FileNameRegex();
 
     internal long MaxSegmentBytes => _options.MaxSegmentBytes;
 

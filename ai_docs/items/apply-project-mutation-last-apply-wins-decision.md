@@ -20,3 +20,5 @@
 ## Notes
 
 Operator decision 2026-11-20: refuse on drift everywhere. apply_project_mutation and the solution-store apply routes refuse a project file edited after preview, reusing CompositeSourceFingerprint; no write on refusal. One ADR shared with undo-service-revert-unconditional-restore.
+
+Surface audit 2026-11-20 (server 5.1.1) (finding P13-F1): reproduced with no external editor. Two previews taken against tests/GitFixtureWorkerProbe/GitFixtureWorkerProbe.csproj (add_project_reference_preview, then set_conditional_property_preview), applied in that order with apply_project_mutation: both returned success and the second wrote its own snapshot, silently dropping the ProjectReference the first had added. The refuse-on-drift decision therefore also has to cover the server's own earlier apply, not only outside edits.

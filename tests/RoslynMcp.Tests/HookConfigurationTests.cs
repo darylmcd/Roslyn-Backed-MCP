@@ -33,16 +33,12 @@ public sealed class HookConfigurationTests
     public void Shipped_PostToolUse_KeepsRoslynApplyVerificationReminder()
     {
         using var document = LoadShippedHooks();
-        var postToolUseHooks = GetHookEntries(document, "PostToolUse");
+        var applyEntry = FindEntryByMatcher(GetHookEntries(document, "PostToolUse"), "rename_apply");
 
-        var verificationReminder = postToolUseHooks.SingleOrDefault(entry =>
-            GetMatcher(entry).Contains("rename_apply", StringComparison.Ordinal) &&
-            GetPromptTexts(entry).Any(prompt =>
-                prompt.Contains("compile_check", StringComparison.Ordinal) &&
-                prompt.Contains("verification", StringComparison.OrdinalIgnoreCase)));
-
-        Assert.AreEqual(JsonValueKind.Object, verificationReminder.ValueKind,
-            "The post-apply verification reminder must remain after removing the transcript gate.");
+        var reminder = GetCommands(applyEntry).SingleOrDefault();
+        Assert.IsNotNull(reminder, "The post-apply verification reminder must remain as a command hook.");
+        StringAssert.Contains(reminder, "compile_check",
+            "The post-apply reminder must name compile_check.");
     }
 
     [TestMethod]
@@ -51,16 +47,68 @@ public sealed class HookConfigurationTests
         using var document = LoadShippedHooks();
         var postToolUseHooks = GetHookEntries(document, "PostToolUse");
 
-        var serverInfoMatcher = GetMatcher(postToolUseHooks.Single(entry =>
-            GetPromptTexts(entry).Any(prompt =>
-                prompt.Contains("update.updateAvailable", StringComparison.Ordinal))));
-        var applyMatcher = GetMatcher(postToolUseHooks.Single(entry =>
-            GetPromptTexts(entry).Any(prompt =>
-                prompt.Contains("back-to-back", StringComparison.Ordinal))));
+        var serverInfoMatcher = GetMatcher(FindEntryByMatcher(postToolUseHooks, "server_info"));
+        var applyMatcher = GetMatcher(FindEntryByMatcher(postToolUseHooks, "rename_apply"));
 
         AssertMatcherCoversRoslynPrefixes(serverInfoMatcher, "server_info");
         AssertMatcherCoversRoslynPrefixes(applyMatcher, "rename_apply");
         AssertMatcherCoversRoslynPrefixes(applyMatcher, "apply_composite");
+    }
+
+    [TestMethod]
+    public void Shipped_PostToolUse_PromptHooks_CannotEndTheTurn()
+    {
+        // A PostToolUse prompt hook whose evaluator answers anything but {"ok":true} blocks, and a
+        // block ends the agent turn unless continueOnBlock feeds the reason back instead
+        // (plugin-post-apply-hook-halts-agent).
+        using var document = LoadShippedHooks();
+        var promptHooks = new List<(string Matcher, JsonElement Hook)>();
+        foreach (var entry in GetHookEntries(document, "PostToolUse"))
+        {
+            foreach (var hook in entry.GetProperty("hooks").EnumerateArray())
+            {
+                if (hook.TryGetProperty("type", out var type) && type.GetString() == "prompt")
+                {
+                    promptHooks.Add((GetMatcher(entry), hook));
+                }
+            }
+        }
+
+        Assert.IsNotEmpty(promptHooks, "The server_info update-notice prompt hook must remain.");
+        foreach (var (matcher, hook) in promptHooks)
+        {
+            Assert.IsTrue(
+                hook.TryGetProperty("continueOnBlock", out var flag) && flag.ValueKind == JsonValueKind.True,
+                $"PostToolUse prompt hook (matcher='{matcher}') must set continueOnBlock:true, otherwise a non-ok evaluator reply ends the agent turn.");
+        }
+    }
+
+    [TestMethod]
+    public async Task Shipped_ApplyReminder_IsNonBlockingCommandHook()
+    {
+        using var document = LoadShippedHooks();
+        var applyEntry = FindEntryByMatcher(GetHookEntries(document, "PostToolUse"), "rename_apply");
+
+        var hooks = applyEntry.GetProperty("hooks").EnumerateArray().ToList();
+        Assert.HasCount(1, hooks);
+        Assert.AreEqual("command", hooks[0].GetProperty("type").GetString(),
+            "The apply reminder must be a command hook: a prompt hook's non-ok reply ends the agent turn.");
+        var command = hooks[0].GetProperty("command").GetString() ?? string.Empty;
+
+        var result = await RunHookCommandAsync(command);
+        Assert.AreEqual(0, result.ExitCode, $"Hook command must exit 0. stderr={result.StdErr}");
+
+        using var output = JsonDocument.Parse(result.StdOut.Trim('\r', '\n'));
+        var root = output.RootElement;
+        Assert.AreEqual(JsonValueKind.Object, root.ValueKind);
+        foreach (var forbidden in new[] { "continue", "decision", "stopReason" })
+        {
+            Assert.IsFalse(root.TryGetProperty(forbidden, out _), $"Hook output must not set '{forbidden}' (it ends or blocks the turn).");
+        }
+
+        var specific = root.GetProperty("hookSpecificOutput");
+        Assert.AreEqual("PostToolUse", specific.GetProperty("hookEventName").GetString());
+        StringAssert.Contains(specific.GetProperty("additionalContext").GetString(), "compile_check");
     }
 
     [TestMethod]
@@ -69,9 +117,7 @@ public sealed class HookConfigurationTests
         // Unknown availability must be explicit: false means "no newer release" only after
         // a succeeded check, while null means the result is unknown and requires checkStatus.
         using var document = LoadShippedHooks();
-        var prompt = GetHookEntries(document, "PostToolUse")
-            .SelectMany(GetPromptTexts)
-            .Single(text => text.Contains("update.updateAvailable", StringComparison.Ordinal));
+        var prompt = GetPromptTexts(FindEntryByMatcher(GetHookEntries(document, "PostToolUse"), "server_info")).Single();
 
         foreach (var required in new[] { "update.checkStatus", "'succeeded'", "pending", "neverChecked", "failed", "timedOut" })
         {
@@ -83,33 +129,27 @@ public sealed class HookConfigurationTests
     }
 
     [TestMethod]
-    public void Shipped_HooksJson_HasNoCommandBasedHooks()
+    public void Shipped_HooksJson_CommandHooksAreRepoIndependent()
     {
         // Regression guard for `roslyn-mcp-edit-hooks-mis-scoped-cross-repo` (2026-05-21).
         //
-        // The shipped hooks/hooks.json must not register any command-based hooks: those
-        // invoke `${CLAUDE_PROJECT_DIR}/eng/*.ps1` paths that only exist in this repo,
-        // so consumer installs produce pwsh exit-64 failures on every matching tool call
-        // (per the 2026-05-21 BioRemote cross-repo retrospective §F1: 8,398 silent
-        // failures across 88 sessions in 11 repos over a 14-day window).
-        //
-        // Maintainer-only command-based hooks belong in .claude/settings.json — see the
-        // LocalSettings_* tests below for their positive-assertion counterparts.
+        // Shipped command hooks run in every consumer repo, so they must not reference
+        // repo-local paths: ${CLAUDE_PROJECT_DIR}/eng/*.ps1 produced pwsh exit-64 failures on
+        // every matching tool call (BioRemote cross-repo retrospective §F1: 8,398 silent
+        // failures across 88 sessions in 11 repos over 14 days). Self-contained commands
+        // (a single-quoted echo) are fine. Maintainer-only hooks belong in .claude/settings.json.
         using var document = LoadShippedHooks();
         foreach (var phase in new[] { "PreToolUse", "PostToolUse" })
         {
             foreach (var entry in GetHookEntries(document, phase))
             {
-                foreach (var hook in entry.GetProperty("hooks").EnumerateArray())
+                foreach (var command in GetCommands(entry))
                 {
-                    if (hook.TryGetProperty("type", out var type) && type.GetString() == "command")
+                    foreach (var banned in new[] { "CLAUDE_PROJECT_DIR", "eng/", "eng\\", ".ps1" })
                     {
-                        var matcher = GetMatcher(entry);
-                        var command = hook.TryGetProperty("command", out var c) ? c.GetString() ?? "(no command)" : "(no command)";
-                        Assert.Fail(
-                            $"Shipped hooks/hooks.json contains a command-based hook in {phase} (matcher='{matcher}', command='{command}'). " +
-                            "Command-based hooks reference repo-local paths via ${CLAUDE_PROJECT_DIR} and fail with pwsh exit 64 in consumer repos. " +
-                            "Move maintainer command-based hooks to .claude/settings.json (which is loaded only when CWD is this repo).");
+                        Assert.IsFalse(command.Contains(banned, StringComparison.OrdinalIgnoreCase),
+                            $"Shipped hooks/hooks.json command hook in {phase} (matcher='{GetMatcher(entry)}', command='{command}') references repo-local '{banned}'. " +
+                            "Move maintainer command-based hooks to .claude/settings.json (loaded only when CWD is this repo).");
                     }
                 }
             }
@@ -331,6 +371,66 @@ public sealed class HookConfigurationTests
                 yield return prompt.GetString() ?? string.Empty;
             }
         }
+    }
+
+    private static JsonElement FindEntryByMatcher(IReadOnlyList<JsonElement> entries, string toolName)
+        => entries.Single(entry => Regex.IsMatch($"{PluginRoslynPrefix}{toolName}", $"^(?:{GetMatcher(entry)})$"));
+
+    private static async Task<GuardResult> RunHookCommandAsync(string command)
+    {
+        // Claude Code runs shell-form hooks under sh / Git Bash, or PowerShell; try POSIX sh first.
+        var (fileName, args) = FindOnPath("sh") is { } sh
+            ? (sh, new[] { "-c", command })
+            : ("pwsh", new[] { "-NoProfile", "-Command", command });
+        var startInfo = new ProcessStartInfo(fileName)
+        {
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in args)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start hook command shell.");
+        process.StandardInput.Close();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None);
+            throw;
+        }
+        return new GuardResult(process.ExitCode, await stdoutTask, await stderrTask);
+    }
+
+    private static string? FindOnPath(string executable)
+    {
+        var extensions = OperatingSystem.IsWindows() ? new[] { ".exe" } : new[] { string.Empty };
+        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+                     .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            foreach (var extension in extensions)
+            {
+                var candidate = Path.Combine(directory, executable + extension);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static IEnumerable<string> GetCommands(JsonElement entry)

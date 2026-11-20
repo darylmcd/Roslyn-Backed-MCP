@@ -66,7 +66,7 @@ The [Standing Engineering Directives](../AGENTS.md#standing-engineering-directiv
 The server ships as a Claude Code plugin with 32 skills and safety hooks. When modifying plugin artifacts:
 
 - **Skills** (`skills/*/SKILL.md`): Reference MCP tools by their tool names. Skills are orchestration prompts, not code — they compose existing tools into workflows.
-- **Hooks** (`hooks/hooks.json`): Matchers are regexes over tool names of the form `mcp__(?:plugin_roslyn-mcp_)?roslyn__<tool>` (covers plugin and standalone registrations). The apply-reminder matcher currently covers only a subset of the `*_apply` tools and nothing enforces sync (row `hooks-apply-matcher-subset-drift`); `hooks/hooks.json` is release-managed (sentinel + changelog fragment).
+- **Hooks** (`hooks/hooks.json`): Matchers are regexes over tool names of the form `mcp__(?:plugin_roslyn-mcp_)?roslyn__<tool>` (covers plugin and standalone registrations). The apply-reminder matcher currently covers only a subset of the `*_apply` tools and nothing enforces sync (row `hooks-apply-matcher-subset-drift`); every PostToolUse `type: prompt` hook must set `continueOnBlock: true` (a non-ok evaluator reply otherwise ends the agent turn); reminders are self-contained `type: command` hooks that print `hookSpecificOutput.additionalContext` JSON and exit 0 (no repo-local paths). `hooks/hooks.json` is release-managed (sentinel + changelog fragment).
 - **Plugin manifest** (`.claude-plugin/plugin.json`): For skill or hook changes, add a valid `changelog.d/` fragment; `/bump` advances the manifest with every other version source at release-cut time.
 - **Marketplace** (`.claude-plugin/marketplace.json`): release-managed; `/bump` keeps `version` aligned with `plugin.json` (do not hand-edit; see `ai_docs/workflow.md` release-managed file guard).
 
@@ -76,7 +76,7 @@ The server ships as a Claude Code plugin with 32 skills and safety hooks. When m
 - Never skip the validation `CI_POLICY.md` requires for code changes
 - Never merge with failing CI
 - Do not add new public stable-surface tools without updating `server_info` surface counts and `roslyn://server/catalog`
-- Do not evolve stable-surface DTOs in a breaking way: additive only, unless an ADR, a migration note and a major bump are recorded (`docs/release-policy.md`)
+- Do not evolve stable-surface DTOs in a breaking way: additive only. Breaking changes need an ADR, a migration note and a major bump (`docs/release-policy.md`), unless a rule in "Corrections And Security Removals" there applies.
 - Do not hard-code solution paths or machine-specific paths in source or tests
 
 ## Naming Conventions

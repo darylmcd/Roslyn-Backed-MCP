@@ -22,6 +22,8 @@ public sealed class LogEventCatalogTests
         (6, "WorkspaceLoadCompleted", "workspace"),
         (1001, "UnexpectedFailure", "host"),
         (1002, "LogTransportDisconnected", "host"),
+        (1003, "LogRetentionSweepCompleted", "host"),
+        (1004, "LogRetentionSweepFailed", "host"),
         (2101, "ToolCompleted", "tool"),
         (2102, "ToolCancelled", "tool"),
         (2103, "ToolInputRequired", "tool"),

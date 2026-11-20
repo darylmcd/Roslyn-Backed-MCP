@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace RoslynMcp.Tests.Helpers;
@@ -81,6 +82,10 @@ internal static class PwshScriptRunner
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // Decode child output as UTF-8 rather than the host's default (OEM) codepage so
+            // non-ASCII script output round-trips.
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
             UseShellExecute = false,
             CreateNoWindow = true,
         };
