@@ -1,6 +1,6 @@
 # ADR 0003 — MCP SDK 2.x wire compatibility
 
-- **Status:** Accepted (2026-08-14)
+- **Status:** Accepted (2026-08-14); leak and correction classification amended by [ADR 0041](0041-stable-corrections-and-security-exception.md)
 - **Deciders:** repository maintainers
 - **Scope:** `ModelContextProtocol` 1.4.1 to 2.1.0 adoption and the public RoslynMcp wire contract
 - **Supersedes:** undocumented assumptions in the original SDK-upgrade release record

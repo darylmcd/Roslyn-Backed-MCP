@@ -2,13 +2,13 @@
 
 Architecture decision records (ADRs) for breaking, compatibility, and security decisions on the public surface. Breaking changes require an ADR here plus a `CHANGELOG.md` migration note (see [release-policy.md](../release-policy.md)).
 
-Numbering runs 0001 to 0038 with 30 ADR files. Gaps 0014, 0017 and 0020 to 0025 are intentional: those numbers were never published.
+Numbering runs 0001 to 0041 with 33 ADR files. Gaps 0014, 0017 and 0020 to 0025 are intentional: those numbers were never published.
 
 | File | Purpose | Status |
 |------|---------|--------|
 | [0001](0001-locationdto-nested-field-migration.md) | Additive nested `Location` on `SymbolDto`/`DiagnosticDto`/`TypeUsageDto`, deprecation window, migration stages | Accepted 2026-08-06; section 2 amended by 0011 |
 | [0002](0002-configured-sanctioned-root-boundary.md) | Server-owned sanctioned-root boundary, canonical path resolution, migration from client Roots | Accepted 2026-08-13 |
-| [0003](0003-sdk-2x-wire-compatibility.md) | SDK 1.4.1 to 2.1.0 lineage, dual-protocol wire contract, correction classification | Accepted 2026-08-14 |
+| [0003](0003-sdk-2x-wire-compatibility.md) | SDK 1.4.1 to 2.1.0 lineage, dual-protocol wire contract, correction classification | Accepted 2026-08-14; correction classification amended by 0041 |
 | [0004](0004-public-command-diagnostic-path-projection.md) | Secret-safe projection of child-process diagnostic paths (Windows, UNC, POSIX) | Accepted 2026-08-22 |
 | [0005](0005-stable-profile-preview-apply-closure.md) | Stable-profile preview/apply closure, registration invariants, token redemption | Accepted 2026-08-22 |
 | [0006](0006-modelcontextprotocol-2-2-servicing.md) | ModelContextProtocol 2.1.0 to 2.2.0 servicing, stdio-only, non-breaking | Accepted 2026-08-24 |
@@ -38,3 +38,4 @@ Numbering runs 0001 to 0038 with 30 ADR files. Gaps 0014, 0017 and 0020 to 0025 
 | [0038](0038-interface-preview-compilation.md) | Reject new compiler errors in final interface previews; compose extract-and-wire on one solution | Accepted 2026-11-08 |
 | [0039](0039-dotnet-11-sdk-floor.md) | Raise the source-build SDK floor to 11.0.100 for Roslyn 5.12 and MSBuild 18.x; keep `net10.0` | Accepted 2026-11-18 |
 | [0040](0040-extensions-11-on-net10.md) | Move the Microsoft.Extensions runtime family to 11.x on `net10.0` | Accepted 2026-11-18 |
+| [0041](0041-stable-corrections-and-security-exception.md) | Corrections and minimal leaked-input removals ship in a 5.x minor; agent qualifies with wire evidence | Accepted 2026-11-20 |
