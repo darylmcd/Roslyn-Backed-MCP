@@ -267,6 +267,7 @@
 | `split-service-with-di-preview-host-hang-triage` | Medium | — | **Triage split_service_with_di_preview after a host hang** — the machine hung and rebooted while two calls were in flight; attribution unknown. [type: bug] [source: surface-audit 20261120] | S | items/split-service-with-di-preview-host-hang-triage.md |
 | `symbol-info-strict-mode-resolves-at-whitespace` | Medium | — | **Return NotFound from strict symbol_info at a whitespace position** — it resolved the enclosing class where the schema promises NotFound. [type: bug] [source: surface-audit 20261120] | S | items/symbol-info-strict-mode-resolves-at-whitespace.md |
 | `find-type-consumers-limit-silent-truncation` | Medium | — | **Signal truncation in find_type_consumers** — limit cuts the list with no total or hasMore. [type: bug] [source: surface-audit 20261120] | S | items/find-type-consumers-limit-silent-truncation.md |
+| `tests-pwsh-nonascii-stdout-encoding-sites` | Medium | — | **Make non-ASCII pwsh stdout deterministic at the remaining spawn sites** — script-side UTF-8 plus matching test decode, or migrate raw spawns to PwshScriptRunner. [type: quality] [source: split from fix rem/fix-scorecard-encoding 2026-11-20] | M | items/tests-pwsh-nonascii-stdout-encoding-sites.md |
 
 ## Low
 
