@@ -220,7 +220,7 @@ Plugin components:
 | `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
 | `skills/` | 32 SKILL.md files. Analysis/review: analyze, review, complexity, security, test-coverage, dead-code, explain-error, architecture-review, impact-assessment, trace-flow, di-audit, inheritance-explorer, exception-audit. Refactor: refactor, refactor-loop, extract-method, code-actions, migrate-package, modernize. Search: semantic-find. Tests: test-triage, generate-tests. Session / workspace: session-undo, snippet-eval, project-inspection, workspace-health, format-sweep. Documentation: document. Release: update, version-bump, nuget-preflight, mcp-server-surface-test. |
 | `agents/` | `audit-phase-runner`, the subagent that the `mcp-server-surface-test` skill delegates context-heavy audit phases to. |
-| `hooks/` | `hooks.json` with PostToolUse prompt hooks only: a compile-check reminder after structural `*_apply` calls and a server-update notice after `server_info`. Preview-before-apply is enforced server-side by required preview tokens, not by a hook. |
+| `hooks/` | `hooks.json` with two PostToolUse hooks: a non-blocking command hook that reminds the agent to run a compile check after structural `*_apply` calls, and a prompt hook (`continueOnBlock`) for the server-update notice after `server_info`. Neither ends the agent turn. Preview-before-apply is enforced server-side by required preview tokens, not by a hook. |
 
 The skill families above are the full skill list (one `SKILL.md` per skill under `skills/`).
 
