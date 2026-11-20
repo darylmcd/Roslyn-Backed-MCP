@@ -1,6 +1,6 @@
 # persist-removed-linked-file-deletes-shared-path — Do not delete a path another project still links
 
-**row:** `persist-removed-linked-file-deletes-shared-path` · **pri:** `Medium` · **size:** `S` · **verified:** `e220816e3fa161caca44362acb8c70e9390e73bf`
+**row:** `persist-removed-linked-file-deletes-shared-path` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

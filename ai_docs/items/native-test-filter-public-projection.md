@@ -1,6 +1,6 @@
 # native-test-filter-public-projection — Redact native MTP filters on the public response
 
-**row:** `native-test-filter-public-projection` · **pri:** `Defer` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4`
+**row:** `native-test-filter-public-projection` · **pri:** `Defer` · **size:** `M`
 
 ## Anchors
 

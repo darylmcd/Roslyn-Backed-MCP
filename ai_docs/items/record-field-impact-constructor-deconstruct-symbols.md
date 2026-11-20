@@ -1,6 +1,6 @@
 # record-field-impact-constructor-deconstruct-symbols — Bind record impact sites to the affected symbols
 
-**row:** `record-field-impact-constructor-deconstruct-symbols` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384`
+**row:** `record-field-impact-constructor-deconstruct-symbols` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # split-namespace-alternate-configuration — Preserve generated split namespaces across configurations
 
-**row:** `split-namespace-alternate-configuration` · **pri:** `Medium` · **size:** `M` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384`
+**row:** `split-namespace-alternate-configuration` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

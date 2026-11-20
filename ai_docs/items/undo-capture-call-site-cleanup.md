@@ -1,6 +1,6 @@
 # undo-capture-call-site-cleanup — Collapse repeated capture/record call-site boilerplate
 
-**row:** `undo-capture-call-site-cleanup` · **pri:** `Low` · **size:** `L` · **verified:** `e220816e3fa161caca44362acb8c70e9390e73bf`
+**row:** `undo-capture-call-site-cleanup` · **pri:** `Low` · **size:** `L`
 
 ## Anchors
 

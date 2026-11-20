@@ -1,6 +1,6 @@
 # extract-type-partial-refusal-message-and-dup-loops — Reword the stale partial-declaration refusal message
 
-**row:** `extract-type-partial-refusal-message-and-dup-loops` · **pri:** `Low` · **size:** `S` · **verified:** `95f651345b37a2849fe02bd026f827813658573f` · **deps:** `type-extraction-bare-invalid-operation-refusals`
+**row:** `extract-type-partial-refusal-message-and-dup-loops` · **pri:** `Low` · **size:** `S` · **deps:** `type-extraction-bare-invalid-operation-refusals`
 
 ## Anchors
 
