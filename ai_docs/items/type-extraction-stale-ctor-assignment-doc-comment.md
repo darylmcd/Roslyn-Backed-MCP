@@ -1,6 +1,6 @@
 # type-extraction-stale-ctor-assignment-doc-comment — Doc comment says the assignment is appended; it is inserted first
 
-**row:** `type-extraction-stale-ctor-assignment-doc-comment` · **pri:** `Low` · **size:** `S` · **verified:** `95f651345b37a2849fe02bd026f827813658573f`
+**row:** `type-extraction-stale-ctor-assignment-doc-comment` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

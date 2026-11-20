@@ -1,6 +1,6 @@
 # undo-overlapping-captures-single-slot — Decide the single pending-capture slot invariant
 
-**row:** `undo-overlapping-captures-single-slot` · **pri:** `Low` · **size:** `M` · **verified:** `e220816e3fa161caca44362acb8c70e9390e73bf`
+**row:** `undo-overlapping-captures-single-slot` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

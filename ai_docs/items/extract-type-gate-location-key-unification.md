@@ -1,6 +1,6 @@
 # extract-type-gate-location-key-unification — Unify the compile-delta location key between extract_type and interface gates
 
-**row:** `extract-type-gate-location-key-unification` · **pri:** `Low` · **size:** `M` · **verified:** `95f651345b37a2849fe02bd026f827813658573f`
+**row:** `extract-type-gate-location-key-unification` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

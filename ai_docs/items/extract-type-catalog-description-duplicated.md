@@ -1,6 +1,6 @@
 # extract-type-catalog-description-duplicated — Derive the surface catalog from tool attributes
 
-**row:** `extract-type-catalog-description-duplicated` · **pri:** `Low` · **size:** `M` · **verified:** `95f651345b37a2849fe02bd026f827813658573f`
+**row:** `extract-type-catalog-description-duplicated` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

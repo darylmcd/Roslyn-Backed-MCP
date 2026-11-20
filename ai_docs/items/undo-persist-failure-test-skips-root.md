@@ -1,6 +1,6 @@
 # undo-persist-failure-test-skips-root — Make the persist-failure undo test independent of file permissions
 
-**row:** `undo-persist-failure-test-skips-root` · **pri:** `Low` · **size:** `S` · **verified:** `e220816e3fa161caca44362acb8c70e9390e73bf`
+**row:** `undo-persist-failure-test-skips-root` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

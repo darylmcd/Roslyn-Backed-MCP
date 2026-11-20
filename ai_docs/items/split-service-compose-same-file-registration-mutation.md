@@ -1,6 +1,6 @@
 # split-service-compose-same-file-registration-mutation — Compose service split edits to the same source file
 
-**row:** `split-service-compose-same-file-registration-mutation` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384`
+**row:** `split-service-compose-same-file-registration-mutation` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

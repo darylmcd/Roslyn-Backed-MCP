@@ -1,6 +1,6 @@
 # native-cache-verifier-emits-deadline-stamps — Compare the verifier's own start/deadline stamps instead of launch-relative elapsed time
 
-**row:** `native-cache-verifier-emits-deadline-stamps` · **pri:** `Low` · **size:** `S` · **verified:** `95f651345b37a2849fe02bd026f827813658573f`
+**row:** `native-cache-verifier-emits-deadline-stamps` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

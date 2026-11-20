@@ -1,6 +1,6 @@
 # namespace-relocation-consumer-scope-identity — Resolve relocation imports per consumer scope
 
-**row:** `namespace-relocation-consumer-scope-identity` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384`
+**row:** `namespace-relocation-consumer-scope-identity` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
