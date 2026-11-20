@@ -1,6 +1,6 @@
 # file-watcher-error-event-unhandled — Recover watcher coverage after FileSystemWatcher.Error
 
-**row:** `file-watcher-error-event-unhandled` · **pri:** `Medium` · **size:** `M`
+**row:** `file-watcher-error-event-unhandled` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -26,3 +26,5 @@
 ## Notes
 
 2026-11-14 cold 5.x review at ddf4cc6d. Linux .NET 10 nonrecursive watchers stop on overflow. Windows has terminal errors. Reload currently clears staleness without rearming. If complete recovery requires a breaking stable response change, reopen at the next approved major with ADR, migration note and both raw protocol eras.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

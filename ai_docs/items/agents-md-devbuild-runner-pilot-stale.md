@@ -14,3 +14,7 @@
 ## Evidence
 
 wa1 read D:/DevBuild-Runner HEAD; live host not probed. (doc-audit 2026-11-17)
+
+## Notes
+
+Operator decision 2026-11-20: retire the pilot. Delete the DevBuild-Runner pilot section from AGENTS.md; GitHub validate stays the merge proof.

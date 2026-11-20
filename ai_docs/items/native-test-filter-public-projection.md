@@ -1,6 +1,6 @@
 # native-test-filter-public-projection — Redact native MTP filters on the public response
 
-**row:** `native-test-filter-public-projection` · **pri:** `Defer` · **size:** `M`
+**row:** `native-test-filter-public-projection` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -18,3 +18,7 @@
 ## Context
 
 - Stable test_run callers can observe the projected argument value; removal changes released stable behavior. Review for the next operator-approved major, with migration and raw-wire coverage. Log output is separately tracked by executed-log-line-leaks-filter-and-paths.
+
+## Notes
+
+Operator decision 2026-11-20: security subset ships in 5.x (no v6.0.0 train). Unparked behind release-policy-correction-rule-adr, which must first amend docs/release-policy.md:24-29 to allow detail removal in a minor with ADR and migration note. Earlier notes saying "next operator-approved major" are superseded for this row.

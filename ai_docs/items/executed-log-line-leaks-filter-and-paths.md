@@ -1,6 +1,6 @@
 # executed-log-line-leaks-filter-and-paths — Stop the gated Executed log line from logging caller filter text and absolute paths
 
-**row:** `executed-log-line-leaks-filter-and-paths` · **pri:** `Medium` · **size:** `M`
+**row:** `executed-log-line-leaks-filter-and-paths` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -24,3 +24,5 @@
 ## Notes
 
 5.x screen at a12412bb: GatedCommandExecutor.cs emits published event 3001 with TargetPath, Arguments and ExitCode. The JSON-lines projection retains named fields and the rendered message. Removing or repurposing those values may break existing consumers. If the change is breaking, reopen at the next major with ADR and migration from LogCommandExecuted to the safe boundary events. Check the separate timeout path that embeds the same argument list in an exception and establish what its consumers actually observe.
+
+Operator decision 2026-11-20: security subset ships in 5.x (no v6.0.0 train). Unparked behind release-policy-correction-rule-adr, which must first amend docs/release-policy.md:24-29 to allow detail removal in a minor with ADR and migration note. Earlier notes saying "next operator-approved major" are superseded for this row.

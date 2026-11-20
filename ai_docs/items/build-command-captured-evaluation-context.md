@@ -1,6 +1,6 @@
 # build-command-captured-evaluation-context — Build with the loaded evaluation context
 
-**row:** `build-command-captured-evaluation-context` · **pri:** `Medium` · **size:** `M`
+**row:** `build-command-captured-evaluation-context` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -20,3 +20,5 @@
 ## Notes
 
 Current BuildService capture owns version and target. Qualify both stable build routes with selected public load properties, scope epochs and public argv/diagnostic redaction, and distinguish private fork admission globals. If preserving existing stable fields and semantics is impossible, resume at the next operator-approved major with ADR, migration and both raw eras.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

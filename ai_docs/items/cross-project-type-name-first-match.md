@@ -1,6 +1,6 @@
 # cross-project-type-name-first-match — Require an unambiguous cross-project type target
 
-**row:** `cross-project-type-name-first-match` · **pri:** `Medium` · **size:** `M` · **verified:** `baf8f8026d481cf8218396142e64525a158483f3`
+**row:** `cross-project-type-name-first-match` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -17,3 +17,7 @@
 ## Evidence
 
 - 5.x review: FindTypeDeclaration uses FirstOrDefault on Identifier.ValueText. All three experimental previews share it. The nested dependency-inversion fixture puts the intended containing type first, and tests post-selection binding. There is no wire evidence that distinguishes competing same-file targets.
+
+## Notes
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

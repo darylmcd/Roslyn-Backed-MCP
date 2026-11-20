@@ -25,3 +25,5 @@
 ## Notes
 
 5.x screen at d9e2b3ff. The three current consumers are experimental, but ADR 0038 mandates each affected project name and this row requires the deferred cross-project refusal migration. Reopen the chain at the next operator-approved major. Revalidate the public contract and cover both raw protocol eras when superseding the ADR.
+
+Operator decision 2026-11-20: its dep cross-project-public-refusals-echo-input is unparked as a 5.x security correction; this row follows it in 5.x under the same rule (ADR 0038 supersession and migration note still required).

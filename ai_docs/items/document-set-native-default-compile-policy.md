@@ -1,6 +1,6 @@
 # document-set-native-default-compile-policy — Preserve native Compile membership during source apply
 
-**row:** `document-set-native-default-compile-policy` · **pri:** `Medium` · **size:** `L`
+**row:** `document-set-native-default-compile-policy` · **pri:** `Medium` · **size:** `L` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -36,3 +36,5 @@
 ## Notes
 
 2026-11-17 screen at c705e2e1. Release impact unqualified. ProjectReferenceMutationRenderer.cs:71 and DocumentSetPersistenceService.cs:197 share the raw XML Compile policy. Candidate changes can affect stable create/delete/move preview output and preview-to-apply project edits. Qualify the complete preview, apply, rollback and undo behavior against the 5.x wire and file effects before choosing a slice.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

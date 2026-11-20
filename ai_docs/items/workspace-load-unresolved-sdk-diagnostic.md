@@ -1,6 +1,6 @@
 # workspace-load-unresolved-sdk-diagnostic — Surface an unavailable workspace SDK
 
-**row:** `workspace-load-unresolved-sdk-diagnostic` · **pri:** `Medium` · **size:** `M` · **verified:** `e6c61174610c8d045d559f0621b7b02d31cecbfa`
+**row:** `workspace-load-unresolved-sdk-diagnostic` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -22,3 +22,5 @@
 ## Notes
 
 5.x release screen: qualify the underlying exception on released 5.1.1 and current source for solution and project load, explicit reload, and gated stale auto-reload in both raw protocol eras. Preserve existing category, exceptionType and correlationId semantics. Only expose validated SDK identity and guidance through a compatible field. If the complete fix requires changing a stable error contract, resume at the next operator-approved major with an ADR, migration note and raw-wire coverage.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

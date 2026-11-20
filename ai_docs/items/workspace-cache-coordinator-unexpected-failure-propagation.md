@@ -1,6 +1,6 @@
 # workspace-cache-coordinator-unexpected-failure-propagation — Do not hide cache-coordinator programming failures
 
-**row:** `workspace-cache-coordinator-unexpected-failure-propagation` · **pri:** `Medium` · **size:** `S`
+**row:** `workspace-cache-coordinator-unexpected-failure-propagation` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -24,3 +24,5 @@
 5.x screen at d9e2b3ff. TryProbeAsync, ResolveAndWriteAsync and WriteFreshEntryAsync all catch unexpected non-cancellation errors. WorkspaceManager calls the pre-open probe and both post-load writers as part of stable workspace_load/reload. A complete propagation fix can turn a successful cold load into a tool failure. Select after qualifying the stable failure and recovery contract, or in the next approved major.
 
 Rechecked 5.1.1 base 9e7a9439. TryProbeAsync and both cache-write paths still return null on unexpected non-cancellation exceptions. WorkspaceManager.cs:1516 and :1579–1585 call them before publishing the stable workspace snapshot. Require raw evidence for initial load and reload under both supported protocol eras before concluding propagation fits 5.x. If the complete fix changes supported cold-load success/recovery into an error, reopen at the next operator-approved major with ADR, migration note and dual-era regression coverage.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

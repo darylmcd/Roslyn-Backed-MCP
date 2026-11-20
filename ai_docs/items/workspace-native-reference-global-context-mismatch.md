@@ -1,6 +1,6 @@
 # workspace-native-reference-global-context-mismatch — Preserve native reference evaluation context at workspace load
 
-**row:** `workspace-native-reference-global-context-mismatch` · **pri:** `Medium` · **size:** `M`
+**row:** `workspace-native-reference-global-context-mismatch` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
 
 ## Anchors
 
@@ -33,3 +33,5 @@
 ## Notes
 
 2026-11-17 screen at c705e2e1. Release impact unqualified. Reconcile stable load/reload project membership and semantic projections across native reference globals, per-project solution configuration, and the retained-child/remove-edge lifecycle before selecting. Preserve preview and fork source authority through the same loader.
+
+Operator decision 2026-11-20: corrections are minor. Unparked. Qualify this row against the amended docs/release-policy.md (row release-policy-correction-rule-adr) with before/after wire evidence: same response shape and error categories with an incorrect result made correct ships in 5.x as Fixed; a changed shape, category or published message text re-parks the row as major-only with the evidence quoted.

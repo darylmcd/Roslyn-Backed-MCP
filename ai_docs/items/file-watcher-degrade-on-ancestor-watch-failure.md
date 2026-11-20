@@ -21,3 +21,5 @@
 ## Notes
 
 Remediation run 2026-11-18: premise re-verified at live code (FileWatcherService.cs WatchCore ancestor loop ~:238-265 rethrows any exception; fail-loud is live behaviour). Operator decision required. Recommended: keep fail-loud, since degrading silently drops external ancestor .editorconfig staleness detection (the defect class PR 2094 fixed). Under fail-loud the remaining work is a test locking the contract plus one remarks sentence; degrade would be a separate M PR adding a reduced-coverage flag to the watcher entry and workspace_status (additive public contract). Plan: D:/Roslyn-Backed-MCP/.worktrees/file-watcher.report.md.
+
+Operator decision 2026-11-20: keep fail-loud. Remaining work is a test locking the contract plus one remarks sentence; no degrade mode.
