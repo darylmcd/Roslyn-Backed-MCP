@@ -430,7 +430,12 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         for (var i = 0; i < invocation.ArgumentList.Arguments.Count; i++)
         {
             var source = invocation.ArgumentList.Arguments[i];
-            if (model.GetOperation(originalInvocation.ArgumentList.Arguments[i]) is not IArgumentOperation argument)
+            var argument = ArgumentOperationResolver.Resolve(
+                model, originalInvocation.ArgumentList.Arguments[i].Expression, CancellationToken.None)
+                ?? throw new PublicInvalidOperationException("Invocation replacement cannot determine an argument's original parameter binding.");
+            // An element of an expanded params call climbs to the implicit params argument; an array passed
+            // directly to a params parameter is an Explicit argument and is rewritten like any other.
+            if (argument.ArgumentKind is ArgumentKind.ParamArray or ArgumentKind.ParamCollection)
             {
                 if (expanded is null)
                     throw new PublicInvalidOperationException("Invocation replacement cannot determine an argument's original parameter binding.");

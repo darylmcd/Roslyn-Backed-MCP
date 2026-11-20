@@ -81,23 +81,7 @@ internal sealed class SharedExpressionBindings
             return null;
 
         // These wrappers do not always have separate C# operations.
-        var operand = expression;
-        while (true)
-        {
-            var inner = operand switch
-            {
-                ParenthesizedExpressionSyntax parenthesized => parenthesized.Expression,
-                CheckedExpressionSyntax checkedExpression => checkedExpression.Expression,
-                PostfixUnaryExpressionSyntax suppression when suppression.IsKind(SyntaxKind.SuppressNullableWarningExpression) =>
-                    suppression.Operand,
-                _ => null,
-            };
-            if (inner is null)
-                break;
-
-            operand = inner;
-        }
-
+        var operand = ArgumentOperationResolver.Unwrap(expression);
         var operation = context.Model.GetOperation(operand, ct);
         // A contextual conversion can wrap the operation returned for the selected syntax.
         while (operation?.Parent is (IConversionOperation or IDelegateCreationOperation or

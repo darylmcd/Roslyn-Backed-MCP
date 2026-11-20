@@ -391,4 +391,61 @@ public sealed class ChangeSignatureBindingsTests : ChangeSignatureTestBase
         Assert.IsTrue(applied.Success, applied.Error);
         await VerifyAsync(Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
     }
+
+    private static (int Line, int Column) Locate(string source, string needle)
+    {
+        var lines = source.Split('\n');
+        var line = Array.FindIndex(lines, l => l.Contains(needle, StringComparison.Ordinal));
+        Assert.IsTrue(line >= 0, needle);
+        return (line + 1, lines[line].IndexOf(needle, StringComparison.Ordinal) + 1);
+    }
+
+    private static ChangeSignatureRequest ForgivingRequest(string op) => op switch
+    {
+        "add" => new ChangeSignatureRequest("add", Name: "extra", ParameterType: "int", DefaultValue: "7"),
+        "remove" => new ChangeSignatureRequest("remove", Name: "unused"),
+        _ => new ChangeSignatureRequest("reorder", NewOrder: "b,a,unused"),
+    };
+
+    // change-signature-unrelated-invocation-rewrite: postfix `!` and checked(...) have no operation of their
+    // own; the builder used to treat them as arguments without a semantic parameter binding and refuse.
+    [TestMethod]
+    [DataRow("add")]
+    [DataRow("remove")]
+    [DataRow("reorder")]
+    public async Task ChangeSignaturePreview_NullOperationArguments_AreResolvedThroughTheirOperand(string op)
+    {
+        var source = string.Join("\n",
+            "namespace SampleLib;",
+            "public static class SignatureProof",
+            "{",
+            "    public static int Compute(string a, int b, int unused = 0) => a.Length * 10 + b;",
+            "    public static string Run() { string name = \"ab\"; int n = 3; return Compute(name!, checked(n)).ToString(); }",
+            "}");
+        var (line, column) = Locate(source, "Compute(string");
+        await AssertSignatureProofAsync(source, ForgivingRequest(op), line, column, null, 1);
+    }
+
+    // An unrelated call that merely carries a caller-info default is still scanned: its `!` argument must not
+    // fail the whole preview. (Whether that call is rewritten at all is a separate defect.)
+    [TestMethod]
+    [DataRow("add")]
+    [DataRow("remove")]
+    [DataRow("reorder")]
+    public async Task ChangeSignaturePreview_UnrelatedCallerInfoCallWithNullOperationArgument_ReturnsPreview(string op)
+    {
+        var source = string.Join("\n",
+            "namespace SampleLib;",
+            "public static class Log",
+            "{",
+            "    public static string Tag(string v, [System.Runtime.CompilerServices.CallerArgumentExpression(\"v\")] string e = \"\") => v + \"/\" + e;",
+            "}",
+            "public static class SignatureProof",
+            "{",
+            "    public static string Compute(string a, int b, int unused = 0) => a + b;",
+            "    public static string Run() { string name = \"ab\"; return Log.Tag(name!) + Compute(name, 1); }",
+            "}");
+        var (line, column) = Locate(source, "Compute(string");
+        await AssertSignatureProofAsync(source, ForgivingRequest(op), line, column, null, null);
+    }
 }
