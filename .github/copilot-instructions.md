@@ -76,7 +76,7 @@ The server ships as a Claude Code plugin with 32 skills and safety hooks. When m
 - Never skip the validation `CI_POLICY.md` requires for code changes
 - Never merge with failing CI
 - Do not add new public stable-surface tools without updating `server_info` surface counts and `roslyn://server/catalog`
-- Do not evolve stable-surface DTOs in a breaking way: additive only, unless an ADR, a migration note and a major bump are recorded (`docs/release-policy.md`)
+- Do not evolve stable-surface DTOs in a breaking way: additive only. Breaking changes need an ADR, a migration note and a major bump (`docs/release-policy.md`), unless a rule in "Corrections And Security Removals" there applies.
 - Do not hard-code solution paths or machine-specific paths in source or tests
 
 ## Naming Conventions

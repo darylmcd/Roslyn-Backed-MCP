@@ -16,26 +16,34 @@ A release is production-ready when all of the following are true:
 
 ## Compatibility Policy
 
-- Stable tools, prompts, and resources keep backward-compatible request and response shapes within a release line.
+- Stable tools, prompts, and resources keep backward-compatible request and response shapes within a release line, except as Corrections And Security Removals allows.
 - Experimental entries may change faster and can be promoted, renamed, or removed in a future minor release.
 - Preview/apply token semantics are stable only within one running server instance and workspace version.
 - Protocol-version-specific fields, methods, capabilities, and error codes must be selected from the
   negotiated or request-scoped protocol context. Product version is never a protocol-version proxy.
-- Correcting a non-conforming stable wire shape or removing publicly observable sensitive detail is
-  still a breaking change when a client could depend on the old behavior. Record the decision and
-  migration, ship it in a major release, and cover every supported protocol era on the raw wire.
+- Correcting a non-conforming stable wire shape, or changing a stable error category or published
+  message text, is a breaking change when a client could depend on the old behavior. Record the decision and
+  migration, ship it in a major release, and cover every supported protocol era on the raw wire. Only Rule 1 and Rule 2 in Corrections And Security Removals ship in a minor; removing other sensitive detail (secrets, stack traces) and any change not qualifying under either rule stays a major change.
 - Additive completeness/status fields are minor-version compatible only when existing fields retain
   their meaning and the advertised schema permits the addition. Consumers must ignore unknown fields.
 - A security correction may omit the normal deprecation window when retaining the behavior would leak
-  secrets or sensitive implementation detail; the ADR and migration note must explain the exception.
+  secrets or sensitive implementation detail; the ADR and migration note must explain the exception. Rule 2 also lifts the major-release requirement for a defined subset.
 
 ## Versioning And Deprecation
 
 - Use semantic versioning for the published host artifact.
 - Adding stable tools/resources/prompts is a minor-version change.
-- Breaking a stable request/response contract is a major-version change.
+- Breaking a stable request/response contract is a major-version change, except Rule 1 and Rule 2 in Corrections And Security Removals.
 - Experimental-surface changes must still be called out in release notes.
 - Deprecate stable entries for at least one minor release before removal.
+
+## Corrections And Security Removals
+
+[ADR 0041](decisions/0041-stable-corrections-and-security-exception.md) records these two rules. They are the only cases where a stable-contract change ships in a 5.x minor release. No major release is scheduled; a row that fails both rules stays major-only until one is.
+
+- **Rule 1, corrections are minor.** A fix to a stable tool that keeps the response shape and error categories and only replaces an incorrect result with the correct one ships in a minor release as `Fixed` with a changelog note. A new or changed shape, error category, or published message text is a major change. Example: a count that omitted partial-class members now includes them, same fields and types, so it is Rule 1; a fix that adds a `partial` field or turns a success into `InvalidOperation` is major.
+- **Rule 2, removing leaked caller input in a minor.** Removing caller input, paths, or filter text that a stable response or documented log event exposes may ship in a minor release with an ADR and a migration note, with no deprecation window. Rule 2 overrides the response-shape rule only for the leaked datum itself. Allowed: drop the field that carries it, or redact its value; a redacted value must still satisfy the advertised output schema (otherwise it is a shape change and major). Replacement text for a redacted published message is permitted. Everything else in that response stays major, as does removing sensitive detail outside this scope (secrets, stack traces). Example: a refusal that echoes the caller's filter string drops the string from the message (Rule 2); the same PR also renaming its error category is major.
+- **Who classifies.** The implementing agent qualifies each row against both rules with before/after wire evidence (raw request and response captured on the base commit and on the change, every supported protocol era). A row that fails Rule 1 and does not qualify for Rule 2 is re-parked as major-only with the evidence quoted in the row.
 
 ## Tool-Surface Consolidation
 
