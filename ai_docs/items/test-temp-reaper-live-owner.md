@@ -1,6 +1,6 @@
 # test-temp-reaper-live-owner — Preserve stale directories owned by live test processes
 
-**row:** `test-temp-reaper-live-owner` · **pri:** `Medium` · **size:** `S`
+**row:** `test-temp-reaper-live-owner` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

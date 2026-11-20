@@ -1,11 +1,12 @@
 # gate-timing-tests-fail-under-machine-load — Make wall-clock-bound tests deterministic under full-suite load
 
-**row:** `gate-timing-tests-fail-under-machine-load` · **pri:** `Medium` · **size:** `M`
+**row:** `gate-timing-tests-fail-under-machine-load` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
 - `tests/RoslynMcp.Tests/Helpers/PwshScriptRunner.cs:115`
-- `tests/RoslynMcp.Tests/WorkspaceValidationVerdictTests.cs:50`
+- `tests/RoslynMcp.Tests/WorkspaceValidationVerdictTests.cs:72` (`CompilationCompleteness_PreservesFailuresAndScope`, git-scope arm)
+- `tests/RoslynMcp.Tests/Helpers/PwshScriptRunnerTests.cs:357` (`RunAsync_ExitedParentWithInheritedPipes_StillHonorsCancellation`)
 
 ## Acceptance
 
@@ -22,3 +23,7 @@
 - Found while landing gen 1 of that plan; the run switched to GitHub `validate` as the gate. Do not add these to `known-flakes.md`; fix the wall-clock coupling. Third test (`RunAsync_ExitedParentWithInheritedPipes_StillHonorsCancellation`) has no anchor above because its file was not opened this session: locate it with `rg` first.
 
 - 2026-10-15: CI repair removes the noncompliant allowlist branch and its resolver-only timing case. Preserve the independent Git-scope and inherited-pipe cancellation investigations; do not infer their resolution from that removal.
+
+## Notes
+
+2026-11-20: re-derived at 847d7f94: verdict test moved :50->:72; third test now located at PwshScriptRunnerTests.cs:357 (the row said it had no anchor).

@@ -1,14 +1,14 @@
 # timing-test-reaudit-wave — Re-audit the remaining wall-clock-sensitive tests
 
-**row:** `timing-test-reaudit-wave` · **pri:** `Medium` · **size:** `L`
+**row:** `timing-test-reaudit-wave` · **pri:** `Medium` · **size:** `L` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/DotnetCommandRunnerPipeLifetimeTests.cs:68`
-- `tests/RoslynMcp.Tests/HostShutdownLifecycleTests.cs:28`
-- `tests/RoslynMcp.Tests/ExternalEditStalenessTests.cs:153`
+- `tests/RoslynMcp.Tests/DotnetCommandRunnerPipeLifetimeTests.cs:94`
+- `tests/RoslynMcp.Tests/HostShutdownLifecycleTests.cs:42`
+- `tests/RoslynMcp.Tests/ExternalEditStalenessTests.cs:154`
 - `tests/RoslynMcp.Tests/PerformanceBehaviorTests.cs:113`
-- `tests/RoslynMcp.Tests/Helpers/PwshScriptRunnerTests.cs:181`
+- `tests/RoslynMcp.Tests/Helpers/PwshScriptRunnerTests.cs:357`
 
 ## Acceptance
 
@@ -43,3 +43,7 @@
 | Corrected preservation | 31 cases across formatter/helper/release-lag classes passed with zero failures, skips or individual overlaps; two final launcher ownership controls passed. Deadlines, fairness, CI workers and baselines were unchanged. |
 | Hosted and merge | Candidate0707b3e6 passed all four Windows legs, both Linux legs, SDK-floor, CodeQL and aggregate validation. PR1828 squash merged2026-10-25T04:39:54Z as7f877e84d76eaead701a5e1bd33d297f21ac1497; entire merged tree equals the reviewed candidate. This supersedes the earlier repair-qualification-pending checkpoint. |
 | Attribution limit | The controlled worker-retention mechanism is proven and repaired. The exact cause of the original natural hosted verifier timeout remains unproven; no unchanged red CI run was retried. Old probe cleanup remains an independent row. |
+
+## Notes
+
+2026-11-20: re-derived at 847d7f94: deadlines still present; anchors re-lined (PipeLifetime 68->94, HostShutdown 28->42, ExternalEdit 153->154, PwshScriptRunnerTests 181->357). Acceptance text still cites the old DotnetCommandRunnerPipeLifetimeTests.cs:68; read it as :94.

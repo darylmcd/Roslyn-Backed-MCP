@@ -1,6 +1,6 @@
 # split-service-refuse-cross-partition-references — Preserve semantic references across service partitions
 
-**row:** `split-service-refuse-cross-partition-references` · **pri:** `Medium` · **size:** `M`
+**row:** `split-service-refuse-cross-partition-references` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

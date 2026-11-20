@@ -1,6 +1,6 @@
 # test-heavy-integration-class-cost — Cut the per-test cost of InterfaceBaseTypeInsertionIntegrationTests
 
-**row:** `test-heavy-integration-class-cost` · **pri:** `Medium` · **size:** `L`
+**row:** `test-heavy-integration-class-cost` · **pri:** `Medium` · **size:** `L` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

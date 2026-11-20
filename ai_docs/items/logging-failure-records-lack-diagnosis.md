@@ -1,6 +1,6 @@
 # logging-failure-records-lack-diagnosis — Put error category and sanitized frames in tool-failure log records
 
-**row:** `logging-failure-records-lack-diagnosis` · **pri:** `Medium` · **size:** `M`
+**row:** `logging-failure-records-lack-diagnosis` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

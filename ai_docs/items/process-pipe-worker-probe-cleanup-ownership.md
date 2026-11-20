@@ -1,6 +1,6 @@
 # process-pipe-worker-probe-cleanup-ownership — Preserve isolated probe failure and cleanup ownership
 
-**row:** `process-pipe-worker-probe-cleanup-ownership` · **pri:** `Medium` · **size:** `S`
+**row:** `process-pipe-worker-probe-cleanup-ownership` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

@@ -1,11 +1,11 @@
 # workspace-close-isolated-nuget-handles — Investigate private NuGet cache retention after workspace close
 
-**row:** `workspace-close-isolated-nuget-handles` · **pri:** `Medium` · **size:** `M`
+**row:** `workspace-close-isolated-nuget-handles` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:524` CloseCore lifecycle investigation boundary.
-- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1619` WorkspaceSession.Dispose ownership boundary.
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:727` CloseCore lifecycle investigation boundary.
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1888` WorkspaceSession.Dispose ownership boundary.
 - `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs` workspace_close lifecycle contract.
 - `tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs` isolated workspace lifecycle regression location.
 - `tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs` analyzer ownership regression location, only if traced cause reaches this mechanism.

@@ -1,6 +1,6 @@
 # logging-retention-dead-pid-sweep — Sweep dead-process JSON-lines files at startup
 
-**row:** `logging-retention-dead-pid-sweep` · **pri:** `High` · **size:** `M`
+**row:** `logging-retention-dead-pid-sweep` · **pri:** `High` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

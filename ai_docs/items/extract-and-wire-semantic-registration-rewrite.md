@@ -1,10 +1,10 @@
 # extract-and-wire-semantic-registration-rewrite — Rewrite bound DI registrations semantically
 
-**row:** `extract-and-wire-semantic-registration-rewrite` · **pri:** `Medium` · **size:** `M`
+**row:** `extract-and-wire-semantic-registration-rewrite` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ExtractAndWireOrchestrator.cs:188`
+- `src/RoslynMcp.Roslyn/Services/ExtractAndWireOrchestrator.cs:175` (`RewriteDiRegistration`, a string-content rewrite called at `:78` and `:89`)
 
 ## Acceptance
 

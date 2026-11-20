@@ -1,6 +1,6 @@
 # test-fixture-primary-cleanup-preservation — Preserve primary failures while attempting all owned cleanup
 
-**row:** `test-fixture-primary-cleanup-preservation` · **pri:** `Medium` · **size:** `L`
+**row:** `test-fixture-primary-cleanup-preservation` · **pri:** `Medium` · **size:** `L` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

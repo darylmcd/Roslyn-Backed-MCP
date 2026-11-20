@@ -1,6 +1,6 @@
 # release-cut-maintenance-branch-support — Let release-cut cut a minor/patch from a maintenance branch when main carries pending BREAKING fragments
 
-**row:** `release-cut-maintenance-branch-support` · **pri:** `Medium` · **size:** `M`
+**row:** `release-cut-maintenance-branch-support` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

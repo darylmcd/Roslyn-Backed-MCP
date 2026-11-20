@@ -1,12 +1,11 @@
 # central-package-query-evaluated-policy — Read central package versions from the active evaluated context
 
-**row:** `central-package-query-evaluated-policy` · **pri:** `Medium` · **size:** `M`
+**row:** `central-package-query-evaluated-policy` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Helpers/MsBuildMetadataHelper.cs:73`
-- `src/RoslynMcp.Roslyn/Helpers/MsBuildMetadataHelper.cs:115`
-- `src/RoslynMcp.Roslyn/Services/NuGetDependencyService.cs:117`
+- `src/RoslynMcp.Roslyn/Helpers/MsBuildMetadataHelper.cs:76` (`FindDirectoryPackagesProps`) and `:118` (`TryGetCentralPackageVersion`, an XML read of the props file at `:92`)
+- `src/RoslynMcp.Roslyn/Services/NuGetDependencyService.cs:101` and `:131` (callers)
 
 ## Acceptance
 

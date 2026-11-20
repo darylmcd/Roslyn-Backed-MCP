@@ -1,11 +1,11 @@
 # test-concurrency-observation-atomicity — Make maximum concurrency observation atomic
 
-**row:** `test-concurrency-observation-atomicity` · **pri:** `Medium` · **size:** `S`
+**row:** `test-concurrency-observation-atomicity` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/PerformanceBehaviorTests.cs:181`
-- `tests/RoslynMcp.Tests/WorkspaceExecutionGateTests.cs:975`
+- `tests/RoslynMcp.Tests/PerformanceBehaviorTests.cs:233` (`MaxConcurrentCalls = Math.Max(...)` after an `Interlocked.Increment`)
+- `tests/RoslynMcp.Tests/WorkspaceExecutionGateTests.cs:1274` (`if (n > MaxConcurrent) MaxConcurrent = n;` under the stale Volatile comment at `:1273`)
 
 ## Acceptance
 

@@ -1,6 +1,6 @@
 # symbol-tools-disambiguation-collaborator-extraction — Extract symbol disambiguation orchestration
 
-**row:** `symbol-tools-disambiguation-collaborator-extraction` · **pri:** `Medium` · **size:** `M`
+**row:** `symbol-tools-disambiguation-collaborator-extraction` · **pri:** `Medium` · **size:** `M` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 

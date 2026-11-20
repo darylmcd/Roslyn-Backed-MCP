@@ -1,6 +1,6 @@
 # logging-observability-contract-doc-incomplete — Complete the observability contract docs with agent recipes
 
-**row:** `logging-observability-contract-doc-incomplete` · **pri:** `Medium` · **size:** `S`
+**row:** `logging-observability-contract-doc-incomplete` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
@@ -9,10 +9,13 @@
 
 ## Acceptance
 
-- [ ] Docs table answers the A10 questions with exact rg/jq commands that were run in this audit (V1, V2, V3, V5).
-- [ ] Event-code table present (generated from the catalog row).
-- [ ] AGENTS.md carries the agent-first observability contract section pointing at the consumer doc.
-- [ ] Doc link checker (verify-ai-docs) passes.
+- [x] File-name pattern (`roslyn-mcp-{pid}.jsonl` plus `.N` rotation) documented in `docs/stdio-client-integration.md` (Operator observability, retention paragraph). Shipped with #1962.
+- [x] Timing recipe (`jq` over `ToolCompleted`) and the dependency-boundary `jq` recipe present in the same doc.
+- [x] Event-code table present, drift-tested against `LogEvents` (#2060).
+- [ ] Add an explicit correlate-one-request recipe: one `jq` command that selects every record for a given `correlationId` and orders by `ts`. The doc only says the id joins records in prose.
+- [ ] Add a health recipe that shows the exact `server_heartbeat` invocation and the fields an agent reads from it (today only one prose sentence names the tool).
+- [ ] `AGENTS.md` carries a short agent-first observability contract section (pointer table: sink env var, file path, event catalog, recipes) that points at the consumer doc; it has no observability section today.
+- [ ] Doc link checker (`verify-ai-docs`) passes.
 
 ## Evidence
 
@@ -25,3 +28,7 @@ Consumer docs (docs/stdio-client-integration.md:35-65) document the path, sink v
 Write after the fields/eventName/catalog rows so recipes use final names.
 
 **Approach:** Fill the A10 template from the audit prompt with the verified commands; keep AGENTS.md section a pointer table, consumer doc the authority.
+
+## Notes
+
+2026-11-20: re-derived at 847d7f94: file-name pattern, timing recipe and event table already shipped (#1962, #2060); remaining Acceptance narrowed to correlate recipe, heartbeat recipe, AGENTS.md section.

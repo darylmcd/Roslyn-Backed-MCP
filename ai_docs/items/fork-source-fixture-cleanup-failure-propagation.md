@@ -1,13 +1,13 @@
 # fork-source-fixture-cleanup-failure-propagation — Preserve lifecycle fixture failures through cleanup
 
-**row:** `fork-source-fixture-cleanup-failure-propagation` · **pri:** `Medium` · **size:** `S`
+**row:** `fork-source-fixture-cleanup-failure-propagation` · **pri:** `Medium` · **size:** `S` · **verified:** `847d7f94a4f3565da05208010a1397da04f1047f`
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceLifecycleTests.cs:468` — `ForkFixture.ReapAsync`, current main14fbdc02.
-- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceLifecycleTests.cs:477` — `ForkFixture.DisposeAsync`, current main14fbdc02.
-- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceLifecycleTests.cs:56` — eight reap callers; additional sequential cleanup at86-87,115-116,180-184,304-305,354-355.
-- `tests/RoslynMcp.Tests/Helpers/CleanupFailureCollector.cs` — existing cleanup-failure collector; recheck exact API before use.
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceLifecycleTests.cs:475` — `ForkFixture.ReapAsync`, HEAD 847d7f94.
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceLifecycleTests.cs:484` — `ForkFixture.DisposeAsync`, HEAD 847d7f94.
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceLifecycleTests.cs:56` — eight reap callers (56, 86, 115, 153, 239, 268, 304, 359); additional sequential cleanup at 86-87, 115-116, 180-184, 304-305, 354-355 (re-line before editing).
+- `tests/RoslynMcp.Tests/Helpers/CleanupFailureCollector.cs` — existing cleanup-failure collector; the lifecycle test file does not use it yet; recheck exact API before use.
 
 ## Acceptance
 
