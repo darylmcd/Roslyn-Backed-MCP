@@ -660,6 +660,236 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         Assert.IsTrue(File.Exists(workspace.GetPath("SampleLib", "BarServiceSubtract.cs")));
     }
 
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Split_Service_With_Di_Preview_Combines_Same_File_Registration_With_Facade_Edit(bool passSourceAsHostRegistrationFile)
+    {
+        // split-service-compose-same-file-registration-mutation: the service and its registration
+        // live in one file. The facade edit and the registration rewrite used to be staged as two
+        // full-text replacements of that path; apply is last-wins, so the facade was silently lost.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        // SampleApp does not reference Microsoft.Extensions.DependencyInjection; a minimal stand-in
+        // keeps the applied graph compilable so the test can prove it.
+        await File.WriteAllTextAsync(
+            workspace.GetPath("SampleApp", "DiStub.cs"),
+            "namespace Microsoft.Extensions.DependencyInjection;\n\npublic interface IServiceCollection { }\n\n" +
+            "public static class DiStubExtensions\n{\n    public static IServiceCollection AddTransient<T>(this IServiceCollection services) where T : class => services;\n}\n",
+            CancellationToken.None);
+        var serviceFilePath = workspace.GetPath("SampleApp", "SameFileService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "using Microsoft.Extensions.DependencyInjection;\n\nnamespace SampleApp;\n\n" +
+            "public class SameFileService\n{\n    public string Alpha(string input) => input + \"-alpha\";\n\n    public string Beta(string input) => input + \"-beta\";\n}\n\n" +
+            "public static class SameFileRegistrations\n{\n    public static void AddServices(IServiceCollection services)\n    {\n        services.AddTransient<SameFileService>();\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var preview = await CreateSymbolRefactorService(compositeStore).PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "SameFileService",
+            new[]
+            {
+                new SplitServicePartition("SameFileServiceA", new[] { "Alpha" }),
+                new SplitServicePartition("SameFileServiceB", new[] { "Beta" }),
+            },
+            hostRegistrationFile: passSourceAsHostRegistrationFile ? serviceFilePath : null,
+            CancellationToken.None);
+
+        // GUARD: a registration in a sibling type that stays in the facade file is the valid case; it must not warn.
+        Assert.IsNull(preview.Warnings, "A same-file registration in a sibling type is valid and must not warn.");
+        StringAssert.Contains(preview.Description, "DI-registration rewrite");
+        Assert.AreEqual(1, preview.Changes.Count(change => PathsEqual(change.FilePath, serviceFilePath)),
+            "The source file must be reviewed as one combined diff, not one diff per staged edit.");
+        var stored = compositeStore.Retrieve(preview.PreviewToken, null)
+            ?? throw new AssertFailedException("Composite preview token not found.");
+        Assert.AreEqual(1, stored.Mutations.Count(mutation => PathsEqual(mutation.FilePath, serviceFilePath)),
+            "The source file must be staged as exactly one mutation.");
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var contents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        StringAssert.Contains(contents, "public SameFileService(SameFileServiceA", "The facade edit must survive.");
+        StringAssert.Contains(contents, "_sameFileServiceA.Alpha(input)", "The facade must forward Alpha.");
+        Assert.IsFalse(contents.Contains("\"-alpha\"", StringComparison.Ordinal), "The original Alpha body must be gone from the facade.");
+        StringAssert.Contains(contents, "services.AddTransient<SameFileServiceA>()");
+        StringAssert.Contains(contents, "services.AddTransient<SameFileServiceB>()");
+        StringAssert.Contains(contents, "services.AddTransient<SameFileService>()");
+        await AssertProjectCompilesAsync(workspace, "SampleApp", $"--- combined file ---\n{contents}");
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Warns_When_Same_File_Registration_Moves_With_Its_Member()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var serviceFilePath = workspace.GetPath("SampleApp", "MovedRegService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "using Microsoft.Extensions.DependencyInjection;\n\nnamespace SampleApp;\n\n" +
+            "public class MovedRegService\n{\n    public void Register(IServiceCollection services)\n    {\n        services.AddTransient<MovedRegService>();\n    }\n\n    public int Beta(int x) => x + 1;\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var preview = await CreateSymbolRefactorService(compositeStore).PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "MovedRegService",
+            new[]
+            {
+                new SplitServicePartition("MovedRegServiceA", new[] { "Register" }),
+                new SplitServicePartition("MovedRegServiceB", new[] { "Beta" }),
+            },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.Warnings);
+        Assert.IsTrue(
+            preview.Warnings!.Any(warning => warning.Contains("MovedRegServiceA", StringComparison.Ordinal)
+                && warning.Contains("manual", StringComparison.OrdinalIgnoreCase)),
+            $"The warning must name the partition that received the registration. Warnings:\n{string.Join("\n", preview.Warnings!)}");
+        Assert.IsFalse(preview.Description.Contains("DI-registration rewrite", StringComparison.Ordinal),
+            "No registration rewrite was staged, so the description must not claim one.");
+        Assert.AreEqual(1, preview.Changes.Count(change => PathsEqual(change.FilePath, serviceFilePath)));
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        StringAssert.Contains(
+            await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None),
+            "public MovedRegService(MovedRegServiceA", "The facade edit must survive.");
+        StringAssert.Contains(
+            await File.ReadAllTextAsync(workspace.GetPath("SampleApp", "MovedRegServiceA.cs"), CancellationToken.None),
+            "services.AddTransient<MovedRegService>();", "The moved registration statement lives on, unchanged, in the partition.");
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Rewrites_Retained_Registration_And_Warns_About_Moved_One()
+    {
+        // Match-count based: one registration stays in the facade (rewritten), one moves with its method.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var serviceFilePath = workspace.GetPath("SampleApp", "MixedRegService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "using Microsoft.Extensions.DependencyInjection;\n\nnamespace SampleApp;\n\n" +
+            "public class MixedRegService\n{\n" +
+            "    public static void RegisterRetained(IServiceCollection services)\n    {\n        services.AddTransient<MixedRegService>();\n    }\n\n" +
+            "    public void RegisterMoved(IServiceCollection services)\n    {\n        services.AddTransient<MixedRegService>();\n    }\n\n" +
+            "    public int Beta(int x) => x + 1;\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var preview = await CreateSymbolRefactorService(compositeStore).PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "MixedRegService",
+            new[]
+            {
+                new SplitServicePartition("MixedRegServiceA", new[] { "RegisterMoved" }),
+                new SplitServicePartition("MixedRegServiceB", new[] { "Beta" }),
+            },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        StringAssert.Contains(preview.Description, "DI-registration rewrite");
+        Assert.IsNotNull(preview.Warnings);
+        Assert.IsTrue(
+            preview.Warnings!.Any(warning => warning.Contains("MixedRegServiceA", StringComparison.Ordinal)
+                && warning.Contains("manual", StringComparison.OrdinalIgnoreCase)),
+            $"The moved registration must be reported even though another registration was rewritten. Warnings:\n{string.Join("\n", preview.Warnings!)}");
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var contents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        StringAssert.Contains(contents, "services.AddTransient<MixedRegServiceA>()", "The retained registration is rewritten to the partitions plus the facade.");
+        StringAssert.Contains(contents, "services.AddTransient<MixedRegServiceB>()");
+        StringAssert.Contains(contents, "public MixedRegService(MixedRegServiceA", "The facade edit must survive.");
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Gives_Generic_Warning_When_Dropped_Registration_Is_Not_In_A_Partitioned_Method()
+    {
+        // A field that only a partitioned method uses migrates to that partition and is dropped from
+        // the facade. A registration inside its initializer lambda is dropped without sitting in any
+        // partitioned METHOD, so there is no partition to name: the warning is the generic one.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var serviceFilePath = workspace.GetPath("SampleApp", "FieldRegService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "using System;\nusing Microsoft.Extensions.DependencyInjection;\n\nnamespace SampleApp;\n\n" +
+            "public class FieldRegService\n{\n    private readonly Action<IServiceCollection> _register = services =>\n    {\n        services.AddTransient<FieldRegService>();\n    };\n\n" +
+            "    public void Alpha(IServiceCollection services) => _register(services);\n\n    public int Beta(int x) => x + 2;\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var preview = await CreateSymbolRefactorService(compositeStore).PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "FieldRegService",
+            new[]
+            {
+                new SplitServicePartition("FieldRegServiceA", new[] { "Alpha" }),
+                new SplitServicePartition("FieldRegServiceB", new[] { "Beta" }),
+            },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.Warnings);
+        Assert.IsTrue(
+            preview.Warnings!.Any(warning => warning.Contains("not carried onto the facade", StringComparison.Ordinal)),
+            $"A dropped registration outside any partitioned method needs the generic warning. Warnings:\n{string.Join("\n", preview.Warnings!)}");
+        Assert.IsFalse(
+            preview.Warnings!.Any(warning => warning.Contains("moved to partition", StringComparison.Ordinal)),
+            "No partitioned method held the registration statement, so no partition may be named.");
+        Assert.IsFalse(preview.Description.Contains("DI-registration rewrite", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Description_Omits_Rewrite_Suffix_When_Registration_Found_But_Not_Rewritten()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var serviceFilePath = workspace.GetPath("SampleLib", "NoMatchService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n\npublic class NoMatchService\n{\n    public int Alpha(int x) => x + 1;\n\n    public int Beta(int x) => x + 2;\n}\n",
+            CancellationToken.None);
+        // The call is found by the registration scan, but it is not a standalone `services.AddX<T>();` statement.
+        var registrationsFile = workspace.GetPath("SampleApp", "NoMatchRegistration.cs");
+        const string registrationText =
+            "using Microsoft.Extensions.DependencyInjection;\nusing SampleLib;\n\npublic static class NoMatchRegistration\n{\n    public static void AddServices(IServiceCollection services)\n    {\n        _ = services.AddTransient<NoMatchService>();\n    }\n}\n";
+        await File.WriteAllTextAsync(registrationsFile, registrationText, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var preview = await CreateSymbolRefactorService(compositeStore).PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "NoMatchService",
+            new[]
+            {
+                new SplitServicePartition("NoMatchServiceA", new[] { "Alpha" }),
+                new SplitServicePartition("NoMatchServiceB", new[] { "Beta" }),
+            },
+            hostRegistrationFile: registrationsFile,
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.Warnings);
+        Assert.IsTrue(
+            preview.Warnings!.Any(warning => warning.Contains("no textual rewrite matched", StringComparison.Ordinal)),
+            $"Warnings:\n{string.Join("\n", preview.Warnings!)}");
+        Assert.AreEqual("Split service 'NoMatchService' into 2 partition(s) with forwarding facade", preview.Description,
+            "No registration rewrite was staged, so the description must not claim one.");
+        Assert.AreEqual(0, preview.Changes.Count(change => PathsEqual(change.FilePath, registrationsFile)));
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+        Assert.AreEqual(registrationText, await File.ReadAllTextAsync(registrationsFile, CancellationToken.None));
+    }
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+
     private static SymbolRefactorService CreateSymbolRefactorService(CompositePreviewStore compositeStore)
     {
         var restructureService = new RestructureService(WorkspaceManager, PreviewStore);
@@ -672,11 +902,14 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             DiRegistrationService);
     }
 
-    private static async Task AssertSampleLibCompilesAsync(IsolatedWorkspaceScope workspace, string evidence)
+    private static Task AssertSampleLibCompilesAsync(IsolatedWorkspaceScope workspace, string evidence) =>
+        AssertProjectCompilesAsync(workspace, "SampleLib", evidence);
+
+    private static async Task AssertProjectCompilesAsync(IsolatedWorkspaceScope workspace, string projectName, string evidence)
     {
         await workspace.ReloadAsync(CancellationToken.None);
         var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
-        var project = solution.Projects.Single(candidate => string.Equals(candidate.Name, "SampleLib", StringComparison.Ordinal));
+        var project = solution.Projects.Single(candidate => string.Equals(candidate.Name, projectName, StringComparison.Ordinal));
         var compilation = await project.GetCompilationAsync(CancellationToken.None);
         Assert.IsNotNull(compilation);
         var errors = compilation.GetDiagnostics(CancellationToken.None)

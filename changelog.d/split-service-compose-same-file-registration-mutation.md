@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** `split_service_with_di_preview` no longer drops the facade rewrite when the service's DI registration is in the same file as the service: the facade edit and the registration rewrite were staged as two full-text replacements of one path and the apply is last-wins, so the file kept the original class while the partition files were still created. The registration is now rewritten over the facade text and reviewed as one combined diff and one mutation for that file. A same-file registration that sat inside a method that moved to a partition (or in another member the facade drops) is no longer silently lost: the preview warns, naming the partition, that it needs manual wiring, including when another registration in the file was rewritten. The preview description now claims a "DI-registration rewrite" only when one was actually staged (previously it also did when a registration was found but no rewrite matched). Closes `split-service-compose-same-file-registration-mutation`.

@@ -1,6 +1,6 @@
 # change-signature-freeze-literal-and-test-gaps — Tidy caller-info freeze literals and close its test gaps
 
-**row:** `change-signature-freeze-literal-and-test-gaps` · **pri:** `Low` · **size:** `S` · **verified:** `82be4c9b0e7f752e0d899554b037d175a2f6dfcd` · **deps:** `change-signature-unrelated-invocation-rewrite`
+**row:** `change-signature-freeze-literal-and-test-gaps` · **pri:** `Low` · **size:** `S` · **verified:** `82be4c9b0e7f752e0d899554b037d175a2f6dfcd`
 
 ## Anchors
 
