@@ -1,6 +1,6 @@
 # pragma-lookup-default-parse-options — Pragma pair lookup must parse with the document's project parse options
 
-**row:** `pragma-lookup-default-parse-options` · **pri:** `Medium` · **size:** `S` · **deps:** `edit-syntax-check-project-parse-options`
+**row:** `pragma-lookup-default-parse-options` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

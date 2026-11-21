@@ -1,6 +1,6 @@
 # apply-persistence-null-filepath-silent-skip — Refuse or report a reviewed document with a null FilePath instead of skipping it
 
-**row:** `apply-persistence-null-filepath-silent-skip` · **pri:** `Medium` · **size:** `M` · **deps:** `rebase-changed-document-silent-drop`
+**row:** `apply-persistence-null-filepath-silent-skip` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
