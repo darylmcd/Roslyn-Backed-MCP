@@ -48,7 +48,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
-        var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName);
+        var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName,
+            "move_type_to_project_preview", UnsupportedTypeKindRefusal.AnyTypeDeclaration);
         MovedDeclarationFileWriter.EnsureTopLevelDeclaration(typeDeclaration);
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
@@ -128,7 +129,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var (updatedSolution, afterRepin) = await BuildExtractInterfaceSolutionAsync(workspaceId, solution, filePath, typeName,
-            interfaceName, targetProjectName, ct).ConfigureAwait(false);
+            interfaceName, targetProjectName, "extract_interface_cross_project_preview", ct).ConfigureAwait(false);
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
         updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(solution, updatedSolution,
             InterfaceLinkedDocumentReconciler.DocumentsChangedSince(afterRepin, updatedSolution),
@@ -147,13 +148,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
     /// </returns>
     internal async Task<(Solution Solution, Solution AfterRepin)> BuildExtractInterfaceSolutionAsync(
         string workspaceId, Solution solution, string filePath, string typeName,
-        string? interfaceName, string? targetProjectName, CancellationToken ct)
+        string? interfaceName, string? targetProjectName, string toolName, CancellationToken ct)
     {
         var sourceDocument = SymbolResolver.FindDocument(solution, filePath)
             ?? throw new PublicInvalidOperationException($"Document not found: {filePath}");
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new PublicInvalidOperationException("Source document must be a C# compilation unit.");
-        var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName);
+        var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName, toolName, UnsupportedTypeKindRefusal.ClassAndStruct);
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
@@ -235,7 +236,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ?? throw new InvalidOperationException($"Document not found: {filePath}");
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
-        var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName);
+        var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName,
+            "dependency_inversion_preview", UnsupportedTypeKindRefusal.ClassAndStruct);
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
@@ -399,11 +401,24 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                ?? throw WorkspaceProjectResolver.NotFound(solution.Projects.Select(project => project.Name));
     }
 
-    private static TypeDeclarationSyntax FindTypeDeclaration(CompilationUnitSyntax root, string typeName)
+    /// <summary>
+    /// Finds the class/struct/record/interface declaration named <paramref name="typeName"/>. A same-named
+    /// enum or delegate is refused by kind (not reported as missing), and only when no type declaration matched.
+    /// </summary>
+    private static TypeDeclarationSyntax FindTypeDeclaration(
+        CompilationUnitSyntax root, string typeName, string toolName, string supportedKinds)
     {
-        return root.DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(candidate => string.Equals(candidate.Identifier.ValueText, typeName, StringComparison.Ordinal))
-            ?? throw new PublicInvalidOperationException($"Type '{typeName}' was not found in the source document.");
+        SyntaxNode? unsupported = null;
+        foreach (var node in root.DescendantNodes())
+        {
+            if (!string.Equals(NamespaceMemberClassifier.GetTypeLikeName(node), typeName, StringComparison.Ordinal)) continue;
+            if (node is TypeDeclarationSyntax declaration) return declaration;
+            unsupported ??= node;
+        }
+
+        throw unsupported is not null
+            ? UnsupportedTypeKindRefusal.Create(unsupported.Kind(), toolName, supportedKinds)
+            : new PublicInvalidOperationException($"Type '{typeName}' was not found in the source document.");
     }
 
     private static string GetContainingNamespace(INamedTypeSymbol typeSymbol)
