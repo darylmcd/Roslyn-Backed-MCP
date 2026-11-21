@@ -129,7 +129,7 @@ Authorization, rate-limiting, metrics, request-body transformation → **filter 
 Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC messages; any other byte corrupts the client's parser.
 
 - [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs) clears default providers and writes every log level to stderr.
-- Structured unexpected-failure diagnostics are an opt-in local stderr sink, independent of MCP capabilities.
+- Structured unexpected-failure diagnostics go to the default-on bounded file sink (or an opt-in `stderr` sink), independent of MCP capabilities.
 - Background: [Stainless guide](https://www.stainless.com/mcp/error-handling-and-debugging-mcp-servers).
 
 ---
@@ -138,7 +138,7 @@ Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC 
 
 - **Separate public and server diagnostic projections.** Unexpected failures use `PublicExceptionDetailPolicy`: clients receive a stable remediation and correlation reference, while the optional sink receives only exception-type topology and stack depth. Expected-error message redaction is not covered by this policy.
 - **Include a `_meta` block** on every response carrying gate-metrics snapshot (queue time, hold time, elapsed, stale-reload timing). Enables concurrency audits from inside the agent loop. The filter opens the scope and calls `ToolErrorHandler.InjectMetaIfPossible` on both success and error paths.
-- **Do not use MCP `notifications/message` for server observability.** Operational logs and the opt-in structured sink use stderr; `server_info` reports `logging: false`.
+- **Do not use MCP `notifications/message` for server observability.** Operational logs use stderr and the default file sink holds the same stream (`server_info.observability.logFile`); `server_info` reports `logging: false`.
 
 ---
 
@@ -161,7 +161,7 @@ Decisions derived from the principles above; each row points at its implementati
 | No per-handler error wrapper in tool bodies | § 3 anti-pattern | Tool files under `src/RoslynMcp.Host.Stdio/Tools/` carry no wrapper. Classifier unit tests call [`ToolExecutionTestHarness.RunAsync`](../../tests/RoslynMcp.Tests/Helpers/ToolExecutionTestHarness.cs), an in-process mirror of the filter's control flow that lives only in the test project. |
 | `ClassifyError` handles pre-binding failures in BOTH shapes: wrapped in `TargetInvocationException` / `InvalidOperationException` AND raw-unwrapped as the SDK filter pipeline delivers them | § 4.1 | [`ToolErrorHandler.TryClassifyBindingLike`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) — single helper invoked against both the inner exception (wrapped) and the exception itself (unwrapped). Resolves [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830) for this repo's filter path. Regression coverage: [`ToolErrorHandlerParameterValidationTests`](../../tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs), [`StructuredCallToolFilterTests.BuildErrorResult_MissingRequiredParameter_*`](../../tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs). |
 | `_meta` block on every response with gate-metrics snapshot | § 5 | `StructuredDispatchPipeline` opens the [`AmbientGateMetrics`](../../src/RoslynMcp.Core/Services/AmbientGateMetrics.cs) scope on entry and `StructuredResultProjector` injects the snapshot via [`ToolErrorHandler.InjectMetaIfPossible`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) on both success (into the first `TextContentBlock` of the returned `CallToolResult`) and error (into the envelope text). Array-rooted responses pass through unchanged — see `StructuredCallToolFilter.InjectMetaIntoContent`. |
-| Stdio transport writes framed JSON-RPC only; operational and opt-in structured diagnostics use stderr | § 4.4, § 5 | [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs), [`ServerObservability`](../../src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs), [`McpLoggingLifecycleWireTests`](../../tests/RoslynMcp.Tests/McpLoggingLifecycleWireTests.cs) |
+| Stdio transport writes framed JSON-RPC only; operational logs use stderr; structured diagnostics go to the default file sink or an opt-in stderr sink | § 4.4, § 5 | [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs), [`ServerObservability`](../../src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs), [`McpLoggingLifecycleWireTests`](../../tests/RoslynMcp.Tests/McpLoggingLifecycleWireTests.cs) |
 | Services registered against interface + concrete type for SDK binder compatibility | § 6 | [`ServiceCollectionExtensions.AddRoslynMcpHostServices`](../../src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs) bridges `NuGetVersionChecker` to `ILatestVersionProvider`; [`ServiceCollectionExtensionsTests`](../../tests/RoslynMcp.Tests/ServiceCollectionExtensionsTests.cs) and [`ToolDiResolutionTests`](../../tests/RoslynMcp.Tests/ToolDiResolutionTests.cs) guard the composition root. |
 
 ---

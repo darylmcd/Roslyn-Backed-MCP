@@ -88,7 +88,7 @@ dispositions are recorded in
 
 Protocol logging is retired: the server advertises `logging: false`, emits no
 `notifications/message`, and keeps operational output on stderr. Secret-safe structured unexpected-
-failure diagnostics are opt-in through `ROSLYNMCP_OBSERVABILITY_SINK=stderr` and are independent of
+failure diagnostics go to the default-on bounded file sink (`ROSLYNMCP_OBSERVABILITY_SINK=disabled` opts out; `stderr` adds a stderr projection) and are independent of
 the negotiated MCP protocol revision.
 
 ---

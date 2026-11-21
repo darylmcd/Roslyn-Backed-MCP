@@ -77,7 +77,7 @@ Copy-ready `.mcp.json` examples live under `docs/mcp-json-examples/`.
 ## MCP Runtime Notes
 
 - `stdout` is reserved for MCP protocol traffic.
-- Operational logging goes to `stderr`; the opt-in file sink is additive.
+- Operational logging goes to `stderr`; the bounded file sink is on by default (`ROSLYNMCP_OBSERVABILITY_SINK=disabled` opts out) and `server_info.observability.logFile` names it.
 - For custom stdio clients and the consumer-facing observability contract, see `../docs/stdio-client-integration.md#operator-observability`.
 
 ## Roslyn MCP Client Policy (AI sessions)
