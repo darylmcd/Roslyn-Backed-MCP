@@ -1179,17 +1179,21 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 SyntaxFactory.Token(SyntaxKind.SealedKeyword)))
             .WithMembers(SyntaxFactory.List(extractedMembers));
 
-        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-        MemberDeclarationSyntax topLevelMember = namespaceDecl switch
+        // extract-type-nested-namespace-identity: the extracted type lives in the source type's FULL
+        // containing namespace, joined across every enclosing namespace scope (the previous code copied
+        // only the innermost scope's own name). The wrapper style follows the outermost scope, as in
+        // InterfaceExtractionService.BuildInterfaceFile; the global namespace emits no wrapper.
+        var namespaceName = NamespaceMemberClassifier.GetContainingNamespaceName(typeDecl);
+        MemberDeclarationSyntax topLevelMember = newTypeDecl;
+        if (namespaceName.Length > 0)
         {
-            FileScopedNamespaceDeclarationSyntax fileScopedNs =>
-                SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
-                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
-            NamespaceDeclarationSyntax blockNs =>
-                SyntaxFactory.NamespaceDeclaration(blockNs.Name)
-                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
-            _ => newTypeDecl
-        };
+            var outermostScope = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Last();
+            var name = SyntaxFactory.ParseName(namespaceName);
+            var members = SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl);
+            topLevelMember = outermostScope is FileScopedNamespaceDeclarationSyntax
+                ? SyntaxFactory.FileScopedNamespaceDeclaration(name).WithMembers(members)
+                : SyntaxFactory.NamespaceDeclaration(name).WithMembers(members);
+        }
 
         var compilationUnit = SyntaxFactory.CompilationUnit()
             .WithUsings(sourceRoot.Usings)
