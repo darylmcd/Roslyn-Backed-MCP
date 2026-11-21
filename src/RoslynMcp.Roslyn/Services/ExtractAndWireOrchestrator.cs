@@ -41,7 +41,8 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         await DetectDuplicateInterfaceAsync(currentSolution, filePath, typeName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
         var (modifiedSolution, afterRepin) = await _crossProjectRefactoringService.BuildExtractInterfaceSolutionAsync(
-            workspaceId, currentSolution, filePath, typeName, resolvedInterfaceName, targetProjectName, ct).ConfigureAwait(false);
+            workspaceId, currentSolution, filePath, typeName, resolvedInterfaceName, targetProjectName,
+            "extract_and_wire_interface_preview", ct).ConfigureAwait(false);
         var generatedInterface = await ResolveGeneratedInterfaceAsync(currentSolution, modifiedSolution, resolvedInterfaceName, ct).ConfigureAwait(false);
         modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileLinkedCopiesAsync(currentSolution, modifiedSolution,
             InterfaceLinkedDocumentReconciler.DocumentsChangedSince(afterRepin, modifiedSolution), generatedInterface.DocumentId.ProjectId,
