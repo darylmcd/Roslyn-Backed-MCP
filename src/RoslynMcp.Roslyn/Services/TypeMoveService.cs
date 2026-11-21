@@ -48,19 +48,10 @@ public sealed class TypeMoveService : ITypeMoveService
             // DelegateDeclarationSyntax is a MemberDeclarationSyntax. Both are addressable by name from
             // symbol_search, so callers reasonably expect the move tool to handle them — surface a
             // structured error that names the resolved kind instead of the misleading "not found" text.
-            var unsupportedKind = declaration?.Kind();
-
-            if (unsupportedKind is not null)
+            if (declaration is not null)
             {
-                var typeKindName = unsupportedKind switch
-                {
-                    SyntaxKind.EnumDeclaration => "Enum",
-                    SyntaxKind.DelegateDeclaration => "Delegate",
-                    _ => unsupportedKind.ToString()!,
-                };
-                throw new PublicInvalidOperationException(
-                    $"type-kind {typeKindName} not supported for this refactor. " +
-                    $"move_type_to_file_preview currently supports class, struct, record, and interface declarations only.");
+                throw UnsupportedTypeKindRefusal.Create(declaration.Kind(), "move_type_to_file_preview",
+                    UnsupportedTypeKindRefusal.AnyTypeDeclaration);
             }
 
             throw new PublicInvalidOperationException("Type was not found in the source document. Use document_symbols to select a declaration from that file.");
