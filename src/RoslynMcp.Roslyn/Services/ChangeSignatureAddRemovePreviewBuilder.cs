@@ -231,7 +231,8 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
 
     private sealed record BindingEvidence(
         SyntaxAnnotation Annotation, string Target, string TypeArguments,
-        string? Type, string? ConvertedType, string Conversion, string? Parameter, SyntaxNode OriginalNode, ImmutableArray<SyntaxAnnotation> ContainingArguments);
+        string? Type, string? ConvertedType, string Conversion, string? Parameter, SyntaxNode OriginalNode, ImmutableArray<SyntaxAnnotation> ContainingArguments,
+        ImmutableArray<(string Parameter, object? Value)> CallerInfo = default);
 
     public static async Task<(Solution Accumulator, List<FileChangeDto> Changes, List<CallsiteUpdateDto> CallsiteUpdates, List<string> Warnings)> BuildAsync(
         Solution solution,
@@ -407,22 +408,17 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     var annotation = new SyntaxAnnotation(BindingTag);
                     AddAnnotation(annotations, node, annotation);
                     var binding = CreateEvidence(annotation, target, node, model, declarationKeys);
-                    documentEvidence.Add(binding);
-                    var editedCall = declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(target)));
                     var operation = originalOperation;
-                    var arguments = operation switch
+                    var arguments = ArgumentsOf(operation);
+                    if (!declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(target))))
                     {
-                        IInvocationOperation invocation => invocation.Arguments,
-                        IObjectCreationOperation creation => creation.Arguments,
-                        _ => FindArgumentOperations(operation),
-                    };
-                    var callerInfoCall = arguments.Any(argument => argument.ArgumentKind == ArgumentKind.DefaultValue
-                        && argument.Parameter?.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString()
-                            is "System.Runtime.CompilerServices.CallerLineNumberAttribute"
-                                or "System.Runtime.CompilerServices.CallerFilePathAttribute"
-                                or "System.Runtime.CompilerServices.CallerMemberNameAttribute"
-                                or "System.Runtime.CompilerServices.CallerArgumentExpressionAttribute") == true);
-                    if (!editedCall && !callerInfoCall) continue;
+                        // Unrelated calls are never rewritten here. Their binding stays verified, and their
+                        // compiler-supplied caller-info values are recorded so drift can be frozen afterwards.
+                        var callerInfo = CallerInfoValues(arguments);
+                        documentEvidence.Add(callerInfo.IsDefaultOrEmpty ? binding : binding with { CallerInfo = callerInfo });
+                        continue;
+                    }
+                    documentEvidence.Add(binding);
                     var operationTarget = operation is IInvocationOperation boundInvocation
                         ? boundInvocation.TargetMethod : target;
                     calls[node] = new BoundCallContext(operationTarget, arguments, model, list.Arguments, node.SpanStart, requiredAliases);
@@ -460,11 +456,6 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                         { Parameter = owner?.Parameter?.Name });
                     }
                 }
-                // Generated declarations can move caller-info sites even when those calls target another member.
-                // Freeze their original values only in documents containing actual signature edits.
-                if (!declarations.ContainsKey(document.Id)
-                    && !calls.Values.Any(context => declarationKeys.ContainsKey(context.TargetIdentity)))
-                    foreach (var call in calls.Keys.ToArray()) calls.Remove(call);
                 if (annotations.Count == 0 && diagnosticAnnotations.Count == 0) continue;
                 var marked = root.ReplaceSyntax(annotations.Keys,
                     (original, rewritten) => rewritten.WithAdditionalAnnotations(annotations[original].ToArray()),
@@ -502,12 +493,10 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     if (callAnnotation is not null && GetArguments(rewritten) is { } list)
                     {
                         var context = replacements[callAnnotation];
-                        var editedCall = declarationKeys.ContainsKey(context.TargetIdentity);
-                        var updated = editedCall ? updateCallsite(context, list.Arguments)
-                            : context.NameOriginalArguments(list.Arguments, null);
+                        var updated = updateCallsite(context, list.Arguments);
                         if (constructionPlans.TryGetValue(context.TargetIdentity, out var construction))
                             updated = construction.Arguments(updated, context.ContainingTypeName());
-                        if (editedCall && !updated.Equals(list.Arguments)) count++;
+                        if (!updated.Equals(list.Arguments)) count++;
                         rewritten = WithArguments(rewritten, list.WithArguments(updated));
                         if (rewritten is InvocationExpressionSyntax genericInvocation)
                             rewritten = genericInvocation.WithExpression(context.RetainTypeSubstitution(genericInvocation.Expression));
@@ -571,6 +560,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             changedDocuments.Add(documentId);
         }
 
+        candidate = await FreezeDriftedCallerInfoAsync(candidate, evidence, changedDocuments, ct).ConfigureAwait(false);
         var warnings = await ValidateCandidateAsync(solution, candidate, affectedProjects, evidence, declarationKeys, diagnosticEvidence, ct).ConfigureAwait(false);
         // Drop verification-only annotations and unchanged document versions from the public preview.
         var accumulator = solution;
@@ -901,6 +891,79 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         foreach (var child in operation.ChildOperations)
             if (child is IArgumentOperation argument) result.Add(argument);
         return result.ToImmutable();
+    }
+
+    private static ImmutableArray<IArgumentOperation> ArgumentsOf(IOperation? operation) => operation switch
+    {
+        IInvocationOperation invocation => invocation.Arguments,
+        IObjectCreationOperation creation => creation.Arguments,
+        _ => FindArgumentOperations(operation),
+    };
+
+    private static bool IsCallerInfoParameter(IParameterSymbol parameter) =>
+        parameter.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString()
+            is "System.Runtime.CompilerServices.CallerLineNumberAttribute"
+                or "System.Runtime.CompilerServices.CallerFilePathAttribute"
+                or "System.Runtime.CompilerServices.CallerMemberNameAttribute"
+                or "System.Runtime.CompilerServices.CallerArgumentExpressionAttribute");
+
+    // Compiler-supplied caller-info values of one call: only omitted arguments carry them.
+    private static ImmutableArray<(string Parameter, object? Value)> CallerInfoValues(ImmutableArray<IArgumentOperation> arguments) =>
+        [.. arguments.Where(argument => argument.ArgumentKind == ArgumentKind.DefaultValue
+                && argument.Parameter is { } parameter && IsCallerInfoParameter(parameter)
+                && argument.Value.ConstantValue is { HasValue: true, Value: not null })
+            .Select(argument => (argument.Parameter!.Name, argument.Value.ConstantValue.Value))];
+
+    // An edit can move a caller-info site (line shifts, changed argument text) in a call that does not bind to the
+    // target. Compare the candidate with the recorded original values and name ONLY the drifted parameters.
+    // Freezing a call can change an enclosing call's argument text, so repeat until nothing drifts; each pass
+    // freezes at least one parameter that is no longer defaulted, so the loop terminates.
+    private static async Task<Solution> FreezeDriftedCallerInfoAsync(
+        Solution candidate, Dictionary<DocumentId, List<BindingEvidence>> evidence,
+        HashSet<DocumentId> changedDocuments, CancellationToken ct)
+    {
+        while (true)
+        {
+            var frozenAny = false;
+            foreach (var (documentId, entries) in evidence)
+            {
+                if (!changedDocuments.Contains(documentId)) continue;
+                var recorded = entries.Where(entry => !entry.CallerInfo.IsDefaultOrEmpty).ToArray();
+                if (recorded.Length == 0) continue;
+                var document = candidate.GetDocument(documentId)!;
+                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+                if (root is null || model is null) continue;
+                var nodes = root.DescendantNodes().Where(n => n.HasAnnotations(BindingTag))
+                    .SelectMany(n => n.GetAnnotations(BindingTag).Select(a => (Annotation: a, Node: n)))
+                    .ToDictionary(pair => pair.Annotation, pair => pair.Node);
+                var freezes = new Dictionary<SyntaxNode, List<(string Parameter, object? Value)>>();
+                foreach (var entry in recorded)
+                {
+                    // A call that left the candidate with its argument is judged by ValidateCandidateAsync.
+                    if (!nodes.TryGetValue(entry.Annotation, out var node)) continue;
+                    var arguments = ArgumentsOf(model.GetOperation(node, ct));
+                    var drifted = entry.CallerInfo.Where(original => arguments.Any(argument =>
+                        argument.ArgumentKind == ArgumentKind.DefaultValue && argument.Parameter?.Name == original.Parameter
+                        && argument.Value.ConstantValue.HasValue
+                        && !Equals(argument.Value.ConstantValue.Value, original.Value))).ToList();
+                    if (drifted.Count > 0) freezes[node] = drifted;
+                }
+                if (freezes.Count == 0) continue;
+                var frozen = root.ReplaceNodes(freezes.Keys, (original, rewritten) =>
+                {
+                    var list = GetArguments(rewritten)!;
+                    var added = list.Arguments.AddRange(freezes[original].Select((freeze, index) =>
+                        NamedArgument(freeze.Parameter, SyntaxFactory.ParseExpression(freeze.Value is string text
+                            ? SymbolDisplay.FormatLiteral(text, true) : string.Create(CultureInfo.InvariantCulture, $"{freeze.Value}")))
+                            .WithLeadingTrivia(list.Arguments.Count + index == 0 ? default : SyntaxFactory.Space)));
+                    return WithArguments(rewritten, list.WithArguments(added));
+                });
+                candidate = candidate.WithDocumentSyntaxRoot(documentId, RoundTripRoot(frozen, document, ct));
+                frozenAny = true;
+            }
+            if (!frozenAny) return candidate;
+        }
     }
 
     // ArgumentTag annotates the argument expression; any other tagged node is not an argument.

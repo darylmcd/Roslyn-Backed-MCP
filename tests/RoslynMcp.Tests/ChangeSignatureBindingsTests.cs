@@ -497,7 +497,7 @@ public sealed class ChangeSignatureBindingsTests : ChangeSignatureTestBase
             Proof("return Log.TagG(name) + Compute(name, 1);"), ForgivingRequest(op));
         Assert.AreEqual(before, after);
         StringAssert.Contains(text, "Log.TagG(name) + Compute(");
-        Assert.IsFalse(text.Contains("TagG<", StringComparison.Ordinal), text);
+        Assert.IsFalse(text.Contains("Log.TagG<", StringComparison.Ordinal), text);
     }
 
     // The edited call is the caller-info argument of an unrelated call: its text drifts, so only that
