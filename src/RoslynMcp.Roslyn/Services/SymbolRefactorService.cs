@@ -208,9 +208,11 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var changes = new List<FileChangeDto>();
 
         EmitPartitionFiles(context, partitions, mutations, changes);
-        await EmitFacadeFileAsync(context, sourceFilePath, sourceType, partitions, mutations, changes, ct).ConfigureAwait(false);
+        var sourceOriginalContent = await EmitFacadeFileAsync(
+            context, sourceFilePath, sourceType, partitions, mutations, changes, ct).ConfigureAwait(false);
         var hasRegistrationRewrite = await EmitDiRegistrationDeltaAsync(
-            workspaceId, sourceType, hostRegistrationFile, partitions, mutations, changes, warnings, ct).ConfigureAwait(false);
+            workspaceId, context, sourceFilePath, sourceOriginalContent, sourceType, hostRegistrationFile, partitions,
+            mutations, changes, warnings, ct).ConfigureAwait(false);
 
         var description = $"Split service '{sourceType}' into {partitions.Count} partition(s) with forwarding facade"
             + (hasRegistrationRewrite ? " and DI-registration rewrite" : "");
@@ -469,7 +471,9 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     //    type's declaration node inside the original compilation unit, so sibling types, the
     //    type's attributes / base list / constraints, and non-method members survive. Only the
     //    synthesized nodes carry Formatter.Annotation, so unrelated formatting is untouched.
-    private static async Task EmitFacadeFileAsync(
+    // Returns the source file's text before the facade rewrite: later steps that edit the same
+    // file stage over the facade text and need it as the diff's "before" side.
+    private static async Task<string> EmitFacadeFileAsync(
         SplitServiceContext context,
         string sourceFilePath,
         string sourceType,
@@ -484,15 +488,53 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var formattedDocument = await AnnotatedFormatting.FormatAsync(
             context.Document.WithSyntaxRoot(facadeRoot), originalContent, ct).ConfigureAwait(false);
         var facadeContent = (await formattedDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-        mutations.Add(new CompositeFileMutation(sourceFilePath, facadeContent, CompositeFileMutationMode.Edit));
-        changes.Add(new FileChangeDto(sourceFilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, facadeContent, sourceFilePath)));
+        StageEdit(mutations, changes, sourceFilePath, originalContent, facadeContent);
+        return originalContent;
+    }
+
+    /// <summary>
+    /// Stages the final content of one existing file. A path is staged once: a second edit of the
+    /// same path replaces the first mutation and its diff (the apply writes mutations in order, so
+    /// two staged edits would silently discard the first). The diff always runs from
+    /// <paramref name="originalContent"/> to <paramref name="updatedContent"/>.
+    /// </summary>
+    private static void StageEdit(
+        List<CompositeFileMutation> mutations,
+        List<FileChangeDto> changes,
+        string filePath,
+        string originalContent,
+        string updatedContent)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var change = new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, filePath));
+        var mutationIndex = mutations.FindIndex(m => FileSystemPath.Comparer.Equals(Path.GetFullPath(m.FilePath), fullPath));
+        var changeIndex = changes.FindIndex(c => FileSystemPath.Comparer.Equals(Path.GetFullPath(c.FilePath), fullPath));
+        if (mutationIndex < 0 && changeIndex < 0)
+        {
+            mutations.Add(new CompositeFileMutation(filePath, updatedContent, CompositeFileMutationMode.Edit));
+            changes.Add(change);
+            return;
+        }
+
+        if (mutationIndex < 0 || changeIndex < 0 || mutations[mutationIndex].Mode != CompositeFileMutationMode.Edit)
+        {
+            throw InvalidOperationErrors.Internal("A split-service preview staged a file as something other than one edit with one diff.");
+        }
+
+        mutations[mutationIndex] = new CompositeFileMutation(mutations[mutationIndex].FilePath, updatedContent, CompositeFileMutationMode.Edit);
+        changes[changeIndex] = change;
     }
 
     // 3) Rewrite the host DI registration file if provided. When hostRegistrationFile is
     //    null we fall back to scanning the workspace for any registration of sourceType.
-    // Returns true when a textual rewrite was emitted (used to annotate the preview description).
+    // Returns true only when a registration rewrite was actually staged (it annotates the preview
+    // description). When the registration lives in the source file itself, the rewrite runs over
+    // the staged facade text and merges into the facade's single mutation and diff.
     private async Task<bool> EmitDiRegistrationDeltaAsync(
         string workspaceId,
+        SplitServiceContext context,
+        string sourceFilePath,
+        string sourceOriginalContent,
         string sourceType,
         string? hostRegistrationFile,
         IReadOnlyList<SplitServicePartition> partitions,
@@ -512,19 +554,94 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         }
 
         var (registrationFilePath, lifetime) = registrationInfo.Value;
-        var registrationContent = await File.ReadAllTextAsync(registrationFilePath, ct).ConfigureAwait(false);
-        var rewrittenRegistration = RewriteDiRegistrations(registrationContent, sourceType, lifetime, partitions);
-        if (string.Equals(registrationContent, rewrittenRegistration, StringComparison.Ordinal))
+        var inSourceFile = FileSystemPath.Comparer.Equals(Path.GetFullPath(registrationFilePath), Path.GetFullPath(sourceFilePath));
+        var originalContent = inSourceFile
+            ? sourceOriginalContent
+            : await File.ReadAllTextAsync(registrationFilePath, ct).ConfigureAwait(false);
+        var baseContent = inSourceFile
+            ? mutations.Single(m => FileSystemPath.Comparer.Equals(Path.GetFullPath(m.FilePath), Path.GetFullPath(sourceFilePath))).UpdatedContent
+                ?? throw InvalidOperationErrors.Internal("The staged facade edit has no content.")
+            : originalContent;
+
+        var rewrittenRegistration = RewriteDiRegistrations(baseContent, sourceType, lifetime, partitions);
+        var droppedWarned = inSourceFile &&
+            WarnAboutRegistrationsDroppedFromFacade(context, sourceType, registrationFilePath, originalContent, baseContent, warnings);
+        if (string.Equals(baseContent, rewrittenRegistration, StringComparison.Ordinal))
         {
-            warnings.Add(
-                $"A '{sourceType}' DI registration was discovered in '{registrationFilePath}' but no textual rewrite matched. Inspect the file manually.");
-            return true;
+            if (!droppedWarned)
+            {
+                warnings.Add(
+                    $"A '{sourceType}' DI registration was discovered in '{registrationFilePath}' but no textual rewrite matched. Inspect the file manually.");
+            }
+
+            return false;
         }
 
-        mutations.Add(new CompositeFileMutation(registrationFilePath, rewrittenRegistration, CompositeFileMutationMode.Edit));
-        changes.Add(new FileChangeDto(registrationFilePath, DiffGenerator.GenerateUnifiedDiff(registrationContent, rewrittenRegistration, registrationFilePath)));
+        StageEdit(mutations, changes, registrationFilePath, originalContent, rewrittenRegistration);
         return true;
     }
+
+    /// <summary>
+    /// The facade replaces the source type's declaration, so a registration statement inside a
+    /// member the facade drops (a method that moved to a partition, a migrated field's initializer)
+    /// is absent from the facade text and is never rewritten. Counts the source-type registrations
+    /// in the original text against the facade's and warns for every excess one: a registration in
+    /// a partitioned method names its partition, any other gets the generic warning. Returns true
+    /// when a warning was added.
+    /// </summary>
+    private static bool WarnAboutRegistrationsDroppedFromFacade(
+        SplitServiceContext context,
+        string sourceType,
+        string filePath,
+        string originalContent,
+        string facadeContent,
+        List<string> warnings)
+    {
+        var originalMatches = FindSourceTypeRegistrations(originalContent, sourceType);
+        var dropped = originalMatches.Count - FindSourceTypeRegistrations(facadeContent, sourceType).Count;
+        if (dropped <= 0)
+        {
+            return false;
+        }
+
+        var originalRoot = CSharpSyntaxTree.ParseText(originalContent).GetRoot();
+        var movedTo = new List<string>();
+        foreach (var match in originalMatches)
+        {
+            var statementStart = match.Index + match.Groups["indent"].Length;
+            var enclosingMember = originalRoot.FindToken(statementStart).Parent?.AncestorsAndSelf()
+                .OfType<MemberDeclarationSyntax>().FirstOrDefault();
+            if (enclosingMember is MethodDeclarationSyntax { Parent: TypeDeclarationSyntax owner } method &&
+                string.Equals(owner.Identifier.ValueText, sourceType, StringComparison.Ordinal) &&
+                context.MemberToPartition.TryGetValue(method.Identifier.ValueText, out var partition))
+            {
+                movedTo.Add(partition.TypeName);
+            }
+        }
+
+        if (movedTo.Count > 0)
+        {
+            warnings.Add(
+                $"{movedTo.Count} '{sourceType}' DI registration statement(s) in '{filePath}' sit inside member(s) that moved to partition " +
+                $"{string.Join(", ", movedTo.Distinct(StringComparer.Ordinal).Select(name => $"'{name}'"))}; the statement now lives in that partition's file " +
+                "and was not rewritten. Wire the partition registrations manually.");
+        }
+
+        var unplaced = dropped - movedTo.Count;
+        if (unplaced > 0)
+        {
+            warnings.Add(
+                $"{unplaced} '{sourceType}' DI registration statement(s) in '{filePath}' were not carried onto the facade (they sat in a member the facade drops) " +
+                "and were not rewritten. Inspect the file manually.");
+        }
+
+        return true;
+    }
+
+    private static IReadOnlyList<Match> FindSourceTypeRegistrations(string content, string sourceType) =>
+        ServiceRegistrationStatementRegex().Matches(content)
+            .Where(match => GenericsReferenceSourceType(match.Groups["generics"].Value, sourceType))
+            .ToArray();
 
     private async Task<(string FilePath, string Lifetime)?> TryResolveRegistrationAsync(
         string workspaceId, string sourceType, string? hostRegistrationFile, CancellationToken ct)
