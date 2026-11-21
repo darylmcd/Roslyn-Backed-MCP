@@ -2707,4 +2707,79 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
             Assert.IsInstanceOfType<ArgumentException>(error.InnerException);
     }
 
+    /// <summary>
+    /// extract-type-nested-namespace-identity, instance shape: the injected composition field must bind to
+    /// the extracted type. The old emitter copied only the innermost namespace name, put the type in the
+    /// wrong namespace, and RefuseAddedCompilerErrorsAsync then falsely refused the preview (CS0246).
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace SampleLib\n{\n    namespace Inner\n    {\n", "    }\n}\n", "SampleLib.Inner")]
+    [DataRow("namespace A.B\n{\n    namespace C\n    {\n", "    }\n}\n", "A.B.C")]
+    [DataRow("namespace SampleLib\n{\n    namespace @event\n    {\n", "    }\n}\n", "SampleLib.@event")]
+    public async Task ExtractType_NestedNamespace_InstanceMove_BindsToFullNamespace(
+        string opening, string closing, string expectedNamespace)
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "NestedInstanceSrc.cs",
+            opening + "public class NestedInstanceSrc\n{\n    private int Helper() => 1;\n    public int V => Helper();\n}\n" + closing);
+
+        var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+            fixture.WorkspaceId, fixture.FilePath, "NestedInstanceSrc", ["Helper"], "HelperType", null, CancellationToken.None);
+
+        await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        var compilation = await GetModifiedSampleLibCompilationAsync(preview.PreviewToken);
+        var helperType = SingleType(compilation, "HelperType");
+        Assert.AreEqual(expectedNamespace, helperType.ContainingNamespace.ToDisplayString());
+        var field = compilation.GetTypeByMetadataName(
+                helperType.ContainingNamespace.ToDisplayString().Replace("@", string.Empty) + ".NestedInstanceSrc")!
+            .GetMembers().OfType<IFieldSymbol>().Single(f => f.Name == "_helperType");
+        Assert.IsTrue(SymbolEqualityComparer.Default.Equals(helperType, field.Type),
+            "the injected composition field must bind to the extracted type");
+    }
+
+    /// <summary>
+    /// extract-type-nested-namespace-identity, static shape: nothing retained references the new type, so
+    /// the old emitter SUCCEEDED with the type in the wrong namespace. Conditional-compilation rows pin that
+    /// the namespace comes from the active syntax only and never copies siblings or directive trivia.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace SampleLib\n{\n    namespace Inner\n    {\n", "    }\n}\n", "SampleLib.Inner")]
+    [DataRow("namespace A.B\n{\n    namespace C\n    {\n", "    }\n}\n", "A.B.C")]
+    [DataRow("namespace SampleLib\n{\n    namespace @event\n    {\n", "    }\n}\n", "SampleLib.@event")]
+    [DataRow("namespace SampleLib;\n", "", "SampleLib")]
+    [DataRow("namespace SampleLib\n{\n#if NEVER_DEFINED_SYMBOL\n    namespace Wrong\n    {\n#else\n    namespace Inner\n    {\n#endif\n", "    }\n}\n", "SampleLib.Inner")]
+    [DataRow("namespace SampleLib\n{\n    namespace Inner\n    {\n#if !NEVER_DEFINED_SYMBOL\n        public class ActiveSibling { }\n#endif\n", "    }\n}\n", "SampleLib.Inner")]
+    public async Task ExtractType_NestedNamespace_UnreferencedStaticMove_EmitsFullNamespace(
+        string opening, string closing, string expectedNamespace)
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "NestedStaticSrc.cs",
+            opening + "public class NestedStaticSrc\n{\n    private static int Unused() => 1;\n    public int Keep => 2;\n}\n" + closing);
+
+        var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+            fixture.WorkspaceId, fixture.FilePath, "NestedStaticSrc", ["Unused"], "UnusedType", null, CancellationToken.None);
+
+        await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        var compilation = await GetModifiedSampleLibCompilationAsync(preview.PreviewToken);
+        Assert.AreEqual(expectedNamespace, SingleType(compilation, "UnusedType").ContainingNamespace.ToDisplayString());
+        Assert.HasCount(1, compilation.GetSymbolsWithName("NestedStaticSrc", SymbolFilter.Type).ToList());
+        Assert.IsLessThanOrEqualTo(1, compilation.GetSymbolsWithName("ActiveSibling", SymbolFilter.Type).Count(),
+            "a conditional sibling declaration must never be duplicated into the extracted file");
+
+        var added = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution.Projects
+            .SelectMany(p => p.Documents).Single(d => d.Name == "UnusedType.cs");
+        var addedText = (await added.GetTextAsync(CancellationToken.None)).ToString();
+        Assert.IsFalse(addedText.Contains("#if", StringComparison.Ordinal), addedText);
+        Assert.IsFalse(addedText.Contains("Sibling", StringComparison.Ordinal), addedText);
+        Assert.IsFalse(addedText.Contains("Wrong", StringComparison.Ordinal), addedText);
+    }
+
+    private static async Task<Compilation> GetModifiedSampleLibCompilationAsync(string previewToken)
+    {
+        var project = PreviewStore.Retrieve(previewToken)!.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib");
+        return (await project.GetCompilationAsync(CancellationToken.None))!;
+    }
+
+    private static INamedTypeSymbol SingleType(Compilation compilation, string name) =>
+        (INamedTypeSymbol)compilation.GetSymbolsWithName(name, SymbolFilter.Type).Single();
 }
