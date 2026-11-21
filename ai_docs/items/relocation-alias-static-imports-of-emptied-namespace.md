@@ -1,6 +1,6 @@
 # relocation-alias-static-imports-of-emptied-namespace — Relocation import pass mishandles alias and static imports of the emptied namespace
 
-**row:** `relocation-alias-static-imports-of-emptied-namespace` · **pri:** `Medium` · **size:** `S` · **verified:** `bb6be1177b4e60b73706031338223f9018889772`
+**row:** `relocation-alias-static-imports-of-emptied-namespace` · **pri:** `Medium` · **size:** `S` · **deps:** `namespace-relocation-consumer-scope-identity`
 
 ## Anchors
 
@@ -9,8 +9,8 @@
 
 ## Acceptance
 
-- [ ] A consumer with `using A = Old;` or `using static Old;` compiles after change_type_namespace empties Old; alias/static directives are neither matched as the plain old/new import nor left dangling.
-- [ ] Red-first test per directive kind; project-wide `global using Old;` covered or explicitly refused.
+- [ ] A consumer with `using A = Old;` compiles after change_type_namespace empties Old: the alias is retargeted to the new namespace (checked against the updated compilation: Old may still exist through a child namespace such as `Old.Sub`). `using static Old;` on a namespace is invalid C# (CS7007) and is not a case.
+- [ ] Red-first test (flip the existing known-gap test in NamespaceRelocationTests); project-wide `global using Old;` covered or explicitly refused. Depends on the per-scope consumer rewrite of `namespace-relocation-consumer-scope-identity` (the spelling gate currently skips a file whose only directive is the alias).
 
 ## Evidence
 
