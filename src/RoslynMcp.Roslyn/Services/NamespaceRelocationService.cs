@@ -566,9 +566,12 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         IReadOnlyList<string> FallbackKeptOldUsingFiles);
 
     /// <summary>
-    /// Rewrite <c>using</c> directives across every document that references the relocated type.
-    /// Respects ambient-namespace resolution — consumers that share an ancestor namespace with
-    /// the old OR new location may not need a <c>using</c> change at all.
+    /// Rewrite the imports of every document that references the relocated type or imports the
+    /// namespace it left. References are judged by binding, scope by scope: each reference site is
+    /// resolved in the updated solution and measured against ITS OWN enclosing namespace chain, and
+    /// every <c>using</c> list (the compilation unit and each namespace declaration) is rewritten
+    /// on its own. Respects ambient-namespace resolution — a scope that shares an ancestor
+    /// namespace with the old OR new location may not need an import change at all.
     /// </summary>
     private static async Task<ConsumerUpdateResult> UpdateConsumerUsingsAsync(
         Solution solution,
@@ -578,25 +581,30 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         bool siblingTypesRemaining,
         CancellationToken ct)
     {
+        var fromKey = NamespaceNameIdentity.Of(fromNamespace);
+        var toKey = NamespaceNameIdentity.Of(toNamespace);
         var fallbackFiles = new List<string>();
-        foreach (var project in solution.Projects.ToList())
+        // Every document is bound against the same snapshot; the edits are applied together after
+        // the loop, because applying one would invalidate the compilations the next one binds in.
+        var updates = new List<(DocumentId Id, CompilationUnitSyntax Root)>();
+        foreach (var project in solution.Projects)
         {
-            foreach (var document in project.Documents.ToList())
+            foreach (var document in project.Documents)
             {
                 ct.ThrowIfCancellationRequested();
-                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax;
-                if (root is null) continue;
+                if (await document.GetSyntaxRootAsync(ct).ConfigureAwait(false) is not CompilationUnitSyntax root) continue;
 
-                if (!DocumentReferencesType(root, typeName)) continue;
+                // Cheap syntactic pre-filter; the semantic work below decides what is a reference.
+                var mentionsType = root.DescendantNodes().OfType<IdentifierNameSyntax>()
+                    .Any(id => string.Equals(id.Identifier.ValueText, typeName, StringComparison.Ordinal));
+                var importsOld = root.DescendantNodes().OfType<UsingDirectiveSyntax>()
+                    .Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, fromKey));
+                if (!mentionsType && !importsOld) continue;
 
-                var consumerNs = GetDocumentPrimaryNamespace(root);
-                var updatedRoot = AdjustUsings(
-                    root,
-                    consumerNs,
-                    fromNamespace,
-                    toNamespace,
-                    siblingTypesRemaining,
-                    out var keptFallback);
+                var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for a consumer document.");
+                var updatedRoot = AdjustImports(
+                    root, semanticModel, typeName, fromKey, toNamespace, toKey, siblingTypesRemaining, ct, out var keptFallback);
 
                 if (keptFallback && document.FilePath is not null)
                 {
@@ -605,112 +613,140 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
                 if (!ReferenceEquals(updatedRoot, root))
                 {
-                    solution = solution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
+                    updates.Add((document.Id, updatedRoot));
                 }
             }
+        }
+
+        foreach (var (id, updatedRoot) in updates)
+        {
+            solution = solution.WithDocumentSyntaxRoot(id, updatedRoot);
         }
         return new ConsumerUpdateResult(solution, fallbackFiles);
     }
 
     /// <summary>
-    /// Cheap textual pre-filter for the consumer pass — returns true if the document contains an
-    /// identifier matching <paramref name="typeName"/>. False positives are fine: <see
-    /// cref="AdjustUsings"/> is a no-op when no <c>using</c> rewrite is needed.
-    /// </summary>
-    private static bool DocumentReferencesType(CompilationUnitSyntax root, string typeName)
-    {
-        foreach (var id in root.DescendantNodes().OfType<IdentifierNameSyntax>())
-        {
-            if (string.Equals(id.Identifier.ValueText, typeName, StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static string GetDocumentPrimaryNamespace(CompilationUnitSyntax root)
-    {
-        return root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>()
-            .FirstOrDefault() is { } primary ? NamespaceNameIdentity.Of(primary.Name) : string.Empty;
-    }
-
-    /// <summary>
-    /// Ambient-resolution-aware using rewrite. Rules:
+    /// Ambient-resolution-aware, per-scope import rewrite. Rules:
     /// <list type="bullet">
-    ///   <item><description>If the consumer's namespace equals or is a descendant of <paramref name="toNamespace"/> (ambient resolution covers the new location), no <c>using toNamespace</c> is needed. Ancestor consumers (e.g. consumer in <c>A.B</c>, target <c>A.B.C</c>) DO need the using — C# lookup climbs ancestors only.</description></item>
-    ///   <item><description>Otherwise: add <c>using toNamespace</c> if missing.</description></item>
-    ///   <item><description>Remove <c>using fromNamespace</c> ONLY if no sibling types remain in that namespace and the consumer's own namespace is NOT ambient to <paramref name="fromNamespace"/> (avoids flagging a using that was already redundant before the move).</description></item>
+    ///   <item><description>A reference site needs <c>using toNamespace</c> when its OWN enclosing namespace is not ambient to <paramref name="toKey"/> (equal to it or a descendant; ancestors DO need the using, C# lookup climbs ancestors only) and no enclosing scope already imports it. One import is added to the compilation unit when any site needs it.</description></item>
+    ///   <item><description>A plain <c>using fromNamespace</c> in a scope is removed ONLY if no sibling types remain in that namespace and no namespace declared inside that scope is ambient to <paramref name="fromKey"/> (avoids touching an import that was already redundant before the move).</description></item>
     ///   <item><description>When in doubt, keep the <c>using</c> — band-aid removals risk breaking compile.</description></item>
     /// </list>
     /// </summary>
-    private static CompilationUnitSyntax AdjustUsings(
+    private static CompilationUnitSyntax AdjustImports(
         CompilationUnitSyntax root,
-        string consumerNamespace,
-        string fromNamespace,
+        SemanticModel semanticModel,
+        string typeName,
+        string fromKey,
         string toNamespace,
+        string toKey,
         bool siblingTypesRemaining,
+        CancellationToken ct,
         out bool keptFallback)
     {
         keptFallback = false;
-        var fromKey = NamespaceNameIdentity.Of(fromNamespace);
-        var toKey = NamespaceNameIdentity.Of(toNamespace);
-        var hasNewUsing = root.Usings.Any(u => NamespaceNameIdentity.ImportsNamespace(u, toKey));
-        var oldUsing = root.Usings.FirstOrDefault(u => NamespaceNameIdentity.ImportsNamespace(u, fromKey));
+        var namespaces = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().ToList();
 
-        var consumerKey = NamespaceNameIdentity.Of(consumerNamespace);
-        var consumerCoversNewByAmbient = IsAmbientTo(consumerKey, toKey);
-        var consumerCoversOldByAmbient = IsAmbientTo(consumerKey, fromKey);
+        var needsNewImport = !root.Usings.Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, toKey))
+            && root.DescendantNodes().OfType<IdentifierNameSyntax>().Any(site =>
+                IsMovedTypeReference(site, typeName, toKey, semanticModel, ct) && NeedsImport(site, toKey));
 
-        var newRoot = root;
-
-        // Add `using toNamespace;` if the consumer cannot resolve the type ambiently and no using
-        // already exists. NOTE: SyntaxFactory.UsingDirective emits a keyword token without
-        // trailing trivia, so the `using` keyword would glue onto the namespace name
-        // (`usingChild;`). We explicitly construct the using-keyword token with a trailing space
-        // mirroring the pattern used by CrossProjectRefactoringService's namespace-declaration
-        // token construction.
-        if (!consumerCoversNewByAmbient && !hasNewUsing)
+        var rewrittenScopes = new Dictionary<BaseNamespaceDeclarationSyntax, SyntaxList<UsingDirectiveSyntax>>();
+        foreach (var scope in namespaces)
         {
-            var addUsing = SyntaxFactory.UsingDirective(
+            var usings = RewriteScopeUsings(scope.Usings, scope, fromKey, siblingTypesRemaining, ref keptFallback);
+            if (usings != scope.Usings) rewrittenScopes[scope] = usings;
+        }
+
+        var rootUsings = RewriteScopeUsings(root.Usings, root, fromKey, siblingTypesRemaining, ref keptFallback);
+        if (needsNewImport)
+        {
+            // NOTE: SyntaxFactory.UsingDirective emits a keyword token without trailing trivia, so
+            // the `using` keyword would glue onto the namespace name (`usingChild;`). We explicitly
+            // construct the using-keyword token with a trailing space mirroring the pattern used by
+            // CrossProjectRefactoringService's namespace-declaration token construction.
+            rootUsings = rootUsings.Add(SyntaxFactory.UsingDirective(
                     usingKeyword: SyntaxFactory.Token(SyntaxKind.UsingKeyword).WithTrailingTrivia(SyntaxFactory.Space),
                     staticKeyword: default,
                     alias: null,
                     name: ReceivingNamespaceFactory.CreateName(toNamespace),
                     semicolonToken: SyntaxFactory.Token(SyntaxKind.SemicolonToken))
-                .WithTrailingTrivia(SyntaxFactory.EndOfLine(Environment.NewLine));
-            newRoot = newRoot.WithUsings(newRoot.Usings.Add(addUsing));
+                .WithTrailingTrivia(SyntaxFactory.EndOfLine(Environment.NewLine)));
         }
 
-        // Decide whether to drop `using fromNamespace;`.
-        if (oldUsing is not null)
-        {
-            if (siblingTypesRemaining)
-            {
-                // Sibling types still in the old namespace may be referenced by this file.
-                // Keep the using to be safe and record it so the caller can warn.
-                keptFallback = true;
-            }
-            else if (consumerCoversOldByAmbient)
-            {
-                // The using was already redundant before the move — leave it alone to avoid
-                // surprising the author. This mirrors the plan's conservative guideline.
-                keptFallback = true;
-            }
-            else
-            {
-                // Old namespace is empty after the move and the consumer can't see it ambiently.
-                // Safe to drop the using.
-                var updatedOldReference = newRoot.Usings.FirstOrDefault(u => NamespaceNameIdentity.ImportsNamespace(u, fromKey));
-                if (updatedOldReference is not null)
-                {
-                    newRoot = newRoot.WithUsings(newRoot.Usings.Remove(updatedOldReference));
-                }
-            }
-        }
-
-        return newRoot;
+        var newRoot = rewrittenScopes.Count == 0
+            ? root
+            : root.ReplaceNodes(rewrittenScopes.Keys, (original, rewritten) => rewritten.WithUsings(rewrittenScopes[original]));
+        return rootUsings == root.Usings ? newRoot : newRoot.WithUsings(rootUsings);
     }
+
+    /// <summary>
+    /// True when <paramref name="site"/> is a simple-name use of the relocated type: it binds to the
+    /// moved type, or to nothing at all (the old import no longer reaches it). A name that binds to
+    /// any other symbol, a member-access or qualified right-hand side, or a name inside a using
+    /// directive is not a reference whose scope needs an import.
+    /// </summary>
+    private static bool IsMovedTypeReference(
+        IdentifierNameSyntax site, string typeName, string toKey, SemanticModel semanticModel, CancellationToken ct)
+    {
+        if (!string.Equals(site.Identifier.ValueText, typeName, StringComparison.Ordinal)) return false;
+        if (site.Parent is QualifiedNameSyntax qualified && qualified.Right == site) return false;
+        if (site.Parent is AliasQualifiedNameSyntax aliasQualified && aliasQualified.Name == site) return false;
+        if (site.Parent is MemberAccessExpressionSyntax memberAccess && memberAccess.Name == site) return false;
+        if (site.Parent is MemberBindingExpressionSyntax) return false;
+        if (site.Ancestors().OfType<UsingDirectiveSyntax>().Any()) return false;
+
+        var info = semanticModel.GetSymbolInfo(site, ct);
+        return info.Symbol is { } symbol
+            ? symbol is INamedTypeSymbol type
+                && string.Equals(type.Name, typeName, StringComparison.Ordinal)
+                && string.Equals(NamespaceNameIdentity.Of(type.ContainingNamespace), toKey, StringComparison.Ordinal)
+            : info.CandidateSymbols.IsEmpty;
+    }
+
+    /// <summary>
+    /// True when a reference at <paramref name="site"/> cannot see the destination namespace: its own
+    /// enclosing namespace is not ambient to it and no enclosing scope imports it.
+    /// </summary>
+    private static bool NeedsImport(SyntaxNode site, string toKey)
+    {
+        var enclosing = site.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().ToList();
+        if (enclosing.Count > 0 && IsAmbientTo(QualifiedNamespaceName(enclosing[0]), toKey)) return false;
+        return !enclosing.Any(scope => scope.Usings.Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, toKey)));
+    }
+
+    /// <summary>
+    /// Applies the old-import decision to one <c>using</c> list. Keeps the import (and flags the
+    /// fallback) while sibling types remain or the scope is itself ambient to the old namespace.
+    /// </summary>
+    private static SyntaxList<UsingDirectiveSyntax> RewriteScopeUsings(
+        SyntaxList<UsingDirectiveSyntax> usings,
+        SyntaxNode scope,
+        string fromKey,
+        bool siblingTypesRemaining,
+        ref bool keptFallback)
+    {
+        var oldImports = usings.Where(directive => NamespaceNameIdentity.ImportsNamespace(directive, fromKey)).ToList();
+        if (oldImports.Count == 0) return usings;
+
+        var ambientToOld = scope.DescendantNodesAndSelf().OfType<BaseNamespaceDeclarationSyntax>()
+            .Any(declared => IsAmbientTo(QualifiedNamespaceName(declared), fromKey));
+        if (siblingTypesRemaining || ambientToOld)
+        {
+            // Sibling types still in the old namespace may be referenced by this scope, or the
+            // import was already redundant before the move: keep it and record it for the warning.
+            keptFallback = true;
+            return usings;
+        }
+
+        // Old namespace is empty after the move and this scope cannot see it ambiently: drop it.
+        return SyntaxFactory.List(usings.Where(directive => !oldImports.Contains(directive)));
+    }
+
+    /// <summary>Full dotted name of a namespace declaration, including the declarations it is nested in.</summary>
+    private static string QualifiedNamespaceName(BaseNamespaceDeclarationSyntax declaration) =>
+        string.Join('.', declaration.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>().Reverse()
+            .Select(declared => NamespaceNameIdentity.Of(declared.Name)));
 
     /// <summary>
     /// C# ambient-namespace resolution: a file whose namespace is <c>A.B.C</c> can resolve
