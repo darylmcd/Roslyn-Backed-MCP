@@ -1,6 +1,6 @@
 # relocation-support-enum-delegate-types — Support enum and delegate types in the type-move and relocation previews
 
-**row:** `relocation-support-enum-delegate-types` · **pri:** `Medium` · **size:** `M` · **verified:** `d0b4076a7ca2a0464e76dc31324c3b24e1afc40e`
+**row:** `relocation-support-enum-delegate-types` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
@@ -12,9 +12,9 @@
 
 ## Acceptance
 
-- [ ] `change_type_namespace_preview`, `move_type_to_file_preview` and `move_type_to_project_preview` accept an enum or delegate type (`EnumDeclarationSyntax`, `DelegateDeclarationSyntax`) and produce a correct preview (declaration moved or re-namespaced, every consumer updated, compiles), instead of the unsupported-kind refusal added in #2180; red-first test per tool and kind.
-- [ ] Refusal text and `AnyTypeDeclaration` supported-kind list updated; tools still refuse the kinds they cannot handle.
-- [ ] Release classification recorded per tool (experimental vs stable surface, release-policy Rule 1/ADR 0043) with wire evidence for any stable tool.
+- [ ] `change_type_namespace_preview` (experimental) accepts an enum or delegate type and produces a correct preview (declaration relocated, consumers updated, 0 compile errors), instead of the #2180 unsupported-kind refusal; red-first tests per kind incl. destination-collision, nested (still refused with the nested-type message), generic delegate and file relocation.
+- [ ] The shared helpers (MovedDeclarationFileWriter, MovedTypeDestinationIdentity incl. its silent non-TypeDeclarationSyntax return, NamespaceMemberClassifier) are widened; the other two tools still refuse through their own call sites.
+- [ ] The unreleased fragment changelog.d/relocation-selected-enum-delegate-reported-not-found.md no longer claims change_type_namespace refuses.
 
 ## Evidence
 
