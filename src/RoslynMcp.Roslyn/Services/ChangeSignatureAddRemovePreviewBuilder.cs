@@ -916,12 +916,14 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
 
     // An edit can move a caller-info site (line shifts, changed argument text) in a call that does not bind to the
     // target. Compare the candidate with the recorded original values and name ONLY the drifted parameters.
-    // Freezing a call can change an enclosing call's argument text, so repeat until nothing drifts; each pass
-    // freezes at least one parameter that is no longer defaulted, so the loop terminates.
+    // Freezing a call can change an enclosing call's argument text, so repeat until nothing drifts. Every
+    // (call, parameter) pair is attempted at most once, so the loop is bounded by the finite number of recorded
+    // pairs even if a freeze were ever lost; ValidateCandidateAsync then judges whatever remains.
     private static async Task<Solution> FreezeDriftedCallerInfoAsync(
         Solution candidate, Dictionary<DocumentId, List<BindingEvidence>> evidence,
         HashSet<DocumentId> changedDocuments, CancellationToken ct)
     {
+        var attempted = new HashSet<(SyntaxAnnotation Call, string Parameter)>();
         while (true)
         {
             var frozenAny = false;
@@ -943,10 +945,12 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     // A call that left the candidate with its argument is judged by ValidateCandidateAsync.
                     if (!nodes.TryGetValue(entry.Annotation, out var node)) continue;
                     var arguments = ArgumentsOf(model.GetOperation(node, ct));
-                    var drifted = entry.CallerInfo.Where(original => arguments.Any(argument =>
-                        argument.ArgumentKind == ArgumentKind.DefaultValue && argument.Parameter?.Name == original.Parameter
-                        && argument.Value.ConstantValue.HasValue
-                        && !Equals(argument.Value.ConstantValue.Value, original.Value))).ToList();
+                    var drifted = entry.CallerInfo.Where(original => !attempted.Contains((entry.Annotation, original.Parameter))
+                        && arguments.Any(argument =>
+                            argument.ArgumentKind == ArgumentKind.DefaultValue && argument.Parameter?.Name == original.Parameter
+                            && argument.Value.ConstantValue.HasValue
+                            && !Equals(argument.Value.ConstantValue.Value, original.Value))).ToList();
+                    attempted.UnionWith(drifted.Select(freeze => (entry.Annotation, freeze.Parameter)));
                     if (drifted.Count > 0) freezes[node] = drifted;
                 }
                 if (freezes.Count == 0) continue;
