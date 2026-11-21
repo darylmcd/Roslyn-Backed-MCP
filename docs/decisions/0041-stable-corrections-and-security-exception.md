@@ -6,6 +6,7 @@
 - **Supersedes:** nothing
 - **Refines:** ADR 0003, ADR 0011
 - **Amends:** ADR 0003's "Breaking" classification of leak and correction fixes (rows at 0003:45-55 unchanged; Rule 1 and Rule 2 cases ship in a minor under this ADR)
+- **Refined by:** ADR 0043 (a success turned into a `Success:false` DTO refusal is Rule 1)
 - **Superseded by:** nothing
 
 ## Context
