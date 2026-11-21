@@ -427,7 +427,7 @@ public sealed class ChangeSignatureBindingsTests : ChangeSignatureTestBase
     }
 
     // An unrelated call that merely carries a caller-info default is still scanned: its `!` argument must not
-    // fail the whole preview. (Whether that call is rewritten at all is a separate defect.)
+    // fail the whole preview, and it is only touched when its compiler-supplied values drift.
     [TestMethod]
     [DataRow("add")]
     [DataRow("remove")]
@@ -447,5 +447,132 @@ public sealed class ChangeSignatureBindingsTests : ChangeSignatureTestBase
             "}");
         var (line, column) = Locate(source, "Compute(string");
         await AssertSignatureProofAsync(source, ForgivingRequest(op), line, column, null, null);
+    }
+
+    private const string CallerExpression = "[System.Runtime.CompilerServices.CallerArgumentExpression(\"{0}\")]";
+
+    private async Task<(string Before, string After, string Text)> PreviewProofAsync(string source, ChangeSignatureRequest request)
+    {
+        await using var workspace = CreateSingleProjectWorkspace();
+        var path = workspace.GetPath("SampleLib", "SignatureProof.cs");
+        await File.WriteAllTextAsync(path, source);
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var (line, column) = Locate(source, "Compute(string");
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, SymbolLocator.BySource(path, line, column), request, CancellationToken.None);
+        var pair = Services.PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(pair);
+        var text = (await pair.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib")
+            .Documents.Single(d => d.FilePath == path).GetTextAsync()).ToString();
+        return (await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof"),
+            await RunSignatureFixtureAsync(pair.Value.ModifiedSolution, "SampleLib.SignatureProof"), text);
+    }
+
+    private static string Proof(string caller, params string[] members) => string.Join("\n",
+        "namespace SampleLib;",
+        "public static class Log",
+        "{",
+        "    public static string Tag(string v, " + string.Format(CallerExpression, "v") + " string e = \"\") => v + \"/\" + e;",
+        "    public static string TagG<T>(T v, " + string.Format(CallerExpression, "v") + " string e = \"\") => v?.ToString() + \"/\" + e;",
+        "    public static string Outer(string o, " + string.Format(CallerExpression, "o") + " string oe = \"\") => o + \"|\" + oe;",
+        "}",
+        "public static class SignatureProof",
+        "{",
+        "    public static int Line([System.Runtime.CompilerServices.CallerLineNumber] int line = 0) => line;",
+        "    public static string Compute(string a, int b, int unused = 0) => a + b;",
+        string.Join("\n", members),
+        "    public static string Run() { string name = \"ab\"; " + caller + " }",
+        "}");
+
+    // change-signature-unrelated-invocation-rewrite: an unrelated generic call that only carries a caller-info
+    // default must stay byte-identical (it used to become `Tag<string>(v: name, e: "name")`).
+    [TestMethod]
+    [DataRow("add")]
+    [DataRow("remove")]
+    [DataRow("reorder")]
+    public async Task ChangeSignaturePreview_UnrelatedGenericCallerInfoCall_StaysByteIdentical(string op)
+    {
+        var (before, after, text) = await PreviewProofAsync(
+            Proof("return Log.TagG(name) + Compute(name, 1);"), ForgivingRequest(op));
+        Assert.AreEqual(before, after);
+        StringAssert.Contains(text, "Log.TagG(name) + Compute(");
+        Assert.IsFalse(text.Contains("Log.TagG<", StringComparison.Ordinal), text);
+    }
+
+    // The edited call is the caller-info argument of an unrelated call: its text drifts, so only that
+    // parameter is frozen (`e:`); the unrelated call's own argument is not named.
+    [TestMethod]
+    [DataRow("add")]
+    [DataRow("remove")]
+    [DataRow("reorder")]
+    public async Task ChangeSignaturePreview_UnrelatedCallerInfoExpressionDrift_FreezesOnlyTheDriftedParameter(string op)
+    {
+        var (before, after, text) = await PreviewProofAsync(
+            Proof("return Log.Tag(Compute(name, 1));"), ForgivingRequest(op));
+        Assert.AreEqual(before, after);
+        StringAssert.Contains(text, "e: \"Compute(name, 1)\"");
+        Assert.IsFalse(text.Contains("v:", StringComparison.Ordinal), text);
+    }
+
+    // Freezing the inner call changes the outer call's argument text, so the freeze converges outward.
+    [TestMethod]
+    public async Task ChangeSignaturePreview_NestedUnrelatedCallerInfoCalls_FreezeToAFixpoint()
+    {
+        var (before, after, text) = await PreviewProofAsync(
+            Proof("return Log.Outer(Log.Tag(Compute(name, 1)));"), ForgivingRequest("add"));
+        Assert.AreEqual(before, after);
+        StringAssert.Contains(text, "e: \"Compute(name, 1)\"");
+        StringAssert.Contains(text, "oe: \"Log.Tag(Compute(name, 1))\"");
+        Assert.IsFalse(text.Contains("o:", StringComparison.Ordinal), text);
+    }
+
+    // Guard (green on base): removing a middle line of a multi-line call shifts a later caller-line value.
+    [TestMethod]
+    public async Task ChangeSignaturePreview_MultiLineRemoval_KeepsUnrelatedCallerLine()
+    {
+        var source = string.Join("\n",
+            "namespace SampleLib;",
+            "public static class SignatureProof",
+            "{",
+            "    public static int Line([System.Runtime.CompilerServices.CallerLineNumber] int line = 0) => line;",
+            "    public static string Compute(string a, int b, int unused = 0) => a + b;",
+            "    public static string Run() { string name = \"ab\"; var x = Compute(",
+            "        name,",
+            "        1,",
+            "        0);",
+            "        return x + \"|\" + Line(); }",
+            "}");
+        var (before, after, text) = await PreviewProofAsync(source, new ChangeSignatureRequest("remove", Name: "unused"));
+        Assert.AreEqual(before, after);
+        StringAssert.Contains(text, "Line(line:");
+    }
+
+    // Guard (green on base): an unrelated caller-info call inside a removed argument loses its identity with
+    // the argument and must neither refuse the preview nor be frozen.
+    [TestMethod]
+    public async Task ChangeSignaturePreview_UnrelatedCallerInfoCallInsideRemovedArgument_ReturnsPreview()
+    {
+        var source = string.Join("\n",
+            "namespace SampleLib;",
+            "public static class Log { public static string Tag(string v, " + string.Format(CallerExpression, "v") + " string e = \"\") => v + \"/\" + e; }",
+            "public static class SignatureProof",
+            "{",
+            "    public static string Compute(string a, int b, int unused = 0) => b.ToString();",
+            "    public static string Run() { string name = \"ab\"; return Compute(Log.Tag(name), 1); }",
+            "}");
+        var (_, _, text) = await PreviewProofAsync(source, new ChangeSignatureRequest("remove", Name: "a"));
+        Assert.IsFalse(text.Contains("Log.Tag(", StringComparison.Ordinal), text);
+    }
+
+    // The freeze step reads the candidate before it is validated: a candidate that does not compile (unknown
+    // parameter type) must still surface the documented diagnostic refusal, not a null-reference failure.
+    [TestMethod]
+    public async Task ChangeSignaturePreview_FreezeOnNonCompilingCandidate_RefusesWithTheDiagnostic()
+    {
+        var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => PreviewProofAsync(
+            Proof("return Log.Tag(Compute(name, 1));"),
+            new ChangeSignatureRequest("add", Name: "extra", ParameterType: "NoSuchTypeZz")));
+        StringAssert.Contains(error.Message, "CS0246");
     }
 }

@@ -1037,4 +1037,27 @@ public sealed class ChangeSignaturePreviewTests : ChangeSignatureTestBase
         Assert.IsNotNull(compilation);
         Assert.AreEqual(0, compilation.GetDiagnostics().Count(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
     }
+
+    // change-signature-unrelated-invocation-rewrite: MSTest's Assert.AreEqual carries CallerArgumentExpression
+    // parameters; sharing a document with an edited call used to turn it into `AreEqual<int>(expected: 2, ...)`.
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_UnrelatedCallerInfoCall_LeavesAssertAreEqualByteIdentical()
+    {
+        await using var workspace = CreateLibraryTestsWorkspace();
+        var servicePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+        var lines = await File.ReadAllLinesAsync(servicePath);
+        var line = Array.FindIndex(lines, l => l.Contains("CountAnimals(List<IAnimal>", StringComparison.Ordinal));
+        Assert.IsTrue(line >= 0, "The List<IAnimal> overload must exist in the fixture.");
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+            SymbolLocator.BySource(servicePath, line + 1, lines[line].IndexOf("CountAnimals", StringComparison.Ordinal) + 1),
+            new ChangeSignatureRequest("add", Name: "strict", ParameterType: "bool", DefaultValue: "false"), CancellationToken.None);
+        var pair = Services.PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(pair);
+        var testDocument = pair.Value.ModifiedSolution.Projects.SelectMany(p => p.Documents)
+            .Single(d => d.FilePath!.EndsWith("AnimalServiceTests.cs", StringComparison.Ordinal));
+        var text = (await testDocument.GetTextAsync()).ToString();
+        StringAssert.Contains(text, "        Assert.AreEqual(2, count);");
+        StringAssert.Contains(text, "service.CountAnimals(animals, false)");
+    }
 }
