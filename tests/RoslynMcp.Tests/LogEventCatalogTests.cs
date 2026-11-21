@@ -24,6 +24,7 @@ public sealed class LogEventCatalogTests
         (1002, "LogTransportDisconnected", "host"),
         (1003, "LogRetentionSweepCompleted", "host"),
         (1004, "LogRetentionSweepFailed", "host"),
+        (1005, "ObservabilitySinkConfigured", "host"),
         (2101, "ToolCompleted", "tool"),
         (2102, "ToolCancelled", "tool"),
         (2103, "ToolInputRequired", "tool"),

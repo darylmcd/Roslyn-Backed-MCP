@@ -129,7 +129,7 @@ Apart from `ROSLYNMCP_SANCTIONED_ROOTS` (empty default = deny all path access; s
 | `ROSLYNMCP_SCRIPT_MAX_CONCURRENT` | `4` | Concurrent script-evaluation slots |
 | `ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS` | `5` | Capacity-slot acquisition timeout |
 | `ROSLYNMCP_SCRIPT_MAX_ABANDONED` | `8` | Fail-fast limit for worker processes the OS could not terminate |
-| `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Secret-safe structured unexpected-failure diagnostics; set to `stderr` for local operator capture or `file` for bounded local JSON-lines files |
+| `ROSLYNMCP_OBSERVABILITY_SINK` | `file` | Diagnostics sink: bounded local JSON-lines files with `file` (the default when unset), secret-safe structured unexpected failures on `stderr`, or `disabled` to opt out of log files |
 
 Example MCP client config with overrides:
 
@@ -164,9 +164,9 @@ This server runs entirely on your local machine and does not transmit or store t
 
 - **Data processed:** `.sln`, `.csproj`, and `.cs` files from workspaces you explicitly load. All analysis happens in-process via Roslyn.
 - **Network access:** None from the server itself. `dotnet build` / `dotnet test` child processes may download NuGet packages as part of normal SDK behavior.
-- **Data retention:** Workspace state is in-memory only; preview tokens expire after 5 minutes. On disk the server writes only a small `host-process.json` metadata file (previous-process PID, exit time and recycle reason) under `%LOCALAPPDATA%\roslyn-mcp` on Windows or `$XDG_STATE_HOME/roslyn-mcp` elsewhere, plus the optional preview-persist directory when `ROSLYNMCP_PREVIEW_PERSIST_DIR` is set. `dotnet build`/`test` produce their own output as usual.
-- **Logging:** Operational logs use local stderr and never the MCP protocol stream. Optional `ROSLYNMCP_OBSERVABILITY_SINK=stderr` events contain only correlation, exception-type topology, and stack-frame counts; exception messages, source paths, and user-code content are excluded.
-- **Optional file sink:** `ROSLYNMCP_OBSERVABILITY_SINK=file` writes the enabled `ILogger` stream as bounded, rotated JSON-lines files on the local machine. Nothing is sent to external services.
+- **Data retention:** Workspace state is in-memory only; preview tokens expire after 5 minutes. On disk the server writes a small `host-process.json` metadata file (previous-process PID, exit time and recycle reason) and, by default, a bounded diagnostic log (see Logging below), both under `%LOCALAPPDATA%\roslyn-mcp` on Windows or `$XDG_STATE_HOME/roslyn-mcp` elsewhere, plus the optional preview-persist directory when `ROSLYNMCP_PREVIEW_PERSIST_DIR` is set. `dotnet build`/`test` produce their own output as usual.
+- **Logging:** Operational logs use local stderr and never the MCP protocol stream. `ROSLYNMCP_OBSERVABILITY_SINK=stderr` unexpected-failure events contain only correlation, exception-type topology, and stack-frame counts; exception messages and user-code content are excluded.
+- **Default file sink:** unless `ROSLYNMCP_OBSERVABILITY_SINK=disabled` is set, the server writes the full enabled `ILogger` stream as bounded, rotated JSON-lines files (at most about 20 MiB per running host; files of finished hosts are pruned at the next start by age and a 64 MiB total cap) under `%LOCALAPPDATA%\roslyn-mcp\logs` on Windows or `$XDG_STATE_HOME/roslyn-mcp/logs` elsewhere. These records can contain absolute local paths, for example a workspace path the server resolved or rejected. They never leave the machine: nothing is sent to external services. `server_info.observability` reports the resolved sink and log path. Set `ROSLYNMCP_OBSERVABILITY_SINK=disabled` to opt out.
 - **Third-party sharing:** No data is shared with Anthropic, any third party, or any external service.
 
 ## Cross-platform notes

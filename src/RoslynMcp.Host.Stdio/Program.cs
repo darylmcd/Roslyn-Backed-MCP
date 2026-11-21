@@ -47,6 +47,8 @@ if (observabilityOptions.Sink == ServerObservabilitySinkKind.File)
     var metadataRoot = Path.GetDirectoryName(HostProcessMetadataStore.ResolveDefaultPath())
         ?? throw new InvalidOperationException("The host-process metadata path has no directory.");
     var logDirectory = Path.Combine(metadataRoot, "logs");
+    // Sink-scoped and fail-fast on purpose (ADR 0042): with the default or 'file' sink an invalid retention
+    // variable fails startup naming the variable; 'disabled' never reaches this parse.
     var retention = JsonLinesRetentionOptions.Parse(ReadEnv);
     fileLoggerProvider = new JsonLinesFileLoggerProvider(logDirectory, retention);
     builder.Logging.AddProvider(fileLoggerProvider);
@@ -139,6 +141,12 @@ var assemblyVersion = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly
 StartupDiagnostics.LogStartup(startupLogger, surfaceReport, assemblyVersion);
 SurfaceRegistrationSnapshot.Value = surfaceReport;
 
+// logging-default-sink-disabled-stderr-swallowed: the file sink is the default, and an agent that cannot read
+// stderr must still be able to find it. One status feeds both the startup record (which the file also receives)
+// and server_info.observability, published below once the DI-owned ServerProcessMetadata is resolved.
+var observabilityStatus = ServerObservabilityStatus.Describe(observabilityOptions, fileLoggerProvider);
+ServerObservabilityStatus.Log(startupLogger, observabilityStatus);
+
 // host-recycle-opacity: read the previous host process's exit metadata (if any) from disk
 // and publish it into the DI singleton ServerProcessMetadata for the FIRST server_info /
 // server_heartbeat probe to surface. Its PreviousProcessSnapshot.Consume() drains the
@@ -155,6 +163,7 @@ var hostProcessMetadataStore = new HostProcessMetadataStore(hostProcessMetadataL
 var previousHostMetadata = hostProcessMetadataStore.LoadPrevious();
 var serverProcessMetadata = host.Services.GetRequiredService<ServerProcessMetadata>();
 serverProcessMetadata.PreviousProcessSnapshot.Publish(previousHostMetadata);
+serverProcessMetadata.PublishObservability(observabilityStatus);
 
 // mcp-error-category-workspace-evicted-on-host-recycle: also publish the recycle signal
 // to the WorkspaceEvictionRegistry so WorkspaceManager.GetRequiredSession can throw a

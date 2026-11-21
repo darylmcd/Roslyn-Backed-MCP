@@ -1,6 +1,6 @@
 # change-signature-preview-builder-build-async-decomposition — Decompose ChangeSignatureAddRemovePreviewBuilder.BuildAsync
 
-**row:** `change-signature-preview-builder-build-async-decomposition` · **pri:** `Low` · **size:** `S` · **verified:** `02fddfa9500d30848b8f5e34367322db1011b3df`
+**row:** `change-signature-preview-builder-build-async-decomposition` · **pri:** `Low` · **size:** `S` · **verified:** `02fddfa9500d30848b8f5e34367322db1011b3df` · **deps:** `change-signature-unrelated-invocation-rewrite`
 
 ## Anchors
 

@@ -150,7 +150,8 @@ public static class ServerTools
             ],
             Capabilities: new ServerCapabilitiesDto(Tools: true, Resources: true, Prompts: true, Logging: false, Progress: true),
             Update: BuildUpdateInfo(currentSemver, versionChecker),
-            PathBoundary: BuildPathBoundary(SecurityOptionsSnapshot.Value));
+            PathBoundary: BuildPathBoundary(SecurityOptionsSnapshot.Value),
+            Observability: processMetadata.Observability);
 
         return Task.FromResult(StructuredToolResult.Create(info));
     }

@@ -1,6 +1,6 @@
 # logging-file-sink-sync-io-per-record — Keep the JSON-lines file open instead of open/stat/append per record
 
-**row:** `logging-file-sink-sync-io-per-record` · **pri:** `Low` · **size:** `S`
+**row:** `logging-file-sink-sync-io-per-record` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -32,3 +32,7 @@ Same lines as the retention row — sequenced after it.
 | Source | At927e969, provider95 creates the directory,97 appends synchronously, and76 locks the request thread; rotation probes existence/length. Mechanism unchanged from reviewed1cd4a90. |
 | Ownership | Existing row/dependency owns the finding; no duplicate row or benchmark claim. Structured-state PR1777 does not fix this debt. |
 | Complete repair | One owned writer/rotation authority; deterministic disposal/rotation handle release and representative enabled-file throughput proof. |
+
+## Notes
+
+Raised Low to Medium 2026-11-21: the file sink is now the default (#2177), so every install pays one open/stat/append per record under the global lock on the request thread.
