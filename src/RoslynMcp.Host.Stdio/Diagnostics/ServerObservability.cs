@@ -53,7 +53,13 @@ internal static class ServerObservabilityStatus
         JsonLinesFileLoggerProvider? fileProvider)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var sink = options.Sink.ToString().ToLowerInvariant();
+        var sink = options.Sink switch
+        {
+            ServerObservabilitySinkKind.File => "file",
+            ServerObservabilitySinkKind.Stderr => "stderr",
+            ServerObservabilitySinkKind.Disabled => "disabled",
+            _ => throw new InvalidOperationException("Unsupported server observability sink."),
+        };
         return fileProvider is null
             ? new ObservabilityDto(sink, LogFile: null, LogDirectory: null)
             : new ObservabilityDto(sink, fileProvider.FilePath, Path.GetDirectoryName(fileProvider.FilePath));
