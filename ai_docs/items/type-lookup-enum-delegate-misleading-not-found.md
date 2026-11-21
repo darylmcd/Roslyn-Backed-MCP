@@ -1,6 +1,6 @@
 # type-lookup-enum-delegate-misleading-not-found — Four type lookups still report "not found" for a selected enum or delegate
 
-**row:** `type-lookup-enum-delegate-misleading-not-found` · **pri:** `Medium` · **size:** `M` · **verified:** `82be4c9b0e7f752e0d899554b037d175a2f6dfcd` · **deps:** `relocation-selected-enum-delegate-reported-not-found`
+**row:** `type-lookup-enum-delegate-misleading-not-found` · **pri:** `Medium` · **size:** `M` · **verified:** `82be4c9b0e7f752e0d899554b037d175a2f6dfcd`
 
 ## Anchors
 

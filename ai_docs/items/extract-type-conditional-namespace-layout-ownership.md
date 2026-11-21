@@ -1,6 +1,6 @@
 # extract-type-conditional-namespace-layout-ownership — Preserve alternate lexical namespace layouts in generated extraction files
 
-**row:** `extract-type-conditional-namespace-layout-ownership` · **pri:** `Medium` · **size:** `M` · **verified:** `9e7a94395a5cbc09a79b0d4c6b8387ce65809d39` · **deps:** `extract-type-nested-namespace-identity`
+**row:** `extract-type-conditional-namespace-layout-ownership` · **pri:** `Medium` · **size:** `M` · **verified:** `9e7a94395a5cbc09a79b0d4c6b8387ce65809d39`
 
 ## Anchors
 
