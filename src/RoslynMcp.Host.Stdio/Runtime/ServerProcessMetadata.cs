@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 
@@ -52,6 +53,20 @@ public sealed class ServerProcessMetadata
     /// published on one <see cref="ServerProcessMetadata"/> is never visible to another.
     /// </summary>
     internal HostProcessMetadataSnapshotProvider PreviousProcessSnapshot { get; } = new();
+
+    /// <summary>
+    /// Where this host writes its diagnostic log, published once by <c>Program.cs</c> after the sink is
+    /// resolved and reported on <c>server_info.observability</c>. Null on a never-booted instance (unknown).
+    /// </summary>
+    internal ObservabilityDto? Observability => Volatile.Read(ref _observability);
+
+    internal void PublishObservability(ObservabilityDto observability)
+    {
+        ArgumentNullException.ThrowIfNull(observability);
+        Volatile.Write(ref _observability, observability);
+    }
+
+    private ObservabilityDto? _observability;
 
     private static DateTimeOffset ReadProcessStartUtc()
     {

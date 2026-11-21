@@ -119,11 +119,22 @@ public sealed class ServerObservabilitySinkTests
     }
 
     [TestMethod]
-    public void Options_DefaultDisabledAndRejectsUnknownValuesWithoutEchoingThem()
+    public void Options_UnsetOrBlankDefaultsToFile_DisabledIsExplicit_AndRejectsUnknownValuesWithoutEchoingThem()
     {
+        foreach (var unset in new[] { null, "", "   " })
+        {
+            Assert.AreEqual(
+                ServerObservabilitySinkKind.File,
+                ServerObservabilityOptions.Parse(unset).Sink,
+                "An unset or blank variable must install the bounded file sink.");
+        }
+
         Assert.AreEqual(
             ServerObservabilitySinkKind.Disabled,
-            ServerObservabilityOptions.Parse(null).Sink);
+            ServerObservabilityOptions.Parse("disabled").Sink);
+        Assert.AreEqual(
+            ServerObservabilitySinkKind.Disabled,
+            ServerObservabilityOptions.Parse(" DISABLED ").Sink);
         Assert.AreEqual(
             ServerObservabilitySinkKind.Stderr,
             ServerObservabilityOptions.Parse(" stderr ").Sink);

@@ -1,0 +1,5 @@
+---
+category: Changed
+---
+
+- **Changed:** `ROSLYNMCP_OBSERVABILITY_SINK` now defaults to `file` when unset or blank, so every install writes the bounded JSON-lines log (up to about 20 MiB per running host; files of finished hosts are pruned at the next start) under `%LOCALAPPDATA%/roslyn-mcp/logs/` on Windows or `$XDG_STATE_HOME/roslyn-mcp/logs/` elsewhere, instead of leaving an agent with no reachable log because MCP hosts swallow stderr. Records can contain absolute local paths and never leave the machine. `server_info` gains an additive `observability` object (`sink`, `logFile`, `logDirectory`; absolute per-user paths, null unless the sink is `file`) and the host logs one `ObservabilitySinkConfigured` record (event id 1005) at startup. Migration: set `ROSLYNMCP_OBSERVABILITY_SINK=disabled` to opt out; an invalid `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENT_BYTES`, `MAX_SEGMENTS`, `RETENTION_DAYS` or `MAX_TOTAL_BYTES` value, previously ignored while the sink was disabled, now fails startup naming the variable unless the sink is `disabled`. See ADR 0042. Closes `logging-default-sink-disabled-stderr-swallowed`.

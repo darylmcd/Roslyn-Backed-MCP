@@ -33,7 +33,23 @@ public sealed record ServerInfoDto(
     IReadOnlyList<string> ProductBoundaries,
     ServerCapabilitiesDto Capabilities,
     ServerUpdateInfoDto? Update,
-    PathBoundaryDto? PathBoundary);
+    PathBoundaryDto? PathBoundary,
+    ObservabilityDto? Observability);
+
+/// <summary>
+/// logging-default-sink-disabled-stderr-swallowed: where this host writes its diagnostic log, so an agent can
+/// locate it without reading docs. Unlike <see cref="PathBoundaryDto"/>, which reports a root COUNT and never
+/// paths, this block deliberately reports ABSOLUTE per-user paths (ADR 0042: the operator accepted them
+/// because the log is the agent's only reachable diagnostic channel).
+/// <para>
+/// The field is null on unit-test paths that construct <c>ServerTools</c> without booting the host (nothing
+/// published a status). Null means "unknown", never "disabled".
+/// </para>
+/// </summary>
+/// <param name="Sink"><c>file</c>, <c>stderr</c> or <c>disabled</c>: the resolved <c>ROSLYNMCP_OBSERVABILITY_SINK</c>.</param>
+/// <param name="LogFile">Absolute path of this process's active JSON-lines file; null unless <paramref name="Sink"/> is <c>file</c>.</param>
+/// <param name="LogDirectory">Absolute path of the directory holding every host process's files; null unless <paramref name="Sink"/> is <c>file</c>.</param>
+public sealed record ObservabilityDto(string Sink, string? LogFile, string? LogDirectory);
 
 /// <summary>
 /// sanctioned-roots-empty-boundary-fails-silently-until-first-call: filesystem-boundary state, so
