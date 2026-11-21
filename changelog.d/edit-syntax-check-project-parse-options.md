@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** `apply_text_edit` (and `add_pragma_suppression` / `pragma_scope_widen`, which apply through it) now check C# edits under each loaded project's parse options (`LangVersion`, `DefineConstants`, and every project a linked file is compiled in) instead of Roslyn's defaults: an edit that is malformed in a branch a project symbol activates, or uses grammar the project `LangVersion` does not parse (for example a C# 14 `extension` block under 13), is refused with `success: false` and `syntaxErrors` (the existing fields) instead of being written, and an edit is no longer refused because a project symbol deactivates an `#error` branch. A file that is already syntactically broken in a project-active branch now blocks edits to it unless the caller passes `skipSyntaxCheck`. The experimental routes that share the check, `apply_multi_file_edit`, `preview_multi_file_edit` (and so `preview_multi_file_edit_apply`) and `symbol_refactor_preview` (kind `edit`), now skip a file (apply) or throw the existing `InvalidOperation` syntax-error refusal (preview) by project options too.
