@@ -44,9 +44,22 @@ the MCP protocol surface:
 
 | Value | Additional output |
 |---|---|
-| `disabled` (default) | None. Normal operational logs still go to `stderr`. |
+| `file` (default when unset or blank) | The full enabled `ILogger` stream is written as JSON lines under the per-user metadata root's `logs/` directory. Each process owns an active file plus numbered rotated segments (see the retention paragraph below). |
 | `stderr` | Secret-safe JSON for unexpected failures is added to `stderr`. |
-| `file` | The full enabled `ILogger` stream is written as JSON lines under the per-user metadata root's `logs/` directory. Each process owns an active file plus numbered rotated segments (see the retention paragraph below). |
+| `disabled` | The explicit opt-out: no log files and no extra projection. Normal operational logs still go to `stderr`. |
+
+The file sink is on by default because `stderr` is usually swallowed by the MCP host, which would leave a
+first failure with no record an agent can reach ([ADR 0042](decisions/0042-default-on-bounded-file-log-sink.md)).
+The records are local only and never transmitted, but the full `ILogger` stream includes Information and
+Warning messages that carry absolute local paths (for example a workspace path a tool resolved or a path the
+sanctioned-root boundary rejected); exception messages and stack text are still never written. Set
+`ROSLYNMCP_OBSERVABILITY_SINK=disabled` to opt out.
+
+An agent finds the log without reading docs: `server_info.observability` reports `sink`, `logFile` (this
+process's active file) and `logDirectory` as ABSOLUTE per-user paths (null unless the sink is `file`; the whole
+block is null on an unbooted host, meaning unknown), and the host logs one `ObservabilitySinkConfigured` record
+(event id 1005, fields `sink`, `logFile`, `logDirectory`) at startup to `stderr` and, with the `file` sink, to
+the file itself.
 
 The file path is independent of the process working directory:
 
@@ -84,7 +97,9 @@ processes last written more than `ROSLYNMCP_OBSERVABILITY_RETENTION_DAYS` days a
 3650), then deletes the oldest remaining ones until all sink files in the directory total at most
 `ROSLYNMCP_OBSERVABILITY_MAX_TOTAL_BYTES` (default 64 MiB, range 1 MiB to 1 TiB). It never deletes this
 process's files, files of a live pid, a file written within the last 60 seconds, or a file another process
-holds open. The sweep never rotates or rewrites a file. Invalid values fail startup without echoing the value.
+holds open. The sweep never rotates or rewrites a file. With the default or `file` sink every host parses the
+retention variables at startup, so an invalid value fails startup naming the variable (the value is not
+echoed); `disabled` ignores them.
 
 Limits of that protection:
 
@@ -317,7 +332,7 @@ Console.WriteLine(ReadResponse(2));
 - **"Server not initialized"**: you skipped the `notifications/initialized` step after the `initialize` response.
 - **Parse errors on line 1**: you sent LSP `Content-Length:` headers. Drop them — NDJSON is one JSON object per line.
 - **`workspaceId` WorkspaceNotFound**: the host restarted; reload with `workspace_load`.
-- **No response at all**: check stderr, or the configured `file` sink. The server logs load errors and per-tool warnings there.
+- **No response at all**: check stderr, or the `file` sink (on by default; `server_info.observability.logFile` names it once the server answers). The server logs load errors and per-tool warnings there.
 
 ## Next steps
 

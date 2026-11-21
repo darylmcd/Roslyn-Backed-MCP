@@ -86,7 +86,7 @@ Each raw audit or batch manifest should capture these fields so rollups are comp
 | Audit mode | Distinguish `full-surface` from `conservative`. |
 | Repo-shape tags | Explain why some families were or were not applicable. |
 | Client capability notes | Record prompt/resource availability or `blocked` limitations. |
-| Operator diagnostic access | `yes` / `no` — whether the run can capture RoslynMcp stderr. Protocol `notifications/message` is not an observability channel. |
+| Operator diagnostic access | `yes` / `no` — whether the run can capture RoslynMcp stderr or read the log file named by `server_info.observability.logFile` (on by default). Protocol `notifications/message` is not an observability channel. |
 | Helper execution notes | Record whether subagents/background agents handled long-running validation and any related client/runtime limits. |
 | Coverage counts by status | Compare exercised vs skipped vs blocked across runs. |
 | Concurrency probe wall-clocks | Required when Phase 8b ran. Pulled from the raw audit's *Concurrency matrix → Sequential baseline* and *Parallel fan-out* tables; needed by the rollup to compare wall-clocks across repos. |

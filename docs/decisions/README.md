@@ -2,7 +2,7 @@
 
 Architecture decision records (ADRs) for breaking, compatibility, and security decisions on the public surface. Breaking changes require an ADR here plus a `CHANGELOG.md` migration note (see [release-policy.md](../release-policy.md)).
 
-Numbering runs 0001 to 0041 with 33 ADR files. Gaps 0014, 0017 and 0020 to 0025 are intentional: those numbers were never published.
+Numbering runs 0001 to 0042 with 34 ADR files. Gaps 0014, 0017 and 0020 to 0025 are intentional: those numbers were never published.
 
 | File | Purpose | Status |
 |------|---------|--------|
@@ -39,3 +39,4 @@ Numbering runs 0001 to 0041 with 33 ADR files. Gaps 0014, 0017 and 0020 to 0025 
 | [0039](0039-dotnet-11-sdk-floor.md) | Raise the source-build SDK floor to 11.0.100 for Roslyn 5.12 and MSBuild 18.x; keep `net10.0` | Accepted 2026-11-18 |
 | [0040](0040-extensions-11-on-net10.md) | Move the Microsoft.Extensions runtime family to 11.x on `net10.0` | Accepted 2026-11-18 |
 | [0041](0041-stable-corrections-and-security-exception.md) | Corrections and minimal leaked-input removals ship in a 5.x minor; agent qualifies with wire evidence | Accepted 2026-11-20 |
+| [0042](0042-default-on-bounded-file-log-sink.md) | Default-on bounded file log sink; `disabled` opt-out; `server_info.observability` reports the log path | Accepted 2026-11-20 |
