@@ -561,6 +561,15 @@ public static class SymbolResolver
     /// </summary>
     /// <returns>The matching document, or <see langword="null"/> if not found.</returns>
     public static Document? FindDocument(Solution solution, string filePath)
+        => FindDocuments(solution, filePath).FirstOrDefault();
+
+    /// <summary>
+    /// Every document in <paramref name="solution"/> whose file path matches <paramref name="filePath"/>
+    /// (same identity semantics as <see cref="FindDocument"/>), in solution project order. A file linked into
+    /// several projects (multi-targeting, shared <c>Compile Include</c>) yields one document per project, each
+    /// with its own parse options. Lazy: <see cref="FindDocument"/> stops at the first match.
+    /// </summary>
+    public static IEnumerable<Document> FindDocuments(Solution solution, string filePath)
     {
         var normalizedPath = PhysicalPathResolver.Resolve(filePath);
         foreach (var project in solution.Projects)
@@ -570,11 +579,10 @@ public static class SymbolResolver
                 if (document.FilePath is not null &&
                     FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(document.FilePath), normalizedPath))
                 {
-                    return document;
+                    yield return document;
                 }
             }
         }
-        return null;
     }
 
     /// <summary>

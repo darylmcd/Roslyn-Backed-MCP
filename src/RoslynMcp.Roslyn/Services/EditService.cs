@@ -66,7 +66,7 @@ public sealed class EditService : IEditService
         if (!skipSyntaxCheck
             && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
         {
-            var syntaxErrors = GetCSharpSyntaxErrors(newSourceText, filePath);
+            var syntaxErrors = GetCSharpSyntaxErrors(newSourceText, filePath, ResolveParseContexts(solution, document));
             if (syntaxErrors.Count > 0)
             {
                 return new TextEditResultDto(false, filePath, 0, [], syntaxErrors);
@@ -258,7 +258,7 @@ public sealed class EditService : IEditService
             var merged = BuildPatchedSourceText(sourceText, fileEdit.Edits);
             if (!skipSyntaxCheck
                 && string.Equals(Path.GetExtension(fileEdit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)
-                && GetCSharpSyntaxErrors(merged, fileEdit.FilePath).Count > 0)
+                && GetCSharpSyntaxErrors(merged, fileEdit.FilePath, ResolveParseContexts(_workspace.GetCurrentSolution(workspaceId), document)).Count > 0)
             {
                 results.Add(new FileEditSummaryDto(fileEdit.FilePath, 0, null));
                 continue;
@@ -354,7 +354,7 @@ public sealed class EditService : IEditService
             if (!skipSyntaxCheck
                 && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
             {
-                var syntaxErrors = GetCSharpSyntaxErrors(merged, filePath);
+                var syntaxErrors = GetCSharpSyntaxErrors(merged, filePath, ResolveParseContexts(inputSolution, document));
                 if (syntaxErrors.Count > 0)
                 {
                     throw new PublicInvalidOperationException(
@@ -729,9 +729,72 @@ public sealed class EditService : IEditService
         return new TextEditResultDto(true, filePath, edits.Count, [fileChange], null);
     }
 
-    private static IReadOnlyList<TextEditSyntaxErrorDto> GetCSharpSyntaxErrors(SourceText newSourceText, string filePath)
+    /// <summary>
+    /// edit-syntax-check-project-parse-options: the distinct parse options of every loaded context of
+    /// <paramref name="document"/>'s file (one per project it is compiled in, so a linked or
+    /// multi-targeted file yields several), normalized so only the language version, preprocessor symbols
+    /// and project features differ from the default parse. <see cref="DocumentationMode.Parse"/> and
+    /// <see cref="SourceCodeKind.Regular"/> are pinned: a project that generates documentation would
+    /// otherwise surface malformed-XML-doc warnings as syntax diagnostics and refuse edits this check never
+    /// refused. A document without C# options (not expected for a .cs file) falls back to the defaults.
+    /// </summary>
+    private static IReadOnlyList<CSharpParseOptions> ResolveParseContexts(Solution solution, Document document)
     {
-        var tree = CSharpSyntaxTree.ParseText(newSourceText, path: filePath);
+        var contexts = new List<CSharpParseOptions>();
+        var seen = new HashSet<CSharpParseOptions>();
+        var contextDocuments = document.FilePath is null
+            ? new[] { document }
+            : SymbolResolver.FindDocuments(solution, document.FilePath).Prepend(document);
+        foreach (var contextDocument in contextDocuments)
+        {
+            if (contextDocument.Project.ParseOptions is not CSharpParseOptions options)
+            {
+                continue;
+            }
+
+            var normalized = options.WithKind(SourceCodeKind.Regular).WithDocumentationMode(DocumentationMode.Parse);
+            if (seen.Add(normalized))
+            {
+                contexts.Add(normalized);
+            }
+        }
+
+        if (contexts.Count == 0)
+        {
+            contexts.Add(CSharpParseOptions.Default);
+        }
+
+        return contexts;
+    }
+
+    /// <summary>
+    /// Syntax errors of <paramref name="newSourceText"/> under every context in <paramref name="contexts"/>:
+    /// a file compiled in several projects must be clean in each, because the edit writes one physical file.
+    /// Diagnostics are deduplicated on position and message; the first context's order is kept, so a
+    /// single-context file reports exactly what the check reported before.
+    /// </summary>
+    private static IReadOnlyList<TextEditSyntaxErrorDto> GetCSharpSyntaxErrors(
+        SourceText newSourceText, string filePath, IReadOnlyList<CSharpParseOptions> contexts)
+    {
+        var merged = new List<TextEditSyntaxErrorDto>();
+        foreach (var context in contexts)
+        {
+            foreach (var error in GetCSharpSyntaxErrors(newSourceText, filePath, context))
+            {
+                if (!merged.Contains(error))
+                {
+                    merged.Add(error);
+                }
+            }
+        }
+
+        return merged;
+    }
+
+    private static IReadOnlyList<TextEditSyntaxErrorDto> GetCSharpSyntaxErrors(
+        SourceText newSourceText, string filePath, CSharpParseOptions options)
+    {
+        var tree = CSharpSyntaxTree.ParseText(newSourceText, options, path: filePath);
         var root = tree.GetRoot();
         var list = new List<TextEditSyntaxErrorDto>();
         foreach (var d in tree.GetDiagnostics())
