@@ -12,8 +12,8 @@
 
 - [ ] Red first on SampleSolution: `change_signature_preview(op=add, metadataName=SampleLib.AnimalService.CountAnimals, name=strict, parameterType=bool, defaultValue=false)` must leave `Assert.AreEqual(2, count);` in `SampleLib.Tests/AnimalServiceTests.cs` untouched (today it becomes an explicit named-argument generic call).
 - [x] Red first on this solution: `op=add` on `RoslynMcp.Roslyn.Helpers.PhysicalPathResolver.CanonicalizeDriveRoot` returns a preview instead of "An existing argument has no original semantic parameter binding." Done in PR1 (#2173, merged 2026-11-20T23:48:38Z) via the shared `ArgumentOperationResolver`.
-- [ ] Re-derive which invocations the builder visits; only invocations bound to the target symbol are rewritten or validated. Cover add, remove and reorder.
-- [ ] A failed preview returns well inside the writer budget (failures took 14-48 s).
+- [ ] Only invocations bound to the target symbol are REWRITTEN; unrelated caller-info calls keep their text unless a compile-driven drift check shows a materialized caller-info constant changed, and then only the drifted parameters are frozen. Call-node binding evidence stays for all invocations (guards unrelated overload rebinding; pinned by `CrossDocument_DefaultStructAndUnrelatedOverloadStayBound`). Cover add, remove and reorder.
+- [x] Failed-preview latency moved to row `change-signature-preview-latency` (measured 2026-11-21 at f7016d6c: refusal 56.3 s, success 67.2 s on RoslynMcp.slnx).
 
 ## Evidence
 
