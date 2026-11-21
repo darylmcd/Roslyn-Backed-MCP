@@ -267,6 +267,7 @@
 | `apply-persistence-null-filepath-silent-skip` | Medium | — | **Refuse a reviewed document with a null FilePath, not skip it** — DocumentSetPersistenceService and WorkspaceForkApplyService skip null-path added, changed and removed documents and the apply still reports Success. [type: bug] [source: remediation run 2026-11-21] | M | items/apply-persistence-null-filepath-silent-skip.md |
 | `multi-file-edit-apply-skips-syntax-failed-file` | Medium | — | **apply_multi_file_edit: refuse (not silently skip) a file that fails the syntax check** — EditService.ApplyMultiFileEdit skips a file whose edit fails the syntax check and still returns Success:true. [type: bug] [source: remediation run 2026-11-21] | S | items/multi-file-edit-apply-skips-syntax-failed-file.md |
 | `pragma-lookup-default-parse-options` | Medium | — | **Pragma pair lookup must use the project parse options** — SuppressionService parses with defaults, so inside #if regions the pragma tools disagree with the edit check once it uses project options. [type: bug] [source: remediation run 2026-11-21] | S | items/pragma-lookup-default-parse-options.md |
+| `relocation-support-enum-delegate-types` | Medium | — | **Support enum and delegate types in the type-move and relocation previews** — #2180 made change_type_namespace, move_type_to_file and move_type_to_project refuse them; operator decided to support them instead. [type: feature] [source: operator decision 2026-11-21] | M | items/relocation-support-enum-delegate-types.md |
 
 ## Low
 
