@@ -1,6 +1,6 @@
 # change-signature-preview-latency — Bring change_signature_preview under 30 s on RoslynMcp.slnx
 
-**row:** `change-signature-preview-latency` · **pri:** `High` · **size:** `M` · **verified:** `f7016d6c5fb4b75abc695d75fcfed58d3eeebb9b` · **deps:** `change-signature-unrelated-invocation-rewrite`
+**row:** `change-signature-preview-latency` · **pri:** `High` · **size:** `M` · **verified:** `f7016d6c5fb4b75abc695d75fcfed58d3eeebb9b`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # change-signature-caller-info-attribute-list-dedupe — Extract one shared caller-info attribute list
 
-**row:** `change-signature-caller-info-attribute-list-dedupe` · **pri:** `Low` · **size:** `M` · **verified:** `96629cae1d46b5daac93e90539ff5bc624f57daa` · **deps:** `change-signature-unrelated-invocation-rewrite`
+**row:** `change-signature-caller-info-attribute-list-dedupe` · **pri:** `Low` · **size:** `M` · **verified:** `96629cae1d46b5daac93e90539ff5bc624f57daa`
 
 ## Anchors
 

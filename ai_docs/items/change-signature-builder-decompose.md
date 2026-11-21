@@ -1,6 +1,6 @@
 # change-signature-builder-decompose — Decompose the 1300-line change-signature preview builder
 
-**row:** `change-signature-builder-decompose` · **pri:** `Low` · **size:** `L` · **verified:** `96629cae1d46b5daac93e90539ff5bc624f57daa` · **deps:** `change-signature-unrelated-invocation-rewrite`
+**row:** `change-signature-builder-decompose` · **pri:** `Low` · **size:** `L` · **verified:** `96629cae1d46b5daac93e90539ff5bc624f57daa`
 
 ## Anchors
 
