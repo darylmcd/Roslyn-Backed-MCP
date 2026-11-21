@@ -189,6 +189,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     {
         var matches = new List<(Document Document, CompilationUnitSyntax Root, TypeDeclarationSyntax TypeDecl, Project Project)>();
         var fromKey = NamespaceNameIdentity.Of(fromNamespace);
+        // Kind of a declaration that matched name + namespace but is not a TypeDeclarationSyntax
+        // (enum, delegate): reported by name instead of as "not found" when nothing else matched.
+        SyntaxKind? unsupportedKind = null;
         foreach (var project in solution.Projects)
         {
             // Use Roslyn's pre-built declaration index instead of parsing every document's syntax
@@ -215,7 +218,12 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                     // Count each declaration once, in the project we queried, so a source symbol
                     // shared into other project-reference compilations is not listed twice.
                     if (document.Project.Id != project.Id) continue;
-                    if (await syntaxRef.GetSyntaxAsync(ct).ConfigureAwait(false) is not TypeDeclarationSyntax typeDecl) continue;
+                    var declaringSyntax = await syntaxRef.GetSyntaxAsync(ct).ConfigureAwait(false);
+                    if (declaringSyntax is not TypeDeclarationSyntax typeDecl)
+                    {
+                        unsupportedKind ??= declaringSyntax.Kind();
+                        continue;
+                    }
                     if (await syntaxRef.SyntaxTree.GetRootAsync(ct).ConfigureAwait(false) is not CompilationUnitSyntax root) continue;
                     matches.Add((document, root, typeDecl, document.Project));
                 }
@@ -224,6 +232,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         if (matches.Count == 0)
         {
+            if (unsupportedKind is { } kind)
+            {
+                throw UnsupportedTypeKindRefusal.Create(kind, "change_type_namespace_preview");
+            }
             throw new InvalidOperationException(
                 $"Type '{typeName}' in namespace '{fromNamespace}' was not found in the workspace.");
         }

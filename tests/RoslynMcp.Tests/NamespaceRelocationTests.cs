@@ -288,6 +288,55 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
                 CancellationToken.None));
     }
 
+    /// <summary>
+    /// Regression (relocation-selected-enum-delegate-reported-not-found): selecting an enum or a
+    /// delegate matched by name and namespace but was skipped for not being a
+    /// <c>TypeDeclarationSyntax</c>, so the caller was told the type "was not found".
+    /// </summary>
+    [TestMethod]
+    [DataRow("public enum Selected { A }", "Enum", DisplayName = "enum")]
+    [DataRow("public delegate void Selected();", "Delegate", DisplayName = "delegate")]
+    public async Task Preview_Names_The_Unsupported_Kind_For_An_Enum_Or_Delegate_Selection(string declaration, string kind)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory);
+        Directory.CreateDirectory(fixtureDir);
+        await File.WriteAllTextAsync(Path.Combine(fixtureDir, "Source.cs"),
+            "namespace Old\n{\n    " + declaration + "\n\n    public class Keep { }\n}\n", CancellationToken.None);
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            CreateService().PreviewChangeTypeNamespaceAsync(
+                wsId, "Selected", "Old", "New", newFilePath: null, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, $"type-kind {kind} not supported");
+        StringAssert.Contains(ex.Message, "change_type_namespace_preview");
+        Assert.IsFalse(ex.Message.Contains("not found", StringComparison.Ordinal),
+            $"{kind} must be reported as an unsupported kind, not 'not found': {ex.Message}");
+    }
+
+    /// <summary>
+    /// A genuine miss still reads "not found": an enum in a DIFFERENT namespace must not turn the
+    /// refusal into an unsupported-kind error.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Reports_Not_Found_When_The_Enum_Lives_In_Another_Namespace()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory);
+        Directory.CreateDirectory(fixtureDir);
+        await File.WriteAllTextAsync(Path.Combine(fixtureDir, "Source.cs"),
+            "namespace Elsewhere\n{\n    public enum Selected { A }\n}\n", CancellationToken.None);
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            CreateService().PreviewChangeTypeNamespaceAsync(
+                wsId, "Selected", "Old", "New", newFilePath: null, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "was not found in the workspace");
+        Assert.IsFalse(ex.Message.Contains("type-kind", StringComparison.Ordinal), ex.Message);
+    }
+
     [TestMethod]
     public async Task Preview_Rejects_Same_Source_And_Destination_Namespace()
     {
