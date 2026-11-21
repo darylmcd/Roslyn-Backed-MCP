@@ -267,6 +267,7 @@
 | `split-service-di-rewrite-first-registration-only` | Medium | — | **Rewrite every matching DI registration, not only the first** — TryResolveRegistrationAsync rewrites only the first registration found for the split service. [type: bug] [source: remediation run 2026-11-21] | S | items/split-service-di-rewrite-first-registration-only.md |
 | `split-service-di-rewrite-regex-to-syntax` | Medium | — | **Replace the regex DI registration rewrite with a syntax-based one** — RewriteDiRegistrations is regex-based and hard-coded to the `services.` identifier. [type: bug] [source: remediation run 2026-11-21] | M | items/split-service-di-rewrite-regex-to-syntax.md |
 | `split-service-di-host-differs-source-registrations-lost` | Medium | — | **Warn when source-type registrations remain in the source file but the host registration file differs** — the dropped-registration warning never runs when hostRegistrationFile is another file (inSourceFile false). [type: bug] [source: remediation run 2026-11-21] | S | items/split-service-di-host-differs-source-registrations-lost.md |
+| `relocation-consumer-attribute-suffix-reference-sites` | Medium | — | **Match `[Selected]` (SelectedAttribute) as a reference site in the relocation consumer pass** — the moved-type site detector compares the identifier to the type name exactly. [type: bug] [source: remediation run 2026-11-21] | S | items/relocation-consumer-attribute-suffix-reference-sites.md |
 
 ## Low
 
