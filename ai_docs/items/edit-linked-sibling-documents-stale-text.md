@@ -1,6 +1,6 @@
 # edit-linked-sibling-documents-stale-text — Verify and fix stale text in linked sibling documents after an edit
 
-**row:** `edit-linked-sibling-documents-stale-text` · **pri:** `Low` · **size:** `M` · **verified:** `79ad03bf9291670cb708a6501b1b6297a29f89cf` · **deps:** `edit-syntax-check-project-parse-options`
+**row:** `edit-linked-sibling-documents-stale-text` · **pri:** `Low` · **size:** `M` · **verified:** `79ad03bf9291670cb708a6501b1b6297a29f89cf`
 
 ## Anchors
 

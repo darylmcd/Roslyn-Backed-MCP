@@ -1,6 +1,6 @@
 # symbol-refactor-edit-default-parse-options — SymbolRefactorService parses the edited text with default options
 
-**row:** `symbol-refactor-edit-default-parse-options` · **pri:** `Low` · **size:** `S` · **verified:** `79ad03bf9291670cb708a6501b1b6297a29f89cf` · **deps:** `edit-syntax-check-project-parse-options`
+**row:** `symbol-refactor-edit-default-parse-options` · **pri:** `Low` · **size:** `S` · **verified:** `79ad03bf9291670cb708a6501b1b6297a29f89cf`
 
 ## Anchors
 
