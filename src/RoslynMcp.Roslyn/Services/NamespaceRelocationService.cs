@@ -598,7 +598,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                 var mentionsType = root.DescendantNodes().OfType<IdentifierNameSyntax>()
                     .Any(id => string.Equals(id.Identifier.ValueText, typeName, StringComparison.Ordinal));
                 var importsOld = root.DescendantNodes().OfType<UsingDirectiveSyntax>()
-                    .Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, fromKey));
+                    .Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, fromKey) || IsAliasOfNamespace(directive, fromKey));
                 if (!mentionsType && !importsOld) continue;
 
                 var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
@@ -647,6 +647,12 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         keptFallback = false;
         var namespaces = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().ToList();
 
+        // An alias of the old namespace dangles once nothing declares that namespace any more (a
+        // child namespace or a remaining declaration keeps it alive, and the alias then still binds).
+        var oldNamespaceGone = root.DescendantNodes().OfType<UsingDirectiveSyntax>().Any(directive => IsAliasOfNamespace(directive, fromKey))
+            && NamespaceMemberClassifier.FindNamespaceSymbol(
+                semanticModel.Compilation.GlobalNamespace, fromKey.Split('.', StringSplitOptions.RemoveEmptyEntries)) is null;
+
         var needsNewImport = !root.Usings.Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, toKey))
             && root.DescendantNodes().OfType<IdentifierNameSyntax>().Any(site =>
                 IsMovedTypeReference(site, typeName, toKey, semanticModel, ct) && NeedsImport(site, toKey));
@@ -655,10 +661,12 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         foreach (var scope in namespaces)
         {
             var usings = RewriteScopeUsings(scope.Usings, scope, fromKey, siblingTypesRemaining, ref keptFallback);
+            usings = RetargetDanglingAliases(usings, fromKey, toNamespace, oldNamespaceGone);
             if (usings != scope.Usings) rewrittenScopes[scope] = usings;
         }
 
         var rootUsings = RewriteScopeUsings(root.Usings, root, fromKey, siblingTypesRemaining, ref keptFallback);
+        rootUsings = RetargetDanglingAliases(rootUsings, fromKey, toNamespace, oldNamespaceGone);
         if (needsNewImport)
         {
             // NOTE: SyntaxFactory.UsingDirective emits a keyword token without trailing trivia, so
@@ -741,6 +749,25 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         // Old namespace is empty after the move and this scope cannot see it ambiently: drop it.
         return SyntaxFactory.List(usings.Where(directive => !oldImports.Contains(directive)));
+    }
+
+    /// <summary>True for <c>using A = N;</c> naming the namespace with the given key (not <c>using static</c>, which names a type).</summary>
+    private static bool IsAliasOfNamespace(UsingDirectiveSyntax directive, string namespaceKey) =>
+        directive.Alias is not null
+        && directive.StaticKeyword.IsKind(SyntaxKind.None)
+        && string.Equals(NamespaceNameIdentity.Of(directive.Name), namespaceKey, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Retargets <c>using A = Old;</c> to the destination when <paramref name="oldNamespaceGone"/>:
+    /// everything the emptied namespace held now lives there, so the alias keeps its meaning.
+    /// </summary>
+    private static SyntaxList<UsingDirectiveSyntax> RetargetDanglingAliases(
+        SyntaxList<UsingDirectiveSyntax> usings, string fromKey, string toNamespace, bool oldNamespaceGone)
+    {
+        if (!oldNamespaceGone) return usings;
+        return SyntaxFactory.List(usings.Select(directive => IsAliasOfNamespace(directive, fromKey)
+            ? directive.WithName(ReceivingNamespaceFactory.CreateName(toNamespace).WithTriviaFrom(directive.Name!))
+            : directive));
     }
 
     /// <summary>Full dotted name of a namespace declaration, including the declarations it is nested in.</summary>

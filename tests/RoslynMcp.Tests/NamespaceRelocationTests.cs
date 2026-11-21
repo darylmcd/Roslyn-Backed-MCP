@@ -1248,23 +1248,68 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// Pins the outcome for an alias of the emptied namespace: the plain import is the obsolete
-    /// one and is removed; the alias is not an import of the old namespace for this decision and is
-    /// left untouched (a dangling alias is a known gap tracked by its own backlog row).
+    /// Regression (relocation-alias-static-imports-of-emptied-namespace): an alias of the emptied
+    /// namespace is not a plain import, so the plain import is removed, but the alias was left
+    /// pointing at a namespace that no longer exists (CS0246). It now follows the type to the
+    /// destination.
     /// </summary>
     [TestMethod]
-    public async Task Preview_Removes_The_Plain_Old_Import_And_Leaves_An_Alias_Of_The_Old_Namespace()
+    public async Task Preview_Removes_The_Plain_Old_Import_And_Retargets_An_Alias_Of_The_Emptied_Namespace()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var (modified, _, _, _, _) = await PreviewRelocationAsync(workspace,
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace,
             "namespace Old\n{\n    public class Selected { }\n}\n", "using A = Old;\nusing Old;\n" + ConsumerOfSelected,
             relocate: false);
 
-        var (text, _) = await ReadConsumerAsync(workspace, modified);
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
         Assert.AreEqual(0, CountImportLines(text, "Old"), $"The plain obsolete import must be removed:\n{text}");
-        StringAssert.Contains(text, "using A = Old;");
+        Assert.IsFalse(text.Contains("= Old;", StringComparison.Ordinal), $"The alias must not keep naming Old:\n{text}");
+        StringAssert.Contains(text, "using A = New;");
         Assert.AreEqual(1, CountImportLines(text, "New"), text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// Regression (relocation-alias-static-imports-of-emptied-namespace): the alias is retargeted
+    /// in a file that never mentions the moved type, and for an alias declared inside a namespace.
+    /// </summary>
+    [TestMethod]
+    [DataRow("using A = Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer { }\n", DisplayName = "compilation-unit alias")]
+    [DataRow("namespace Consumers\n{\n    using A = Old;\n\n    public sealed class Consumer { }\n}\n", DisplayName = "namespace-scoped alias")]
+    public async Task Preview_Retargets_An_Alias_Of_The_Emptied_Namespace_In_A_File_That_Does_Not_Mention_The_Type(string consumer)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace,
+            "namespace Old\n{\n    public class Selected { }\n}\n", consumer, relocate: false);
+
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
+        StringAssert.Contains(text, "using A = New;");
+        Assert.IsFalse(text.Contains("= Old;", StringComparison.Ordinal), text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// A child namespace keeps <c>Old</c> alive after its last type leaves, so an alias of it still
+    /// binds and must be left alone (guard: passes before and after the fix).
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Leaves_An_Alias_Of_A_Namespace_That_Still_Exists()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace,
+            "namespace Old\n{\n    public class Selected { }\n}\n",
+            "using A = Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer { public A.Sub.Keep? Other { get; set; } }\n",
+            otherFile: ("SampleLib", "namespace Old.Sub\n{\n    public class Keep { }\n}\n"), relocate: false);
+
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
+        StringAssert.Contains(text, "using A = Old;");
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
     }
 
     /// <summary>
