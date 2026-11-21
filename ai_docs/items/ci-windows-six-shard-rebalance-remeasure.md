@@ -1,18 +1,18 @@
 # ci-windows-six-shard-rebalance-remeasure — Re-measure and rebalance Windows under six shards
 
-**row:** `ci-windows-six-shard-rebalance-remeasure` · **pri:** `Medium` · **size:** `M` · **verified:** `b525794bae630b1baa525694726a98b4095fd1e7`
+**row:** `ci-windows-six-shard-rebalance-remeasure` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
-- `eng/shard-duration-profile.json` — committed profile from runs 43762219005, 43765191714, 43774416634, 44121901489, 44128243501 (all on the superseded 4 + 4 topology); 512 profiled classes per image, 10 on the static fallback.
+- `eng/shard-duration-profile.json` — regenerated 2026-11-20 from runs 44822983080, 44826246792, 44829502271, 44832807687, 44836232602 (6 + 5 topology); 528 profiled classes per image.
 - `eng/collect-hosted-shard-timings.ps1` — the only sanctioned generator (`-ProfileJson`) and the timing report.
 - `ai_docs/references/ci-internals.md` — § Duration-profile refresh: refresh procedure.
-- `ai_docs/references/ci-topology-decision-log.md` — 2026-11-17 six Windows + five Linux entry: the known-hole table and the estimate against run 44176184128.
+- `ai_docs/references/ci-topology-decision-log.md` — 2026-11-20 entry (this refresh) and the 2026-11-17 six Windows + five Linux entry.
 
 ## Acceptance
 
-- [ ] Five complete green first-attempt code `pull_request` runs under the 6 + 5 topology are measured with `eng/collect-hosted-shard-timings.ps1`; run ids, heads and the per-image table are recorded in `ai_docs/references/ci-topology-decision-log.md` (standing rules stay in `CI_POLICY.md`).
-- [ ] `eng/shard-duration-profile.json` is regenerated from those runs by the documented procedure (never hand-edited). `InterfaceParameterSemanticsDefaultsRouteTests`, `InterfaceParameterSemanticsAttributesRouteTests`, `InterfaceParameterSemanticsModifiersRouteTests`, `CrossProjectInterfaceBindingIntegrationTests` and `WorkspaceCloseDrainTests` carry measured weights, or the row records which of them changed again and still fall back.
+- [x] Five complete green first-attempt code `pull_request` runs under the 6 + 5 topology are measured with `eng/collect-hosted-shard-timings.ps1`; run ids, heads and the per-image table are recorded in `ai_docs/references/ci-topology-decision-log.md` (2026-11-20 entry).
+- [x] `eng/shard-duration-profile.json` is regenerated from those runs by the documented procedure (never hand-edited). All five hole classes carry measured weights (528 classes per image, none of the five on the fallback).
 - [ ] Across five further complete green runs on the regenerated profile, the median slowest `windows-latest` leg is within the collector's single-leg noise band of the mean Windows leg. If it is not, the cause of the slow legs is identified and recorded before any further count or cap change.
 
 ## Evidence
