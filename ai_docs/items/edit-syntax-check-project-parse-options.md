@@ -1,6 +1,6 @@
 # edit-syntax-check-project-parse-options — Validate edits in loaded C# parse contexts
 
-**row:** `edit-syntax-check-project-parse-options` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `edit-syntax-check-project-parse-options` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # logging-default-sink-disabled-stderr-swallowed — Enable the bounded file sink by default for installed users
 
-**row:** `logging-default-sink-disabled-stderr-swallowed` · **pri:** `High` · **size:** `M` · **deps:** `logging-retention-dead-pid-sweep`
+**row:** `logging-default-sink-disabled-stderr-swallowed` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 

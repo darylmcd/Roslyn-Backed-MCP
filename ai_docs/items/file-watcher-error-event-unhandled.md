@@ -1,6 +1,6 @@
 # file-watcher-error-event-unhandled — Recover watcher coverage after FileSystemWatcher.Error
 
-**row:** `file-watcher-error-event-unhandled` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `file-watcher-error-event-unhandled` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

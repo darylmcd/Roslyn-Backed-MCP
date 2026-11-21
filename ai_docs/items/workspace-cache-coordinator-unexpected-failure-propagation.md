@@ -1,6 +1,6 @@
 # workspace-cache-coordinator-unexpected-failure-propagation — Do not hide cache-coordinator programming failures
 
-**row:** `workspace-cache-coordinator-unexpected-failure-propagation` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `workspace-cache-coordinator-unexpected-failure-propagation` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

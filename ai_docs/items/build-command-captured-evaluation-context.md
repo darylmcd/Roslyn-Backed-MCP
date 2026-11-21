@@ -1,6 +1,6 @@
 # build-command-captured-evaluation-context — Build with the loaded evaluation context
 
-**row:** `build-command-captured-evaluation-context` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `build-command-captured-evaluation-context` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

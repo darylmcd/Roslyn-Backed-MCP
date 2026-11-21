@@ -1,6 +1,6 @@
 # cross-project-type-name-first-match — Require an unambiguous cross-project type target
 
-**row:** `cross-project-type-name-first-match` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `cross-project-type-name-first-match` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

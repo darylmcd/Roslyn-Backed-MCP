@@ -1,6 +1,6 @@
 # rebase-changed-document-silent-drop — Warn when rebase drops a changed document
 
-**row:** `rebase-changed-document-silent-drop` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `rebase-changed-document-silent-drop` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

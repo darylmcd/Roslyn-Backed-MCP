@@ -1,6 +1,6 @@
 # other-failed-apply-displaces-undo-target — Preserve prior undo across failed mutators
 
-**row:** `other-failed-apply-displaces-undo-target` · **pri:** `Medium` · **size:** `L` · **deps:** `release-policy-correction-rule-adr`
+**row:** `other-failed-apply-displaces-undo-target` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 

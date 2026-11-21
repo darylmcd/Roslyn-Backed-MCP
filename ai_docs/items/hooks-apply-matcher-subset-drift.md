@@ -16,3 +16,7 @@
 ## Evidence
 
 wa1 counted 9 of 26 covered; HookConfigurationTests.cs:62-63 pins only the regex shape; copilot-instructions.md:69 says 'keep in sync' with no gate. (doc-audit 2026-11-17)
+
+## Notes
+
+PR 2172 made the apply reminder static (a command hook): it fires after every matched apply, including mid-chain ones, so the matcher drift now decides how often it fires.

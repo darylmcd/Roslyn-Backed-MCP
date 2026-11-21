@@ -1,6 +1,6 @@
 # project-reference-reload-embed-metadata — Preserve evaluated embed metadata when loading references
 
-**row:** `project-reference-reload-embed-metadata` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `project-reference-reload-embed-metadata` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

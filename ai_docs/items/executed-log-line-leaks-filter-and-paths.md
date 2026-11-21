@@ -1,6 +1,6 @@
 # executed-log-line-leaks-filter-and-paths — Stop the gated Executed log line from logging caller filter text and absolute paths
 
-**row:** `executed-log-line-leaks-filter-and-paths` · **pri:** `Medium` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `executed-log-line-leaks-filter-and-paths` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # compile-check-diagnostic-suppressor-parity — Investigate suppressor parity with native compiler results
 
-**row:** `compile-check-diagnostic-suppressor-parity` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `compile-check-diagnostic-suppressor-parity` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

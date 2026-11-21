@@ -1,6 +1,6 @@
 # not-found-metadata-only-message-classification — Classify metadata-only lookup failures from typed evidence
 
-**row:** `not-found-metadata-only-message-classification` · **pri:** `Low` · **size:** `M` · **deps:** `release-policy-correction-rule-adr`
+**row:** `not-found-metadata-only-message-classification` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

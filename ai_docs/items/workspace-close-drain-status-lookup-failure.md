@@ -1,6 +1,6 @@
 # workspace-close-drain-status-lookup-failure — Distinguish workspace lookup failures before close drain
 
-**row:** `workspace-close-drain-status-lookup-failure` · **pri:** `Medium` · **size:** `S` · **deps:** `release-policy-correction-rule-adr`
+**row:** `workspace-close-drain-status-lookup-failure` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
