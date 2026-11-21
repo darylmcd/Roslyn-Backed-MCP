@@ -28,7 +28,7 @@ internal sealed record ServerObservabilityOptions(ServerObservabilitySinkKind Si
             "disabled" => new(ServerObservabilitySinkKind.Disabled),
             "stderr" => new(ServerObservabilitySinkKind.Stderr),
             _ => throw new InvalidOperationException(
-                $"{EnvironmentVariableName} must be 'disabled', 'stderr', or 'file' (unset selects 'file')."),
+                $"{EnvironmentVariableName} must be 'disabled', 'stderr', or 'file'."),
         };
 }
 
@@ -58,7 +58,7 @@ internal static class ServerObservabilityStatus
             ServerObservabilitySinkKind.File => "file",
             ServerObservabilitySinkKind.Stderr => "stderr",
             ServerObservabilitySinkKind.Disabled => "disabled",
-            _ => throw new InvalidOperationException("Unsupported server observability sink."),
+            _ => throw InvalidOperationErrors.Internal("Unsupported server observability sink."),
         };
         return fileProvider is null
             ? new ObservabilityDto(sink, LogFile: null, LogDirectory: null)
