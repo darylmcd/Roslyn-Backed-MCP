@@ -114,7 +114,7 @@ public sealed class EditSyntaxCheckParseOptionsTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task ProjectLangVersion_RefusesSyntaxNewerThanTheProjectLanguageVersion()
+    public async Task ProjectLangVersion_RefusesGrammarTheProjectLangVersionDoesNotParse()
     {
         await using var workspace = await ArrangeAsync(
             "public static class ParseTarget\n{\n}\n", "<LangVersion>13</LangVersion>");
