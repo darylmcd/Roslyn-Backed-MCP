@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Host.Stdio.Diagnostics;
@@ -15,15 +16,55 @@ internal sealed record ServerObservabilityOptions(ServerObservabilitySinkKind Si
 {
     public const string EnvironmentVariableName = "ROSLYNMCP_OBSERVABILITY_SINK";
 
+    /// <summary>
+    /// An unset, empty or whitespace value selects the bounded file sink: stderr is usually swallowed by the
+    /// MCP host, so without a default file sink the first failure leaves no record an agent can reach.
+    /// <c>disabled</c> is the explicit opt-out. See ADR 0042.
+    /// </summary>
     public static ServerObservabilityOptions Parse(string? value) =>
         value?.Trim().ToLowerInvariant() switch
         {
-            null or "" or "disabled" => new(ServerObservabilitySinkKind.Disabled),
+            null or "" or "file" => new(ServerObservabilitySinkKind.File),
+            "disabled" => new(ServerObservabilitySinkKind.Disabled),
             "stderr" => new(ServerObservabilitySinkKind.Stderr),
-            "file" => new(ServerObservabilitySinkKind.File),
             _ => throw new InvalidOperationException(
-                $"{EnvironmentVariableName} must be 'disabled', 'stderr', or 'file'."),
+                $"{EnvironmentVariableName} must be 'disabled', 'stderr', or 'file' (unset selects 'file')."),
         };
+}
+
+/// <summary>
+/// Projects the resolved sink into the one status shape both the startup record and
+/// <c>server_info.observability</c> report, so the log line and the tool response cannot drift apart.
+/// </summary>
+internal static class ServerObservabilityStatus
+{
+    private static readonly Action<ILogger, string, string?, string?, Exception?> LogConfigured =
+        LoggerMessage.Define<string, string?, string?>(
+            LogLevel.Information,
+            new EventId(LogEvents.ObservabilitySinkConfigured, LogEvents.ObservabilitySinkConfiguredName),
+            "observability sink configured: sink={Sink} logFile={LogFile} logDirectory={LogDirectory}");
+
+    /// <summary>
+    /// <paramref name="fileProvider"/> is the file provider Program.cs installed; it is non-null exactly when
+    /// the sink is <c>file</c>, and is the only source of the active-file path.
+    /// </summary>
+    public static ObservabilityDto Describe(
+        ServerObservabilityOptions options,
+        JsonLinesFileLoggerProvider? fileProvider)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var sink = options.Sink.ToString().ToLowerInvariant();
+        return fileProvider is null
+            ? new ObservabilityDto(sink, LogFile: null, LogDirectory: null)
+            : new ObservabilityDto(sink, fileProvider.FilePath, Path.GetDirectoryName(fileProvider.FilePath));
+    }
+
+    public static void Log(ILogger logger, ObservabilityDto status)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(status);
+        LogConfigured(logger, status.Sink, status.LogFile, status.LogDirectory, null);
+    }
 }
 
 internal sealed record ServerObservabilityEvent(

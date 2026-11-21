@@ -49,6 +49,8 @@ public static class LogEvents
     public const string RetentionSweepCompletedName = "LogRetentionSweepCompleted";
     public const int RetentionSweepFailed = 1004;
     public const string RetentionSweepFailedName = "LogRetentionSweepFailed";
+    public const int ObservabilitySinkConfigured = 1005;
+    public const string ObservabilitySinkConfiguredName = "ObservabilitySinkConfigured";
 
     // Tool-call lifecycle: 2000-2999.
     public const int ToolCompleted = 2101;

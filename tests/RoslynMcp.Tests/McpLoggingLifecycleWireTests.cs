@@ -15,15 +15,7 @@ public sealed class McpLoggingLifecycleWireTests
     [Timeout(60000)]
     public async Task ProductionHost_EmitsNoProtocolLoggingBeforeOrAfterInitialization()
     {
-        var hostDll = typeof(HostAssemblyMarker).Assembly.Location;
-        Assert.IsTrue(File.Exists(hostDll), $"Build the host before the wire test: {hostDll}");
-        var testRoot = Path.Combine(
-            TestTempRoot.Current,
-            nameof(McpLoggingLifecycleWireTests),
-            Guid.NewGuid().ToString("N"));
-        var foreignWorkingDirectory = Path.Combine(testRoot, "foreign-cwd");
-        var stateRoot = Path.Combine(testRoot, "state");
-        Directory.CreateDirectory(foreignWorkingDirectory);
+        var (stateRoot, foreignWorkingDirectory) = CreateIsolatedRoots();
 
         // Seed the sink directory before launch. The dead pid is proven dead (an exited child, never a
         // hardcoded number); the Process object stays undisposed until the method ends so Windows cannot
@@ -35,26 +27,10 @@ public sealed class McpLoggingLifecycleWireTests
         var deadSeed = SeedLogFile(logDirectory, deadChild.Id, agedStamp);
         var liveSeed = SeedLogFile(logDirectory, Environment.ProcessId, agedStamp);
 
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo("dotnet", $"\"{hostDll}\"")
-            {
-                WorkingDirectory = foreignWorkingDirectory,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            },
-        };
-        process.StartInfo.Environment[ServerObservabilityOptions.EnvironmentVariableName] = "file";
-        process.StartInfo.Environment["XDG_STATE_HOME"] = stateRoot;
-        Assert.IsTrue(process.Start());
-
-        var stdout = new CapturedLineStream();
-        var stderr = new CapturedLineStream();
-        var stdoutPump = PumpLinesAsync(process.StandardOutput, stdout);
-        var stderrPump = PumpLinesAsync(process.StandardError, stderr);
+        await using var host = HostLaunch.Start(stateRoot, foreignWorkingDirectory, sinkValue: "file");
+        var process = host.Process;
+        var stdout = host.Stdout;
+        var stderr = host.Stderr;
 
         try
         {
@@ -90,14 +66,7 @@ public sealed class McpLoggingLifecycleWireTests
                 """);
             var serverInfoResponse = await WaitForResponseAsync(stdout, id: 2);
 
-            using var document = JsonDocument.Parse(serverInfoResponse);
-            var text = document.RootElement
-                .GetProperty("result")
-                .GetProperty("content")[0]
-                .GetProperty("text")
-                .GetString();
-            Assert.IsNotNull(text);
-            using var payload = JsonDocument.Parse(text);
+            using var payload = ParseToolPayload(serverInfoResponse);
             Assert.IsFalse(payload.RootElement
                 .GetProperty("capabilities")
                 .GetProperty("logging")
@@ -125,8 +94,7 @@ public sealed class McpLoggingLifecycleWireTests
         }
         finally
         {
-            await StopProcessAsync(process);
-            await Task.WhenAll(stdoutPump, stderrPump);
+            await host.StopAsync();
         }
 
         Assert.IsTrue(
@@ -211,6 +179,91 @@ public sealed class McpLoggingLifecycleWireTests
     }
 
     [TestMethod]
+    [Timeout(60000)]
+    public async Task ProductionHost_UnsetSink_DefaultsToFileAndReportsLogPath()
+    {
+        var (stateRoot, foreignWorkingDirectory) = CreateIsolatedRoots();
+        var logDirectory = Path.Combine(stateRoot, "roslyn-mcp", "logs");
+        await using var host = HostLaunch.Start(stateRoot, foreignWorkingDirectory, sinkValue: null);
+        var logFile = Path.Combine(logDirectory, $"roslyn-mcp-{host.Process.Id}.jsonl");
+
+        try
+        {
+            await WaitForLineAsync(host.Stderr, "Startup surface:");
+            await host.InitializeAsync();
+            using var payload = await host.ReadServerInfoAsync(id: 2);
+
+            var observability = payload.RootElement.GetProperty("observability");
+            Assert.AreEqual("file", observability.GetProperty("sink").GetString());
+            Assert.AreEqual(Path.GetFullPath(logFile), observability.GetProperty("logFile").GetString());
+            Assert.AreEqual(Path.GetFullPath(logDirectory), observability.GetProperty("logDirectory").GetString());
+
+            await WaitForConditionAsync(
+                () => FindEvent(ReadOwnLogRecords(logFile), "ObservabilitySinkConfigured") is not null,
+                "the startup record naming the sink and log path",
+                TimeSpan.FromSeconds(20),
+                () => DescribeSweepState(logDirectory, logFile));
+            var record = FindEvent(ReadOwnLogRecords(logFile), "ObservabilitySinkConfigured")!.Value;
+            Assert.AreEqual("Information", record.GetProperty("level").GetString());
+            var fields = record.GetProperty("fields");
+            Assert.AreEqual("file", fields.GetProperty("sink").GetString());
+            Assert.AreEqual(Path.GetFullPath(logFile), fields.GetProperty("logFile").GetString());
+            Assert.AreEqual(Path.GetFullPath(logDirectory), fields.GetProperty("logDirectory").GetString());
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+
+        Assert.IsTrue(File.Exists(logFile), "An unset sink variable must install the file sink.");
+        Assert.IsEmpty(
+            Directory.EnumerateFileSystemEntries(foreignWorkingDirectory).ToArray(),
+            "A foreign-CWD launch must not write logs or metadata into its working directory.");
+    }
+
+    [TestMethod]
+    [Timeout(60000)]
+    public async Task ProductionHost_ExplicitDisabled_WritesNoLogFileAndReportsDisabled() =>
+        await AssertDisabledHostAsync(extraEnvironment: null);
+
+    /// <summary>
+    /// Guard, not a regression test: the retention variables are sink-scoped, so an explicit
+    /// <c>disabled</c> must never parse them. It passes on the old code too and fails if the retention
+    /// parse is hoisted out of the file-sink branch of Program.cs.
+    /// </summary>
+    [TestMethod]
+    [Timeout(60000)]
+    public async Task ProductionHost_DisabledSink_IgnoresInvalidRetentionVariable() =>
+        await AssertDisabledHostAsync(new Dictionary<string, string>
+        {
+            [JsonLinesRetentionOptions.MaxSegmentsVariable] = "0",
+        });
+
+    [TestMethod]
+    [Timeout(60000)]
+    public async Task ProductionHost_UnsetSink_InvalidRetentionVariable_FailsStartupNamingVariableWithoutEchoingValue()
+    {
+        const string sentinel = "NOT-A-NUMBER-7f3a9c1e";
+        var (stateRoot, foreignWorkingDirectory) = CreateIsolatedRoots();
+        await using var host = HostLaunch.Start(
+            stateRoot,
+            foreignWorkingDirectory,
+            sinkValue: null,
+            new Dictionary<string, string> { [JsonLinesRetentionOptions.MaxSegmentsVariable] = sentinel });
+
+        var exitCode = await host.WaitForExitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.IsNotNull(exitCode, "The host stayed up with an invalid retention variable and the default sink.");
+        Assert.AreNotEqual(0, exitCode.Value, "An invalid retention variable must fail startup (non-zero exit).");
+        var stderr = string.Join("\n", host.Stderr.Snapshot());
+        StringAssert.Contains(stderr, JsonLinesRetentionOptions.MaxSegmentsVariable);
+        Assert.IsFalse(stderr.Contains(sentinel, StringComparison.Ordinal), "The rejected value must not be echoed on stderr.");
+        Assert.IsFalse(
+            string.Join("\n", host.Stdout.Snapshot()).Contains(sentinel, StringComparison.Ordinal),
+            "The rejected value must not reach stdout.");
+    }
+
+    [TestMethod]
     public void TransportDisconnectDiagnostics_EmitsTypeAndCorrelationWithoutRawDetail()
     {
         const string secretMessage = "provider-secret-disconnect-detail";
@@ -233,6 +286,76 @@ public sealed class McpLoggingLifecycleWireTests
         Assert.AreEqual(32, correlationId.Length);
         Assert.IsTrue(correlationId.All(static character =>
             character is >= '0' and <= '9' or >= 'a' and <= 'f'));
+    }
+
+    private static async Task AssertDisabledHostAsync(IReadOnlyDictionary<string, string>? extraEnvironment)
+    {
+        var (stateRoot, foreignWorkingDirectory) = CreateIsolatedRoots();
+        var logDirectory = Path.Combine(stateRoot, "roslyn-mcp", "logs");
+        await using var host = HostLaunch.Start(stateRoot, foreignWorkingDirectory, sinkValue: "disabled", extraEnvironment);
+
+        try
+        {
+            await WaitForLineAsync(host.Stderr, "Startup surface:");
+            await host.InitializeAsync();
+            using var payload = await host.ReadServerInfoAsync(id: 2);
+
+            var observability = payload.RootElement.GetProperty("observability");
+            Assert.AreEqual("disabled", observability.GetProperty("sink").GetString());
+            Assert.AreEqual(JsonValueKind.Null, observability.GetProperty("logFile").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, observability.GetProperty("logDirectory").ValueKind);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+
+        Assert.IsFalse(
+            Directory.Exists(logDirectory) &&
+            Directory.EnumerateFiles(logDirectory, "roslyn-mcp-*.jsonl").Any(),
+            "An explicit disabled sink must not write log files.");
+    }
+
+    /// <summary>
+    /// Every host-spawning test gets a per-test state root under the test run's temp root, so a default-on
+    /// file sink can never write into the developer's real per-user log directory.
+    /// </summary>
+    private static (string StateRoot, string ForeignWorkingDirectory) CreateIsolatedRoots()
+    {
+        var testRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(McpLoggingLifecycleWireTests),
+            Guid.NewGuid().ToString("N"));
+        var foreignWorkingDirectory = Path.Combine(testRoot, "foreign-cwd");
+        Directory.CreateDirectory(foreignWorkingDirectory);
+        return (Path.Combine(testRoot, "state"), foreignWorkingDirectory);
+    }
+
+    private static JsonElement? FindEvent(IEnumerable<JsonElement> records, string eventName)
+    {
+        foreach (var record in records)
+        {
+            if (record.TryGetProperty("eventName", out var name) &&
+                name.ValueKind == JsonValueKind.String &&
+                name.GetString() == eventName)
+            {
+                return record;
+            }
+        }
+
+        return null;
+    }
+
+    private static JsonDocument ParseToolPayload(string response)
+    {
+        using var document = JsonDocument.Parse(response);
+        var text = document.RootElement
+            .GetProperty("result")
+            .GetProperty("content")[0]
+            .GetProperty("text")
+            .GetString();
+        Assert.IsNotNull(text);
+        return JsonDocument.Parse(text);
     }
 
     private static string SeedLogFile(string logDirectory, int pid, DateTime lastWriteUtc)
@@ -406,6 +529,137 @@ public sealed class McpLoggingLifecycleWireTests
             line => line.Contains(expectedText, StringComparison.Ordinal),
             $"stderr marker '{expectedText}'",
             TimeSpan.FromSeconds(20));
+
+    /// <summary>
+    /// One launched production host with captured stdout/stderr. Always isolated: the state root must live
+    /// under <see cref="TestTempRoot.Current"/> and the sink variable is set or removed explicitly, so an
+    /// inherited developer value can never change a result or send logs to the real per-user directory.
+    /// </summary>
+    private sealed class HostLaunch : IAsyncDisposable
+    {
+        private readonly Task _pumps;
+
+        private HostLaunch(Process process)
+        {
+            Process = process;
+            _pumps = Task.WhenAll(
+                PumpLinesAsync(process.StandardOutput, Stdout),
+                PumpLinesAsync(process.StandardError, Stderr));
+        }
+
+        public Process Process { get; }
+
+        public CapturedLineStream Stdout { get; } = new();
+
+        public CapturedLineStream Stderr { get; } = new();
+
+        public static HostLaunch Start(
+            string stateRoot,
+            string workingDirectory,
+            string? sinkValue,
+            IReadOnlyDictionary<string, string>? extraEnvironment = null)
+        {
+            Assert.IsTrue(
+                Path.GetFullPath(stateRoot).StartsWith(Path.GetFullPath(TestTempRoot.Current), StringComparison.OrdinalIgnoreCase),
+                "A wire test must isolate XDG_STATE_HOME under the test temp root.");
+            var hostDll = typeof(HostAssemblyMarker).Assembly.Location;
+            Assert.IsTrue(File.Exists(hostDll), $"Build the host before the wire test: {hostDll}");
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo("dotnet", $"\"{hostDll}\"")
+                {
+                    WorkingDirectory = workingDirectory,
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                },
+            };
+            var environment = process.StartInfo.Environment;
+            environment["XDG_STATE_HOME"] = stateRoot;
+            if (sinkValue is null)
+            {
+                environment.Remove(ServerObservabilityOptions.EnvironmentVariableName);
+            }
+            else
+            {
+                environment[ServerObservabilityOptions.EnvironmentVariableName] = sinkValue;
+            }
+
+            foreach (var variable in new[]
+            {
+                JsonLinesRetentionOptions.MaxSegmentBytesVariable,
+                JsonLinesRetentionOptions.MaxSegmentsVariable,
+                JsonLinesRetentionOptions.RetentionDaysVariable,
+                JsonLinesRetentionOptions.MaxTotalBytesVariable,
+            })
+            {
+                environment.Remove(variable);
+            }
+
+            foreach (var (name, value) in extraEnvironment ?? new Dictionary<string, string>())
+            {
+                environment[name] = value;
+            }
+
+            Assert.IsTrue(process.Start());
+            return new HostLaunch(process);
+        }
+
+        public async Task InitializeAsync()
+        {
+            await WriteMessageAsync(
+                Process,
+                """
+                {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"wire-test","version":"1.0"}}}
+                """);
+            await WaitForResponseAsync(Stdout, id: 1);
+            await WriteMessageAsync(
+                Process,
+                """
+                {"jsonrpc":"2.0","method":"notifications/initialized","params":{}}
+                """);
+        }
+
+        public async Task<JsonDocument> ReadServerInfoAsync(int id)
+        {
+            await WriteMessageAsync(
+                Process,
+                $$$$"""
+                {"jsonrpc":"2.0","id":{{{{id}}}},"method":"tools/call","params":{"name":"server_info","arguments":{}}}
+                """);
+            return ParseToolPayload(await WaitForResponseAsync(Stdout, id));
+        }
+
+        /// <summary>Exit code once the process exits within <paramref name="timeout"/>; null when it is still running.</summary>
+        public async Task<int?> WaitForExitAsync(TimeSpan timeout)
+        {
+            try
+            {
+                await Process.WaitForExitAsync().WaitAsync(timeout);
+            }
+            catch (TimeoutException)
+            {
+                return null;
+            }
+
+            await _pumps;
+            return Process.ExitCode;
+        }
+
+        public async Task StopAsync()
+        {
+            await StopProcessAsync(Process);
+            await _pumps;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await StopAsync();
+            Process.Dispose();
+        }
+    }
 
     private sealed class CapturedLineStream
     {
