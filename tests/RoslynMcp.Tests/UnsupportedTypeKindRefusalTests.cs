@@ -12,7 +12,7 @@ public sealed class UnsupportedTypeKindRefusalTests
     [DataRow(SyntaxKind.NamespaceDeclaration, "NamespaceDeclaration")]
     public void Create_Names_The_Kind_And_The_Calling_Tool(SyntaxKind kind, string expectedName)
     {
-        var refusal = UnsupportedTypeKindRefusal.Create(kind, "some_tool_preview");
+        var refusal = UnsupportedTypeKindRefusal.Create(kind, "some_tool_preview", UnsupportedTypeKindRefusal.AnyTypeDeclaration);
 
         Assert.AreEqual(
             $"type-kind {expectedName} not supported for this refactor. " +

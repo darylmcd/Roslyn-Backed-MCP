@@ -234,7 +234,8 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         {
             if (unsupportedKind is { } kind)
             {
-                throw UnsupportedTypeKindRefusal.Create(kind, "change_type_namespace_preview");
+                throw UnsupportedTypeKindRefusal.Create(kind, "change_type_namespace_preview",
+                    UnsupportedTypeKindRefusal.AnyTypeDeclaration);
             }
             throw new InvalidOperationException(
                 $"Type '{typeName}' in namespace '{fromNamespace}' was not found in the workspace.");

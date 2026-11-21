@@ -12,8 +12,17 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 internal static class UnsupportedTypeKindRefusal
 {
-    /// <summary>Creates the public refusal naming <paramref name="kind"/> and the calling <paramref name="toolName"/>.</summary>
-    internal static PublicInvalidOperationException Create(SyntaxKind kind, string toolName)
+    /// <summary>Supported-kinds text for tools that move or relocate any type declaration.</summary>
+    internal const string AnyTypeDeclaration = "class, struct, record, and interface declarations";
+
+    /// <summary>Supported-kinds text for the interface-extraction routes (classes and structs only).</summary>
+    internal const string ClassAndStruct = "class and struct declarations";
+
+    /// <summary>
+    /// Creates the public refusal naming <paramref name="kind"/>, the calling <paramref name="toolName"/>
+    /// and what that tool accepts (<paramref name="supportedKinds"/>).
+    /// </summary>
+    internal static PublicInvalidOperationException Create(SyntaxKind kind, string toolName, string supportedKinds)
     {
         var typeKindName = kind switch
         {
@@ -23,6 +32,6 @@ internal static class UnsupportedTypeKindRefusal
         };
         return new PublicInvalidOperationException(
             $"type-kind {typeKindName} not supported for this refactor. " +
-            $"{toolName} currently supports class, struct, record, and interface declarations only.");
+            $"{toolName} currently supports {supportedKinds} only.");
     }
 }

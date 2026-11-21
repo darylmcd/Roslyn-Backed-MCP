@@ -50,7 +50,8 @@ public sealed class TypeMoveService : ITypeMoveService
             // structured error that names the resolved kind instead of the misleading "not found" text.
             if (declaration is not null)
             {
-                throw UnsupportedTypeKindRefusal.Create(declaration.Kind(), "move_type_to_file_preview");
+                throw UnsupportedTypeKindRefusal.Create(declaration.Kind(), "move_type_to_file_preview",
+                    UnsupportedTypeKindRefusal.AnyTypeDeclaration);
             }
 
             throw new PublicInvalidOperationException("Type was not found in the source document. Use document_symbols to select a declaration from that file.");
