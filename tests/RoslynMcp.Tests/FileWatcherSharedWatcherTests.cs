@@ -333,6 +333,53 @@ public sealed class FileWatcherSharedWatcherTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void AncestorDirectoryRemovedOrRenamed_RetiresEveryWorkspaceBeneathItAndNoOther(bool rename)
+    {
+        var parent = NewTempRoot();
+        var rootA = Path.Combine(parent, "a", "b", "rootA");
+        var rootB = Path.Combine(parent, "a", "rootB");
+        var rootC = Path.Combine(parent, "ab", "rootC");
+        var rootD = Path.Combine(parent, "rootD");
+        foreach (var directory in new[] { rootA, rootB, rootC, rootD })
+            Directory.CreateDirectory(directory);
+        var factory = new RaisableWatcherFactory();
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance, factory.Create);
+        var ids = new[] { "A", "B", "C", "D" }.Select(_ => Guid.NewGuid().ToString("N")).ToArray();
+        var roots = new[] { rootA, rootB, rootC, rootD };
+        var raised = new List<string>();
+        watcher.WorkspaceRootMissing += id => { lock (raised) raised.Add(id); };
+        try
+        {
+            for (var i = 0; i < ids.Length; i++)
+                watcher.Watch(ids[i], Path.Combine(roots[i], "Sample.slnx"));
+
+            // Only the watcher on `parent` can see its child `a` move or vanish; every workspace
+            // beneath `a` is a subscriber of it, the decoy `ab` and the sibling `rootD` are not beneath `a`.
+            var parentWatcher = factory.Shared(parent);
+            if (rename)
+                parentWatcher.RaiseRenamed("a", "a-moved");
+            else
+                parentWatcher.RaiseDeleted("a");
+
+            lock (raised) CollectionAssert.AreEquivalent(new[] { ids[0], ids[1] }, raised);
+            Assert.IsTrue(watcher.IsWatchedForTesting(ids[2]));
+            Assert.IsTrue(watcher.IsWatchedForTesting(ids[3]));
+
+            // The unrelated subscription on the same shared watcher still works.
+            parentWatcher.RaiseDeleted("rootD");
+            lock (raised) CollectionAssert.AreEquivalent(new[] { ids[0], ids[1], ids[3] }, raised);
+        }
+        finally
+        {
+            foreach (var id in ids)
+                watcher.Unwatch(id);
+            Directory.Delete(parent, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public void Dispose_DisposesEveryWatcherAndLeavesNoSharedWatcherRegistered()
     {
         var parent = NewTempRoot();

@@ -137,8 +137,9 @@ internal sealed class EditorConfigUnrecoveredWriteException : IOException
 /// <strong>Topology</strong>: each workspace owns ONE recursive tree watcher on the directory of its
 /// solution or project file. It serves source, project, solution and <c>.editorconfig</c> changes under
 /// the root and detects deletion or rename of the loaded solution or project file itself. A config above
-/// the root also applies to its documents, and removal of the root directory is only visible from its
-/// parent, so every ancestor directory carries one non-recursive watcher that is shared by all workspaces
+/// the root also applies to its documents, and removal or move of the root directory, or of any directory
+/// above it, is only visible from the removed directory's parent (which retires every workspace beneath
+/// it), so every ancestor directory carries one non-recursive watcher that is shared by all workspaces
 /// beneath it and reference counted: each additional workspace under the same parent costs one watcher.
 /// A failed <see cref="Watch"/> releases everything it acquired. Every watcher is created through an
 /// internal factory so tests can inject faults and raise events.
@@ -427,11 +428,18 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                 MarkStaleIfRelevant(subscriber.Entry, fullPath, checkExcludedPaths: false, contentEvent);
         }
 
+        /// <summary>
+        /// Raises root-missing for every subscriber whose root is <paramref name="removedPath"/> itself or
+        /// lies beneath it: removing or moving an ancestor directory takes every workspace under it away.
+        /// Runs on the watcher callback thread over the copy-on-write subscriber snapshot; takes no lock.
+        /// </summary>
         private void RootRemoved(string removedPath)
         {
             foreach (var subscriber in _subscribers)
             {
-                if (FileSystemPath.Comparer.Equals(subscriber.Entry.RootDirectory, removedPath))
+                var root = subscriber.Entry.RootDirectory;
+                if (FileSystemPath.Comparer.Equals(root, removedPath) ||
+                    FileSystemPath.IsStrictDescendant(removedPath, root))
                     _raiseRootMissing(subscriber.WorkspaceId);
             }
         }
