@@ -1525,4 +1525,108 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
     }
 
+    /// <summary>
+    /// Regression (namespace-relocation-consumer-scope-identity): a generic moved type is used as a
+    /// <c>GenericNameSyntax</c>, which the reference-site detector did not recognise, so the old
+    /// import was dropped and no import of the destination was added (CS0246).
+    /// </summary>
+    [TestMethod]
+    [DataRow("public Selected<int>? Value { get; set; }", DisplayName = "generic use only")]
+    [DataRow("public Selected<int>? Value { get; set; }\n    public System.Type Open => typeof(Selected<>);", DisplayName = "closed and open generic uses")]
+    public async Task Preview_Resolves_Imports_For_A_Generic_Moved_Type(string members)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var consumer = "using Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    " + members + "\n}\n";
+
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace,
+            "namespace Old\n{\n    public class Selected<T> { }\n}\n", consumer, relocate: false);
+
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
+        Assert.AreEqual(0, CountImportLines(text, "Old"), $"The obsolete import must be removed:\n{text}");
+        Assert.AreEqual(1, CountImportLines(text, "New"), text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// A name that is ambiguous between two other types has candidate symbols: it is not an
+    /// unbound use of the moved type, so no import of the destination is added for it.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Does_Not_Treat_An_Ambiguous_Name_As_A_Use_Of_The_Moved_Type()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string consumer =
+            "using Other;\nusing Third;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Selected? Value { get; set; }\n}\n";
+        await WriteFixtureFileAsync(workspace, "SampleLib", "Third.cs", "namespace Third\n{\n    public class Selected { }\n}\n");
+
+        var (modified, _, _, _, _) = await PreviewRelocationAsync(workspace, SelectedInOld, consumer,
+            otherFile: ("SampleLib", "namespace Other\n{\n    public class Selected { }\n}\n"), relocate: false);
+
+        var (text, _) = await ReadConsumerAsync(workspace, modified);
+        Assert.AreEqual(0, CountImportLines(text, "New"), $"An ambiguous name is not a use of the moved type:\n{text}");
+    }
+
+    /// <summary>
+    /// A <c>using New;</c> declared inside the consumer's namespace already binds the reference: no
+    /// second import is added at the compilation unit.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Adds_No_Import_When_An_Enclosing_Scope_Already_Imports_The_Destination()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string consumer =
+            "using Old;\n\nnamespace Consumers\n{\n    using New;\n\n    public sealed class Consumer { public Selected? Value { get; set; } }\n}\n";
+
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace, SelectedInOld, consumer,
+            otherFile: ("SampleLib", "namespace New\n{\n    public class Other { }\n}\n"), relocate: false);
+
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
+        Assert.AreEqual(1, CountImportLines(text, "New"), $"Only the scoped import must remain:\n{text}");
+        Assert.AreEqual(0, CountImportLines(text, "Old"), text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// A project-wide <c>global using New;</c> in another file already binds the reference, so the
+    /// consumer needs no import of its own (the pass judged only the file's own scopes).
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Adds_No_Import_When_The_Destination_Is_Imported_Globally_Elsewhere()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string consumer = "using Old;\n" + ConsumerOfSelected;
+
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace, SelectedInOld, consumer,
+            otherFile: ("SampleLib", "global using New;\n"), relocate: false);
+
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
+        Assert.AreEqual(0, CountImportLines(text, "New"), $"The global import already binds the reference:\n{text}");
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// The enclosing namespace is measured by its FULL nested name: <c>Outer.Old</c> is not the old
+    /// namespace (its import is dropped), while <c>Old.Sub</c> is inside it (its import is kept).
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Outer\n{\n    namespace Old\n    {\n        public sealed class Consumer { public Selected? Value { get; set; } }\n    }\n}\n", false,
+        DisplayName = "Outer.Old is a different namespace")]
+    [DataRow("namespace Old\n{\n    namespace Sub\n    {\n        public sealed class Consumer { public Selected? Value { get; set; } }\n    }\n}\n", true,
+        DisplayName = "Old.Sub is inside the old namespace")]
+    public async Task Preview_Measures_A_Nested_Consumer_Namespace_By_Its_Full_Name(string body, bool keepsOldImport)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace, SelectedInOld, "using Old;\n\n" + body, relocate: false);
+
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
+        Assert.AreEqual(keepsOldImport ? 1 : 0, CountImportLines(text, "Old"), text);
+        Assert.AreEqual(1, CountImportLines(text, "New"), text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
 }

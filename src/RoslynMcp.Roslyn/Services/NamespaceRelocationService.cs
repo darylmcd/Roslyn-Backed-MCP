@@ -150,7 +150,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         {
             warnings.Add(
                 "Kept `using " + fromNamespace + ";` on " + consumerUpdates.FallbackKeptOldUsingFiles.Count +
-                " consumer file(s) where other symbols still reference the old namespace. " +
+                " consumer file(s) because the old namespace still holds other symbols or the file is declared inside it. " +
                 "Re-run `get_namespace_dependencies` after apply to confirm the cycle is closed.");
         }
 
@@ -567,11 +567,11 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
     /// <summary>
     /// Rewrite the imports of every document that references the relocated type or imports the
-    /// namespace it left. References are judged by binding, scope by scope: each reference site is
-    /// resolved in the updated solution and measured against ITS OWN enclosing namespace chain, and
-    /// every <c>using</c> list (the compilation unit and each namespace declaration) is rewritten
-    /// on its own. Respects ambient-namespace resolution — a scope that shares an ancestor
-    /// namespace with the old OR new location may not need an import change at all.
+    /// namespace it left. References are judged by binding, not by spelling: each reference site is
+    /// resolved in the updated solution, so ambient resolution, any enclosing scope's import and a
+    /// global import already count, and every <c>using</c> list (the compilation unit and each
+    /// namespace declaration) is rewritten on its own. A scope that shares an ancestor namespace
+    /// with the old location keeps its import of it.
     /// </summary>
     private static async Task<ConsumerUpdateResult> UpdateConsumerUsingsAsync(
         Solution solution,
@@ -595,8 +595,8 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                 if (await document.GetSyntaxRootAsync(ct).ConfigureAwait(false) is not CompilationUnitSyntax root) continue;
 
                 // Cheap syntactic pre-filter; the semantic work below decides what is a reference.
-                var mentionsType = root.DescendantNodes().OfType<IdentifierNameSyntax>()
-                    .Any(id => string.Equals(id.Identifier.ValueText, typeName, StringComparison.Ordinal));
+                var mentionsType = root.DescendantNodes().OfType<SimpleNameSyntax>()
+                    .Any(name => string.Equals(name.Identifier.ValueText, typeName, StringComparison.Ordinal));
                 var importsOld = root.DescendantNodes().OfType<UsingDirectiveSyntax>()
                     .Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, fromKey) || IsAliasOfNamespace(directive, fromKey));
                 if (!mentionsType && !importsOld) continue;
@@ -628,7 +628,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     /// <summary>
     /// Ambient-resolution-aware, per-scope import rewrite. Rules:
     /// <list type="bullet">
-    ///   <item><description>A reference site needs <c>using toNamespace</c> when its OWN enclosing namespace is not ambient to <paramref name="toKey"/> (equal to it or a descendant; ancestors DO need the using, C# lookup climbs ancestors only) and no enclosing scope already imports it. One import is added to the compilation unit when any site needs it.</description></item>
+    ///   <item><description>A reference site needs <c>using toNamespace</c> when, bound in the updated solution, it resolves to nothing: ambient resolution (equal to the destination or a descendant; ancestors DO need the using, C# lookup climbs ancestors only), an import in ANY enclosing scope and a <c>global using</c> in another file have all bound the sites they cover already. One import is added to the compilation unit when any site needs it and the unit does not import it.</description></item>
     ///   <item><description>A plain <c>using fromNamespace</c> in a scope is removed ONLY if no sibling types remain in that namespace and no namespace declared inside that scope is ambient to <paramref name="fromKey"/> (avoids touching an import that was already redundant before the move).</description></item>
     ///   <item><description>When in doubt, keep the <c>using</c> — band-aid removals risk breaking compile.</description></item>
     /// </list>
@@ -654,8 +654,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                 semanticModel.Compilation.GlobalNamespace, fromKey.Split('.', StringSplitOptions.RemoveEmptyEntries)) is null;
 
         var needsNewImport = !root.Usings.Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, toKey))
-            && root.DescendantNodes().OfType<IdentifierNameSyntax>().Any(site =>
-                IsMovedTypeReference(site, typeName, toKey, semanticModel, ct) && NeedsImport(site, toKey));
+            && root.DescendantNodes().OfType<SimpleNameSyntax>().Any(site => IsUnboundTypeNameSite(site, typeName, semanticModel, ct));
 
         var rewrittenScopes = new Dictionary<BaseNamespaceDeclarationSyntax, SyntaxList<UsingDirectiveSyntax>>();
         foreach (var scope in namespaces)
@@ -689,13 +688,14 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     }
 
     /// <summary>
-    /// True when <paramref name="site"/> is a simple-name use of the relocated type: it binds to the
-    /// moved type, or to nothing at all (the old import no longer reaches it). A name that binds to
-    /// any other symbol, a member-access or qualified right-hand side, or a name inside a using
-    /// directive is not a reference whose scope needs an import.
+    /// True when <paramref name="site"/> is a simple-name use of the relocated type that binds to
+    /// nothing at all (the old import no longer reaches it, and no ambient namespace, scope import or
+    /// global import supplies the destination). Generic uses (<c>Selected&lt;T&gt;</c>) are simple
+    /// names too. A name that binds to a symbol, or is ambiguous between candidates, a member-access
+    /// or qualified right-hand side, and a name inside a using directive are not such a use.
     /// </summary>
-    private static bool IsMovedTypeReference(
-        IdentifierNameSyntax site, string typeName, string toKey, SemanticModel semanticModel, CancellationToken ct)
+    private static bool IsUnboundTypeNameSite(
+        SimpleNameSyntax site, string typeName, SemanticModel semanticModel, CancellationToken ct)
     {
         if (!string.Equals(site.Identifier.ValueText, typeName, StringComparison.Ordinal)) return false;
         if (site.Parent is QualifiedNameSyntax qualified && qualified.Right == site) return false;
@@ -705,22 +705,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         if (site.Ancestors().OfType<UsingDirectiveSyntax>().Any()) return false;
 
         var info = semanticModel.GetSymbolInfo(site, ct);
-        return info.Symbol is { } symbol
-            ? symbol is INamedTypeSymbol type
-                && string.Equals(type.Name, typeName, StringComparison.Ordinal)
-                && string.Equals(NamespaceNameIdentity.Of(type.ContainingNamespace), toKey, StringComparison.Ordinal)
-            : info.CandidateSymbols.IsEmpty;
-    }
-
-    /// <summary>
-    /// True when a reference at <paramref name="site"/> cannot see the destination namespace: its own
-    /// enclosing namespace is not ambient to it and no enclosing scope imports it.
-    /// </summary>
-    private static bool NeedsImport(SyntaxNode site, string toKey)
-    {
-        var enclosing = site.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().ToList();
-        if (enclosing.Count > 0 && IsAmbientTo(QualifiedNamespaceName(enclosing[0]), toKey)) return false;
-        return !enclosing.Any(scope => scope.Usings.Any(directive => NamespaceNameIdentity.ImportsNamespace(directive, toKey)));
+        return info.Symbol is null && info.CandidateSymbols.IsEmpty;
     }
 
     /// <summary>
