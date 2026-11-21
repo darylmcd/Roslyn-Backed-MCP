@@ -784,13 +784,13 @@ public sealed class UndoService : IUndoService, IDisposable
 
         foreach (var (key, project) in before)
         {
-            if (!after.ContainsKey(key) && (scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath))))
+            if (!after.ContainsKey(key) && (scope is null || InScope(project.FilePath) || AllTextDocuments(project).Any(d => InScope(d.FilePath))))
                 return $"project '{project.Name}' was removed";
         }
 
         foreach (var (key, project) in after)
         {
-            if (!before.ContainsKey(key) && (scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath))))
+            if (!before.ContainsKey(key) && (scope is null || InScope(project.FilePath) || AllTextDocuments(project).Any(d => InScope(d.FilePath))))
                 return $"project '{project.Name}' was added";
         }
 
@@ -843,7 +843,7 @@ public sealed class UndoService : IUndoService, IDisposable
     private static HashSet<string> DocumentPaths(Project project)
     {
         var paths = new HashSet<string>(FileSystemPath.Comparer);
-        foreach (var document in project.Documents.Concat(project.AdditionalDocuments).Concat(project.AnalyzerConfigDocuments))
+        foreach (var document in AllTextDocuments(project))
         {
             paths.Add(document.FilePath ?? "<in-memory>:" + document.Name);
         }
@@ -879,9 +879,10 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <summary>
     /// Phase-1 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Walks
     /// <c>preApplySolution.GetChanges(currentSolution)</c> and, for every document the
-    /// diff flags as changed AND the apply owns (<paramref name="ownedFiles"/>; null = every
-    /// changed document), schedules a workspace text revert and queues a disk restore. Returns the
-    /// updated target solution plus a count of documents touched.
+    /// diff flags as changed (documents, additional documents and analyzer-config documents) AND the
+    /// apply owns (<paramref name="ownedFiles"/>; null = every changed one), schedules a workspace text
+    /// revert (except analyzer-config documents, which only get the disk restore) and queues a disk
+    /// restore. Returns the updated target solution plus a count of documents touched.
     /// </summary>
     private static async Task<(Solution TargetSolution, int ChangedDocumentCount)> CollectChangesFromSolutionDiffAsync(
         Solution preApplySolution,
@@ -901,14 +902,8 @@ public sealed class UndoService : IUndoService, IDisposable
                 if (oldDoc is null) continue;
 
                 var currentDoc = currentSolution.GetDocument(docId);
-                var path = currentDoc?.FilePath ?? oldDoc.FilePath;
-                if (ownedFiles is not null && (path is null || !ownedFiles.Contains(path)))
-                {
-                    // A later sibling apply's (or any unattributed) edit: not this apply's to revert.
-                    continue;
-                }
-
-                var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                var oldText = await TryQueueDiskRestoreAsync(oldDoc, currentDoc, ownedFiles, diskRestores, cancellationToken).ConfigureAwait(false);
+                if (oldText is null) continue;
 
                 // undo-restore-source-kind: the reviewed pre-apply SourceCodeKind is part of what an
                 // apply may have changed; restore it with the text (mirrors RefactoringService rebase).
@@ -919,11 +914,37 @@ public sealed class UndoService : IUndoService, IDisposable
 
                 targetSolution = targetSolution.WithDocumentText(docId, oldText);
                 changedDocumentCount++;
+            }
 
-                if (!string.IsNullOrWhiteSpace(path))
-                {
-                    diskRestores.Add((path!, oldText.ToString(), oldText.Encoding));
-                }
+            // Additional documents are restored through the workspace as well as disk:
+            // MSBuildWorkspace.TryApplyChanges supports them (it writes the file itself).
+            foreach (var docId in projectChange.GetChangedAdditionalDocuments())
+            {
+                var oldDoc = preApplySolution.GetAdditionalDocument(docId);
+                if (oldDoc is null) continue;
+
+                var oldText = await TryQueueDiskRestoreAsync(
+                    oldDoc, currentSolution.GetAdditionalDocument(docId), ownedFiles, diskRestores, cancellationToken).ConfigureAwait(false);
+                if (oldText is null) continue;
+
+                targetSolution = targetSolution.WithAdditionalDocumentText(docId, oldText);
+                changedDocumentCount++;
+            }
+
+            // Analyzer-config documents are restored by the queued disk write alone (the reload in
+            // PersistRevertChangesAsync re-reads them): MSBuildWorkspace.TryApplyChanges THROWS
+            // NotSupportedException ("Changing analyzer config documents is not supported.") for a
+            // changed one, so the text must never enter targetSolution.
+            foreach (var docId in projectChange.GetChangedAnalyzerConfigDocuments())
+            {
+                var oldDoc = preApplySolution.GetAnalyzerConfigDocument(docId);
+                if (oldDoc is null) continue;
+
+                var oldText = await TryQueueDiskRestoreAsync(
+                    oldDoc, currentSolution.GetAnalyzerConfigDocument(docId), ownedFiles, diskRestores, cancellationToken).ConfigureAwait(false);
+                if (oldText is null) continue;
+
+                changedDocumentCount++;
             }
         }
 
@@ -931,9 +952,39 @@ public sealed class UndoService : IUndoService, IDisposable
     }
 
     /// <summary>
+    /// Shared per-document step of <see cref="CollectChangesFromSolutionDiffAsync"/> for every
+    /// <see cref="TextDocument"/> kind: returns null when the apply does not own the document
+    /// (<paramref name="ownedFiles"/>; a later sibling apply's or unattributed edit is not this
+    /// apply's to revert), else queues the pre-apply text for a disk restore and returns it.
+    /// </summary>
+    private static async Task<SourceText?> TryQueueDiskRestoreAsync(
+        TextDocument oldDoc,
+        TextDocument? currentDoc,
+        HashSet<string>? ownedFiles,
+        List<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
+        CancellationToken cancellationToken)
+    {
+        var path = currentDoc?.FilePath ?? oldDoc.FilePath;
+        if (ownedFiles is not null && (path is null || !ownedFiles.Contains(path)))
+            return null;
+
+        var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            diskRestores.Add((path!, oldText.ToString(), oldText.Encoding));
+        }
+
+        return oldText;
+    }
+
+    /// <summary>Every text document of the project: source, additional and analyzer-config.</summary>
+    private static IEnumerable<TextDocument> AllTextDocuments(Project project) =>
+        project.Documents.Concat<TextDocument>(project.AdditionalDocuments).Concat(project.AnalyzerConfigDocuments);
+
+    /// <summary>
     /// Phase-2 helper (safety net) for <see cref="RevertFromSolutionSnapshotAsync"/>.
     /// Invoked only for a committed snapshot whose Solution diff returned no changes. Walks the
-    /// pre-apply documents that are among the apply's own <paramref name="ownedFiles"/>, reads the
+    /// pre-apply text documents (source, additional, analyzer-config) that are among the apply's own <paramref name="ownedFiles"/>, reads the
     /// on-disk text, and queues a disk restore for any file whose content drifted. Documents outside
     /// the apply's files are never touched. Read failures are debug-logged and skipped.
     /// </summary>
@@ -947,7 +998,7 @@ public sealed class UndoService : IUndoService, IDisposable
 
         foreach (var project in preApplySolution.Projects)
         {
-            foreach (var oldDoc in project.Documents)
+            foreach (var oldDoc in AllTextDocuments(project))
             {
                 if (oldDoc.FilePath is null) continue;
                 if (!ownedFiles.Contains(oldDoc.FilePath)) continue;
