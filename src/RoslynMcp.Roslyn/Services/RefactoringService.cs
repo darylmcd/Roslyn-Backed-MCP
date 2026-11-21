@@ -322,7 +322,9 @@ public sealed class RefactoringService : IRefactoringService
         // NOT invalidate this token. Below we rebase the preview's INTENDED diff
         // (`ModifiedSolution.GetChanges(OriginalSolution)`) onto the CURRENT workspace
         // solution via `RebaseModifiedSolutionOntoCurrentAsync` — edits to files the sibling
-        // didn't touch replay cleanly. Conflicting project-reference metadata is refused.
+        // didn't touch replay cleanly. Conflicting project-reference metadata is refused, and a
+        // reviewed change whose target document/project no longer exists is refused with the
+        // invalid-preview result (PreviewRebaseConflictException) instead of being dropped.
         // Closing the workspace drops its tokens; reload retains tokens within their
         // pinned version range, so their snapshots also require rebasing.
 
@@ -337,11 +339,26 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
-        var preparation = await PrepareApplyAsync(
-            originalSolution,
-            modifiedSolution,
-            currentSolution,
-            ct).ConfigureAwait(false);
+        RefactoringApplyPreparation preparation;
+        try
+        {
+            preparation = await PrepareApplyAsync(
+                originalSolution,
+                modifiedSolution,
+                currentSolution,
+                ct).ConfigureAwait(false);
+        }
+        catch (PreviewRebaseConflictException)
+        {
+            // rebase-changed-document-silent-drop: a reviewed change whose target is gone from the
+            // current solution is refused in the existing DTO fields, never dropped. The refusal
+            // precedes undo capture and persistence, so disk, workspace, undo stack and change log
+            // are untouched; the target will not come back, so the token is spent.
+            _previewStore.Invalidate(previewToken);
+            _postApplyResolver?.Invalidate(previewToken);
+            return InvalidPreviewResult();
+        }
+
         var alreadySatisfied = ReferenceEquals(preparation.ModifiedSolution, currentSolution);
         var capture = _undoService?.CaptureBeforeApply(
             workspaceId,
@@ -892,7 +909,10 @@ public sealed class RefactoringService : IRefactoringService
     /// those changes on top of <paramref name="currentSolution"/> so sibling <c>*_apply</c>
     /// calls that mutated unrelated files since the preview was stored are preserved.
     /// Collisions on the same document fall to last-apply-wins text semantics. Added
-    /// and removed documents are mirrored into the rebased solution. <c>PrepareApplyAsync</c>
+    /// and removed documents are mirrored into the rebased solution. A reviewed change that
+    /// cannot be replayed (changed/added document or added project reference whose target is gone
+    /// from <paramref name="currentSolution"/>) throws <see cref="PreviewRebaseConflictException"/>;
+    /// a removal whose target is already gone is satisfied and not an error. <c>PrepareApplyAsync</c>
     /// prepares that result; <c>ApplyRefactoringAsync</c> delegates its persistence to
     /// <c>DocumentSetPersistenceService.PersistAsync</c>.
     /// </summary>
@@ -916,12 +936,10 @@ public sealed class RefactoringService : IRefactoringService
         {
             rebased = await RebaseChangedDocumentsAsync(
                 rebased,
-                modifiedSolution,
                 projectChange,
                 ct).ConfigureAwait(false);
             rebased = await RebaseAddedDocumentsAsync(
                 rebased,
-                modifiedSolution,
                 projectChange,
                 ct).ConfigureAwait(false);
             rebased = RebaseRemovedDocuments(rebased, originalSolution, projectChange);
@@ -963,35 +981,34 @@ public sealed class RefactoringService : IRefactoringService
 
     private static async Task<Solution> RebaseChangedDocumentsAsync(
         Solution rebased,
-        Solution modifiedSolution,
         ProjectChanges projectChange,
         CancellationToken ct)
     {
-        foreach (var documentId in projectChange.GetChangedDocuments())
+        // Enumerate the changed documents of the reviewed project itself: no id lookup that could
+        // be null, so no unreachable skip.
+        var changedIds = projectChange.GetChangedDocuments().ToHashSet();
+        foreach (var modifiedDocument in projectChange.NewProject.Documents.Where(d => changedIds.Contains(d.Id)))
         {
-            var modifiedDocument = modifiedSolution.GetDocument(documentId);
-            if (modifiedDocument is null)
-            {
-                continue;
-            }
-
+            var documentId = modifiedDocument.Id;
             var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, modifiedDocument.Project);
             var currentDocument = targetProject is null
                 ? null
                 : FindRebaseTargetDocument(targetProject, documentId, modifiedDocument.FilePath);
 
-            if (currentDocument is not null)
+            if (currentDocument is null)
             {
-                var sourceText = await modifiedDocument.GetTextAsync(ct).ConfigureAwait(false);
-                // Reviewed source kind is part of the preview's intent; set it before the text so
-                // the kind change cannot discard the freshly replayed syntax tree.
-                if (modifiedDocument.SourceCodeKind != currentDocument.SourceCodeKind)
-                {
-                    rebased = rebased.WithDocumentSourceCodeKind(currentDocument.Id, modifiedDocument.SourceCodeKind);
-                }
-
-                rebased = rebased.WithDocumentText(currentDocument.Id, sourceText);
+                throw new PreviewRebaseConflictException("A changed document is gone from the current solution.");
             }
+
+            var sourceText = await modifiedDocument.GetTextAsync(ct).ConfigureAwait(false);
+            // Reviewed source kind is part of the preview's intent; set it before the text so
+            // the kind change cannot discard the freshly replayed syntax tree.
+            if (modifiedDocument.SourceCodeKind != currentDocument.SourceCodeKind)
+            {
+                rebased = rebased.WithDocumentSourceCodeKind(currentDocument.Id, modifiedDocument.SourceCodeKind);
+            }
+
+            rebased = rebased.WithDocumentText(currentDocument.Id, sourceText);
         }
 
         return rebased;
@@ -999,23 +1016,19 @@ public sealed class RefactoringService : IRefactoringService
 
     private static async Task<Solution> RebaseAddedDocumentsAsync(
         Solution rebased,
-        Solution modifiedSolution,
         ProjectChanges projectChange,
         CancellationToken ct)
     {
-        foreach (var documentId in projectChange.GetAddedDocuments())
+        var addedIds = projectChange.GetAddedDocuments().ToHashSet();
+        foreach (var document in projectChange.NewProject.Documents.Where(d => addedIds.Contains(d.Id)))
         {
-            var document = modifiedSolution.GetDocument(documentId);
-            if (document?.FilePath is null)
+            if (document.FilePath is null)
             {
-                continue;
+                throw new PreviewRebaseConflictException("An added document has no file path to replay.");
             }
 
-            var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, document.Project);
-            if (targetProject is null)
-            {
-                continue;
-            }
+            var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, document.Project)
+                ?? throw new PreviewRebaseConflictException("An added document's project is gone from the current solution.");
 
             var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
             var newDocumentId = DocumentId.CreateNewId(targetProject.Id, document.Name);
@@ -1057,11 +1070,9 @@ public sealed class RefactoringService : IRefactoringService
     {
         foreach (var documentId in projectChange.GetRemovedDocuments())
         {
+            // A null path is allowed: FindRebaseTargetDocument resolves by DocumentId first, so a
+            // removal reviewed for a path-less document is replayed instead of silently skipped.
             var filePath = originalSolution.GetDocument(documentId)?.FilePath;
-            if (filePath is null)
-            {
-                continue;
-            }
 
             var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, projectChange.OldProject);
             var target = targetProject is null
@@ -1088,7 +1099,11 @@ public sealed class RefactoringService : IRefactoringService
             : ResolveRebaseTargetProject(rebased, projectChange.ProjectId, modifiedProject);
         if (targetProject is null)
         {
-            return rebased;
+            // Project gone: a removed-only reference delta is already satisfied; an added reference
+            // cannot be installed, so refuse instead of dropping it.
+            return projectChange.GetAddedProjectReferences().Any()
+                ? throw new PreviewRebaseConflictException("A project that gains a reference is gone from the current solution.")
+                : rebased;
         }
 
         IEnumerable<ProjectReference> MapReferences(IEnumerable<ProjectReference> references, Solution snapshot)
@@ -1113,6 +1128,12 @@ public sealed class RefactoringService : IRefactoringService
 
         var originalReferences = MapReferences(projectChange.OldProject.ProjectReferences, originalSolution).ToArray();
         var desiredReferences = MapReferences(projectChange.NewProject.ProjectReferences, modifiedSolution).ToArray();
+        var addedReferences = projectChange.GetAddedProjectReferences().ToArray();
+        if (MapReferences(addedReferences, modifiedSolution).Count() != addedReferences.Length)
+        {
+            throw new PreviewRebaseConflictException("An added project reference targets a project that is gone from the current solution.");
+        }
+
         var affectedTargets = MapReferences(projectChange.GetRemovedProjectReferences(), originalSolution)
             .Concat(MapReferences(projectChange.GetAddedProjectReferences(), modifiedSolution))
             .Select(reference => reference.ProjectId).Distinct().ToArray();
