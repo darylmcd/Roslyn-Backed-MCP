@@ -6,7 +6,9 @@ namespace RoslynMcp.Tests;
 /// <summary>
 /// Regression (relocation-selected-enum-delegate-reported-not-found, same mechanism): the
 /// cross-project routes looked the selected type up among <c>TypeDeclarationSyntax</c> only, so an
-/// enum or delegate selection was reported as "not found in the source document".
+/// enum or delegate selection was reported as "not found in the source document". The routes that cannot handle
+/// those kinds (the interface-extraction routes) refuse them by kind; <c>move_type_to_project_preview</c> now moves
+/// them (see <c>CrossProjectRefactoringIntegrationTests</c>) and only its not-found case is pinned here.
 /// </summary>
 [TestClass]
 public sealed class CrossProjectUnsupportedKindRefusalTests : IsolatedWorkspaceTestBase
@@ -23,7 +25,6 @@ public sealed class CrossProjectUnsupportedKindRefusalTests : IsolatedWorkspaceT
     {
         foreach (var (route, tool, supported) in new[]
                  {
-                     ("move", "move_type_to_project_preview", "class, struct, record, and interface declarations"),
                      ("cross-project", "extract_interface_cross_project_preview", "class and struct declarations"),
                      ("dependency-inversion", "dependency_inversion_preview", "class and struct declarations"),
                      ("extract-and-wire", "extract_and_wire_interface_preview", "class and struct declarations"),

@@ -224,6 +224,255 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         }
     }
 
+    private const string MoveKindFixtureDirectory = "MoveEnumDelegateFixture";
+
+    private const string EnumConsumer =
+        "using Old;\nnamespace Consumers;\n\npublic static class UsesSelected\n{\n    public static bool Check() { Selected s = Selected.A; return s == Selected.B; }\n}\n";
+
+    private const string DelegateConsumer =
+        "using Old;\nnamespace Consumers;\n\npublic static class UsesSelected\n{\n    public static int Check() { Selected h = Twice; return h(2); }\n    private static int Twice(int x) => x * 2;\n}\n";
+
+    /// <summary>
+    /// Regression (relocation-support-enum-delegate-move-to-project): the move route looked the selection up among
+    /// <c>TypeDeclarationSyntax</c> only, so an enum or delegate was refused with "type-kind ... not supported".
+    /// With <c>preserveNamespace: true</c> the type keeps its namespace, so a consumer in the source project
+    /// compiles through the project reference the move adds (the tool never rewrites consumers, for any kind).
+    /// </summary>
+    [TestMethod]
+    [DataRow("public enum Selected { A, B }", true, "block")]
+    [DataRow("public enum Selected { A, B }", true, "file-scoped")]
+    [DataRow("public enum Selected { A, B }", true, "sole")]
+    [DataRow("public enum Selected { A, B }", true, "documented")]
+    [DataRow("public enum Selected { A, B }", true, "conditional")]
+    [DataRow("public delegate int Selected(int x);", false, "block")]
+    [DataRow("public delegate int Selected(int x);", false, "file-scoped")]
+    [DataRow("public delegate int Selected(int x);", false, "sole")]
+    [DataRow("public delegate int Selected(int x);", false, "documented")]
+    [DataRow("public delegate int Selected(int x);", false, "conditional")]
+    public async Task Move_Type_To_Project_Preview_Moves_An_Enum_Or_Delegate_And_Consumers_Still_Compile(
+        string declaration, bool isEnum, string shape)
+    {
+        var decorated = shape switch
+        {
+            "documented" => "/// <summary>The moved type.</summary>\n    " + declaration,
+            "conditional" => "#if !NEVER_DEFINED\n    " + declaration + "\n#endif",
+            _ => declaration,
+        };
+        var source = shape switch
+        {
+            "block" => $"namespace Old\n{{\n    {declaration}\n\n    public class Keep {{ }}\n}}\n",
+            "file-scoped" => $"namespace Old;\n\n{declaration}\n\npublic class Keep {{ }}\n",
+            "sole" => $"namespace Old;\n\n{declaration}\n",
+            _ => $"namespace Old;\n\n{decorated}\n\npublic class Keep {{ }}\n",
+        };
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var (sourcePath, consumerPath) = await PrepareMoveFixtureAsync(workspace, source, isEnum ? EnumConsumer : DelegateConsumer);
+        var targetPath = workspace.GetPath("AnimalsShared", "Source.cs");
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: true);
+
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var target = modified.Projects.Single(p => p.Name == "AnimalsShared").Documents
+            .Single(d => string.Equals(d.FilePath, targetPath, StringComparison.OrdinalIgnoreCase));
+        var targetText = (await target.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(targetText, declaration);
+        StringAssert.Contains(targetText, "namespace Old");
+        Assert.IsFalse(targetText.Contains("Keep", StringComparison.Ordinal), targetText);
+
+        var sourceDocument = modified.Projects.SelectMany(p => p.Documents)
+            .SingleOrDefault(d => string.Equals(d.FilePath, sourcePath, StringComparison.OrdinalIgnoreCase));
+        if (shape == "sole")
+        {
+            Assert.IsNull(sourceDocument, "the moved type was the sole member, so the source file is removed");
+        }
+        else
+        {
+            Assert.IsNotNull(sourceDocument);
+            var sourceText = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+            Assert.IsFalse(sourceText.Contains("Selected", StringComparison.Ordinal), sourceText);
+            StringAssert.Contains(sourceText, "class Keep");
+        }
+
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath, targetPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{targetText}");
+        var moved = (await modified.Projects.Single(p => p.Name == "AnimalsShared").GetCompilationAsync(CancellationToken.None))!
+            .GetTypeByMetadataName("Old.Selected");
+        Assert.IsNotNull(moved, "the type must now be declared in AnimalsShared");
+        Assert.IsTrue(modified.Projects.Single(p => p.Name == "SampleLib").AllProjectReferences
+            .Any(r => r.ProjectId == modified.Projects.Single(p => p.Name == "AnimalsShared").Id));
+    }
+
+    [TestMethod]
+    public async Task Move_Type_To_Project_Preview_Applies_An_Enum_To_Disk()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var (sourcePath, _) = await PrepareMoveFixtureAsync(
+            workspace, "namespace Old;\n\npublic enum Selected { A, B }\n\npublic class Keep { }\n", EnumConsumer);
+        var targetPath = workspace.GetPath("AnimalsShared", "Source.cs");
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: true);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        StringAssert.Contains(await File.ReadAllTextAsync(targetPath, CancellationToken.None), "public enum Selected");
+        Assert.IsFalse((await File.ReadAllTextAsync(sourcePath, CancellationToken.None)).Contains("Selected", StringComparison.Ordinal));
+        Assert.IsTrue(XDocument.Load(workspace.GetPath("SampleLib", "SampleLib.csproj")).Descendants("ProjectReference")
+            .Any(element => string.Equals(Path.GetFileName((string?)element.Attribute("Include")), "AnimalsShared.csproj", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    [DataRow("public enum Selected { A, B }", false)]
+    [DataRow("public delegate int Selected(int x);", true)]
+    public async Task Move_Type_To_Project_Preview_Moves_A_Sole_Global_Namespace_Enum_Or_Delegate(string declaration, bool isDelegate)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var consumer = isDelegate
+            ? "public static class UsesSelected\n{\n    public static int Check() { Selected h = Twice; return h(2); }\n    private static int Twice(int x) => x * 2;\n}\n"
+            : "public static class UsesSelected\n{\n    public static bool Check() { Selected s = Selected.A; return s == Selected.B; }\n}\n";
+        var (sourcePath, consumerPath) = await PrepareMoveFixtureAsync(workspace, declaration + "\n", consumer);
+        var targetPath = workspace.GetPath("AnimalsShared", "Source.cs");
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: true);
+
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var target = modified.Projects.Single(p => p.Name == "AnimalsShared").Documents
+            .Single(d => string.Equals(d.FilePath, targetPath, StringComparison.OrdinalIgnoreCase));
+        var targetText = (await target.GetTextAsync(CancellationToken.None)).ToString();
+        Assert.IsFalse(targetText.Contains("namespace", StringComparison.Ordinal), targetText);
+        Assert.IsFalse(modified.Projects.SelectMany(p => p.Documents).Any(d =>
+            string.Equals(d.FilePath, sourcePath, StringComparison.OrdinalIgnoreCase)));
+        var errors = await CompileErrorsInAsync(modified, consumerPath, targetPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    [TestMethod]
+    public async Task Move_Type_To_Project_Preview_Moves_A_Generic_Delegate()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var (sourcePath, consumerPath) = await PrepareMoveFixtureAsync(
+            workspace,
+            "namespace Old;\n\npublic delegate T Selected<T>(T value);\n\npublic class Keep { }\n",
+            "using Old;\nnamespace Consumers;\n\npublic static class UsesSelected\n{\n    public static int Check() { Selected<int> h = x => x; return h(2); }\n}\n");
+        var targetPath = workspace.GetPath("AnimalsShared", "Source.cs");
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: true);
+
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath, targetPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    [TestMethod]
+    [DataRow("public enum Selected { A, B }", "AnimalsShared")]
+    [DataRow("public delegate int Selected(int x);", "AnimalsShared")]
+    public async Task Move_Type_To_Project_Preview_Uses_The_Target_Project_Namespace_By_Default(string declaration, string expectedNamespace)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var (sourcePath, _) = await PrepareMoveFixtureAsync(workspace, $"namespace Old;\n\n{declaration}\n\npublic class Keep {{ }}\n", EnumConsumer);
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: false);
+
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var compilation = await modified.Projects.Single(p => p.Name == "AnimalsShared").GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation!.GetTypeByMetadataName($"{expectedNamespace}.Selected"));
+        Assert.IsNull(compilation.GetTypeByMetadataName("Old.Selected"));
+    }
+
+    /// <summary>The destination-collision guard must see an enum or delegate (it used to be skipped for them).</summary>
+    [TestMethod]
+    [DataRow("public class Selected { }", "public enum Selected { A, B }", DisplayName = "enum vs class")]
+    [DataRow("public enum Selected { C }", "public enum Selected { A, B }", DisplayName = "enum vs enum")]
+    [DataRow("public delegate void Selected();", "public delegate int Selected(int x);", DisplayName = "delegate vs delegate")]
+    [DataRow("public enum Selected { C }", "public delegate int Selected(int x);", DisplayName = "delegate vs enum")]
+    public async Task Move_Type_To_Project_Preview_Refuses_An_Enum_Or_Delegate_Colliding_At_The_Destination(string existing, string moved)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "AnimalsShared", "net10.0");
+        await File.WriteAllTextAsync(workspace.GetPath("AnimalsShared", "Existing.cs"),
+            $"namespace Old;\n\n{existing}\n", CancellationToken.None);
+        var (sourcePath, _) = await PrepareMoveFixtureAsync(
+            workspace, $"namespace Old;\n\n{moved}\n\npublic class Keep {{ }}\n", EnumConsumer, addTarget: false);
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+                workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: true));
+
+        StringAssert.StartsWith(ex.Message, "The destination already contains a type with the same namespace, name, and arity.");
+    }
+
+    [TestMethod]
+    [DataRow("public enum Selected { A }")]
+    [DataRow("public delegate void Selected();")]
+    public async Task Move_Type_To_Project_Preview_Refuses_A_Nested_Enum_Or_Delegate(string declaration)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var (sourcePath, _) = await PrepareMoveFixtureAsync(
+            workspace, $"namespace Old;\n\npublic class Outer\n{{\n    {declaration}\n}}\n", EnumConsumer);
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+                workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: true));
+
+        Assert.AreEqual("Moving a nested type would change its containing type. Select a top-level type.", ex.Message);
+    }
+
+    [TestMethod]
+    [DataRow("public enum Selected { A }")]
+    [DataRow("public delegate void Selected();")]
+    public async Task Move_Type_To_Project_Preview_Refuses_An_Enum_Or_Delegate_When_The_Target_File_Exists(string declaration)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "AnimalsShared", "net10.0");
+        await File.WriteAllTextAsync(workspace.GetPath("AnimalsShared", "Source.cs"), "namespace Other;\n\npublic class Taken { }\n", CancellationToken.None);
+        var (sourcePath, _) = await PrepareMoveFixtureAsync(
+            workspace, $"namespace Old;\n\n{declaration}\n\npublic class Keep {{ }}\n", EnumConsumer, addTarget: false);
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+                workspace.WorkspaceId, sourcePath, "Selected", "AnimalsShared", null, CancellationToken.None, preserveNamespace: true));
+
+        Assert.AreEqual("Target file already exists: Source.cs", ex.Message);
+    }
+
+    private static async Task<(string SourcePath, string ConsumerPath)> PrepareMoveFixtureAsync(
+        IsolatedWorkspaceScope workspace, string source, string consumer, bool addTarget = true)
+    {
+        if (addTarget)
+            AddProjectToCopiedSolution(workspace.RootPath, "AnimalsShared", "net10.0");
+        var directory = Path.Combine(workspace.GetPath("SampleLib"), MoveKindFixtureDirectory);
+        Directory.CreateDirectory(directory);
+        var sourcePath = Path.Combine(directory, "Source.cs");
+        var consumerPath = Path.Combine(directory, "Consumer.cs");
+        await File.WriteAllTextAsync(sourcePath, source, CancellationToken.None);
+        await File.WriteAllTextAsync(consumerPath, consumer, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+        return (sourcePath, consumerPath);
+    }
+
+    private static async Task<IReadOnlyList<string>> CompileErrorsInAsync(
+        Microsoft.CodeAnalysis.Solution solution, params string[] filePaths)
+    {
+        var errors = new List<string>();
+        foreach (var project in solution.Projects.Where(p => p.Name is "SampleLib" or "AnimalsShared"))
+        {
+            var compilation = await project.GetCompilationAsync(CancellationToken.None);
+            Assert.IsNotNull(compilation);
+            foreach (var diagnostic in compilation.GetDiagnostics(CancellationToken.None))
+            {
+                if (diagnostic.Severity != Microsoft.CodeAnalysis.DiagnosticSeverity.Error) continue;
+                var path = diagnostic.Location.SourceTree?.FilePath;
+                if (path is not null && filePaths.Any(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase)))
+                    errors.Add(diagnostic.ToString());
+            }
+        }
+        return errors;
+    }
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
