@@ -48,8 +48,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
-        var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName,
-            "move_type_to_project_preview", UnsupportedTypeKindRefusal.AnyTypeDeclaration);
+        var typeDeclaration = FindMovableTypeDeclaration(sourceRoot, typeName);
         MovedDeclarationFileWriter.EnsureTopLevelDeclaration(typeDeclaration);
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
@@ -409,17 +408,31 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         CompilationUnitSyntax root, string typeName, string toolName, string supportedKinds)
     {
         SyntaxNode? unsupported = null;
-        foreach (var node in root.DescendantNodes())
+        foreach (var node in FindTypeLikeNodes(root, typeName))
         {
-            if (!string.Equals(NamespaceMemberClassifier.GetTypeLikeName(node), typeName, StringComparison.Ordinal)) continue;
             if (node is TypeDeclarationSyntax declaration) return declaration;
             unsupported ??= node;
         }
 
         throw unsupported is not null
             ? UnsupportedTypeKindRefusal.Create(unsupported.Kind(), toolName, supportedKinds)
-            : new PublicInvalidOperationException($"Type '{typeName}' was not found in the source document.");
+            : TypeNotFound(typeName);
     }
+
+    /// <summary>
+    /// Finds the first type-like declaration (class, struct, record, interface, enum or delegate) named
+    /// <paramref name="typeName"/>: every kind the move route can relocate.
+    /// </summary>
+    private static MemberDeclarationSyntax FindMovableTypeDeclaration(CompilationUnitSyntax root, string typeName) =>
+        FindTypeLikeNodes(root, typeName).OfType<MemberDeclarationSyntax>().FirstOrDefault()
+        ?? throw TypeNotFound(typeName);
+
+    private static IEnumerable<SyntaxNode> FindTypeLikeNodes(CompilationUnitSyntax root, string typeName) =>
+        root.DescendantNodes().Where(node =>
+            string.Equals(NamespaceMemberClassifier.GetTypeLikeName(node), typeName, StringComparison.Ordinal));
+
+    private static PublicInvalidOperationException TypeNotFound(string typeName) =>
+        new($"Type '{typeName}' was not found in the source document.");
 
     private static string GetContainingNamespace(INamedTypeSymbol typeSymbol)
     {
