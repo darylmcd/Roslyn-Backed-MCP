@@ -15,3 +15,7 @@
 ## Evidence
 
 - Cold implementation review of relocation-support-enum-delegate-move-to-project (slice 2), follow-ups; worker sketches. Same family as relocation-service-type-selection-hygiene (different service).
+
+## Notes
+
+Slice 3 worker (#2202) sketch: TypeMoveService.PreviewMoveTypeToFileAsync has the same two raw InvalidOperationException throws (ratcheted baseline) and its name lookup duplicates CrossProjectRefactoringService.FindMovableTypeDeclaration; fold both into this row (add src/RoslynMcp.Roslyn/Services/TypeMoveService.cs as an anchor when worked).
