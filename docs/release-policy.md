@@ -26,6 +26,7 @@ A release is production-ready when all of the following are true:
   migration, ship it in a major release, and cover every supported protocol era on the raw wire. Only Rule 1 and Rule 2 in Corrections And Security Removals ship in a minor; removing other sensitive detail (secrets, stack traces) and any change not qualifying under either rule stays a major change.
 - Additive completeness/status fields are minor-version compatible only when existing fields retain
   their meaning and the advertised schema permits the addition. Consumers must ignore unknown fields.
+- A stable tool that starts accepting input it previously refused, with an unchanged success shape, is additive: it ships in a minor as `Added` with a changelog note. The removed refusal text is not a contract clients may depend on (operator ruling 2026-11-21).
 - A security correction may omit the normal deprecation window when retaining the behavior would leak
   secrets or sensitive implementation detail; the ADR and migration note must explain the exception. Rule 2 also lifts the major-release requirement for a defined subset.
 
