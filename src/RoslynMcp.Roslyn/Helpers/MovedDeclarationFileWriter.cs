@@ -9,7 +9,7 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>Preserves physical file roles when an existing declaration moves into a new document.</summary>
 internal static class MovedDeclarationFileWriter
 {
-    internal static void EnsureTopLevelDeclaration(TypeDeclarationSyntax declaration)
+    internal static void EnsureTopLevelDeclaration(MemberDeclarationSyntax declaration)
     {
         if (!NamespaceMemberClassifier.IsDirectNamespaceMember(declaration))
         {
@@ -33,7 +33,7 @@ internal static class MovedDeclarationFileWriter
 
     internal static (CompilationUnitSyntax Root, TextSpan TypeIdentifier) CreateCompilationUnit(
         CompilationUnitSyntax sourceRoot,
-        TypeDeclarationSyntax member,
+        MemberDeclarationSyntax member,
         SyntaxList<UsingDirectiveSyntax> copiedUsings,
         BaseNamespaceDeclarationSyntax? destinationNamespace,
         SemanticModel semanticModel,
@@ -75,8 +75,8 @@ internal static class MovedDeclarationFileWriter
                 .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)));
         }
         var output = root.Members.Single();
-        var type = (TypeDeclarationSyntax)(output is BaseNamespaceDeclarationSyntax ns ? ns.Members.Single() : output);
-        return (root, type.Identifier.Span);
+        var type = output is BaseNamespaceDeclarationSyntax ns ? ns.Members.Single() : output;
+        return (root, NamespaceMemberClassifier.GetTypeLikeIdentifier(type).Span);
     }
 
     /// <summary>
@@ -88,9 +88,9 @@ internal static class MovedDeclarationFileWriter
     /// and the same-file projection (where it stays in the retained file, so a directive pair that
     /// closes there must be duplicated around the moved copy).
     /// </summary>
-    internal static (TypeDeclarationSyntax Member, SyntaxList<UsingDirectiveSyntax> NamespaceUsings) PrepareMovedMember(
+    internal static (MemberDeclarationSyntax Member, SyntaxList<UsingDirectiveSyntax> NamespaceUsings) PrepareMovedMember(
         CompilationUnitSyntax sourceRoot,
-        TypeDeclarationSyntax member,
+        MemberDeclarationSyntax member,
         SyntaxList<UsingDirectiveSyntax> copiedUsings,
         SyntaxTriviaList prelude,
         bool endOfFileTravelsWithMember,

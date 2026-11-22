@@ -184,14 +184,11 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     /// <paramref name="fromNamespace"/>. Throws if not found or if multiple candidates exist
     /// (the caller must disambiguate via namespace).
     /// </summary>
-    private static async Task<(Document Document, CompilationUnitSyntax Root, TypeDeclarationSyntax TypeDecl, Project Project)>
+    private static async Task<(Document Document, CompilationUnitSyntax Root, MemberDeclarationSyntax TypeDecl, Project Project)>
         FindTypeInNamespaceAsync(Solution solution, string typeName, string fromNamespace, CancellationToken ct)
     {
-        var matches = new List<(Document Document, CompilationUnitSyntax Root, TypeDeclarationSyntax TypeDecl, Project Project)>();
+        var matches = new List<(Document Document, CompilationUnitSyntax Root, MemberDeclarationSyntax TypeDecl, Project Project)>();
         var fromKey = NamespaceNameIdentity.Of(fromNamespace);
-        // Kind of a declaration that matched name + namespace but is not a TypeDeclarationSyntax
-        // (enum, delegate): reported by name instead of as "not found" when nothing else matched.
-        SyntaxKind? unsupportedKind = null;
         foreach (var project in solution.Projects)
         {
             // Use Roslyn's pre-built declaration index instead of parsing every document's syntax
@@ -219,11 +216,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                     // shared into other project-reference compilations is not listed twice.
                     if (document.Project.Id != project.Id) continue;
                     var declaringSyntax = await syntaxRef.GetSyntaxAsync(ct).ConfigureAwait(false);
-                    if (declaringSyntax is not TypeDeclarationSyntax typeDecl)
-                    {
-                        unsupportedKind ??= declaringSyntax.Kind();
-                        continue;
-                    }
+                    // Class, struct, interface, record, enum and delegate declarations all relocate.
+                    if (!NamespaceMemberClassifier.IsTypeLike(declaringSyntax)) continue;
+                    var typeDecl = (MemberDeclarationSyntax)declaringSyntax;
                     if (await syntaxRef.SyntaxTree.GetRootAsync(ct).ConfigureAwait(false) is not CompilationUnitSyntax root) continue;
                     matches.Add((document, root, typeDecl, document.Project));
                 }
@@ -232,11 +227,6 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         if (matches.Count == 0)
         {
-            if (unsupportedKind is { } kind)
-            {
-                throw UnsupportedTypeKindRefusal.Create(kind, "change_type_namespace_preview",
-                    UnsupportedTypeKindRefusal.AnyTypeDeclaration);
-            }
             throw new InvalidOperationException(
                 $"Type '{typeName}' in namespace '{fromNamespace}' was not found in the workspace.");
         }
@@ -300,7 +290,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         Solution solution,
         Document sourceDocument,
         CompilationUnitSyntax sourceRoot,
-        TypeDeclarationSyntax typeDecl,
+        MemberDeclarationSyntax typeDecl,
         string fromNamespace,
         string toNamespace,
         string destinationFilePath,
@@ -345,8 +335,8 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                 updatedRoot = await updatedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
                     ?? throw InvalidOperationErrors.Internal("The formatted destination syntax root is unavailable.");
             }
-            var movedDeclaration = (TypeDeclarationSyntax)updatedRoot.GetAnnotatedNodes(movedType).Single();
-            return (updatedDocument, movedDeclaration.Identifier.Span, siblingTypesRemaining);
+            var movedDeclaration = updatedRoot.GetAnnotatedNodes(movedType).Single();
+            return (updatedDocument, NamespaceMemberClassifier.GetTypeLikeIdentifier(movedDeclaration).Span, siblingTypesRemaining);
         }
 
         // Relocating: write a new file for the relocated type and either remove the type from the
@@ -384,7 +374,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     private static CompilationUnitSyntax RewriteNamespaceName(
         CompilationUnitSyntax root,
         BaseNamespaceDeclarationSyntax ns,
-        TypeDeclarationSyntax typeDecl,
+        MemberDeclarationSyntax typeDecl,
         string toNamespace,
         SyntaxAnnotation movedType,
         SemanticModel semanticModel,
@@ -415,7 +405,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     /// </summary>
     private static CompilationUnitSyntax MoveTypeIntoNewNamespaceInSameFile(
         CompilationUnitSyntax root,
-        TypeDeclarationSyntax typeDecl,
+        MemberDeclarationSyntax typeDecl,
         string toNamespace,
         SyntaxAnnotation movedType,
         SemanticModel semanticModel,
@@ -505,7 +495,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
     private static (CompilationUnitSyntax Root, TextSpan TypeIdentifier) BuildMovedTypeCompilationUnit(
         CompilationUnitSyntax sourceRoot,
-        TypeDeclarationSyntax typeDecl,
+        MemberDeclarationSyntax typeDecl,
         string toNamespace,
         CSharpParseOptions receivingOptions,
         SemanticModel semanticModel,

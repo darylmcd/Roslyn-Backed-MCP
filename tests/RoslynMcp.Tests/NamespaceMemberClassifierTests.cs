@@ -57,6 +57,33 @@ public sealed class NamespaceMemberClassifierTests
     }
 
     [TestMethod]
+    [DataRow("class Sample { }")]
+    [DataRow("struct Sample { }")]
+    [DataRow("interface Sample { }")]
+    [DataRow("record Sample(int A);")]
+    [DataRow("enum Sample { A }")]
+    [DataRow("delegate void Sample();")]
+    public void GetTypeLikeIdentifier_Returns_The_Declared_Identifier_Token_Of_Every_Type_Kind(string declaration)
+    {
+        var member = Parse("namespace Old { " + declaration + " }").DescendantNodes()
+            .Single(n => NamespaceMemberClassifier.GetTypeLikeName(n) == "Sample");
+
+        var identifier = NamespaceMemberClassifier.GetTypeLikeIdentifier(member);
+
+        Assert.AreEqual("Sample", identifier.ValueText);
+        Assert.AreSame(member, identifier.Parent);
+    }
+
+    [TestMethod]
+    public void GetTypeLikeIdentifier_Returns_The_Default_Token_For_Any_Other_Node()
+    {
+        var root = Parse("using System;\nnamespace Old { class Sample { void M() { } int F; } }");
+
+        foreach (var node in root.DescendantNodes().Where(n => !NamespaceMemberClassifier.IsTypeLike(n)))
+            Assert.AreEqual(default, NamespaceMemberClassifier.GetTypeLikeIdentifier(node), node.Kind().ToString());
+    }
+
+    [TestMethod]
     public void GetContainingNamespaceName_Joins_Nested_Block_And_File_Scoped_Declarations()
     {
         var nested = Parse("namespace Old { namespace Inner.Deep { class Sample { } } }");
