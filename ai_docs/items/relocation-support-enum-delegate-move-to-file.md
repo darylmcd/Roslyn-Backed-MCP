@@ -1,6 +1,6 @@
 # relocation-support-enum-delegate-move-to-file — BLOCKED: operator confirmation: stable move_type_to_file_preview refusal -> success counts as 5.x Added (docs/release-policy.md does not cover it)?
 
-**row:** `relocation-support-enum-delegate-move-to-file` · **pri:** `Medium` · **size:** `M` · **deps:** `relocation-support-enum-delegate-types,relocation-support-enum-delegate-move-to-project`
+**row:** `relocation-support-enum-delegate-move-to-file` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
