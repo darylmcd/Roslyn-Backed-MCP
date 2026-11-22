@@ -1,6 +1,6 @@
 # move-type-to-file-using-separator-blank-lines — Normalise the blank lines between kept usings and the moved declaration
 
-**row:** `move-type-to-file-using-separator-blank-lines` · **pri:** `Low` · **size:** `S` · **verified:** `3a0482b82ab46549662bf934e05e63071594b2e4`
+**row:** `move-type-to-file-using-separator-blank-lines` · **pri:** `Low` · **size:** `M` · **verified:** `3a0482b82ab46549662bf934e05e63071594b2e4`
 
 ## Anchors
 
