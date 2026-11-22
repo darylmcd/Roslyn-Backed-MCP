@@ -44,6 +44,11 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     [DataRow("class Sibling {}\n#if true\nclass Target {}\n#endif", "compiler directives")]
     [DataRow("#pragma warning disable CS0169\nclass Sibling {}\nclass Target { int value; }", "compiler directives")]
     [DataRow("#region Types\nclass Sibling {}\nclass Target {}\n#endregion", "compiler directives")]
+    [DataRow("class Outer { enum Target {} } class Sibling {}", "Nested types")]
+    [DataRow("class Outer { delegate void Target(); } class Sibling {}", "Nested types")]
+    [DataRow("file enum Target {} class Sibling {}", "File-local types")]
+    [DataRow("file class Local {} delegate Local Target(); class Sibling {}", "file-local symbol")]
+    [DataRow("#if true\nclass Sibling {}\nenum Target {}\n#endif", "compiler directives")]
     public async Task MoveType_UnsafeSelection_RefusesWithoutMutation(string source, string reason)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
@@ -305,55 +310,55 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
         AssertPublicRefusal(ex, "Type was not found in the source document. Use document_symbols to select a declaration from that file.");
     }
 
+    /// <summary>
+    /// Regression (relocation-support-enum-delegate-move-to-file): an enum or delegate selection was
+    /// refused with "type-kind ... not supported". It now moves to its own file in the same namespace
+    /// and the applied result compiles.
+    /// </summary>
     [TestMethod]
-    public async Task MoveType_EnumDeclaration_ThrowsStructuredTypeKindError()
+    [DataRow("using System; using System.ComponentModel; namespace Moved.Ns { public class Sib {} [Flags] public enum Target { [Description(\"a\")] A = 1, B = 2 } }", "Enum", false)]
+    [DataRow("namespace Moved.Ns; public class Sib {} public enum Target { A, B }", "Enum", true)]
+    [DataRow("using System.Net; using System.Text; namespace Moved.Ns { public class Sib {} public delegate StringBuilder Target(Sib other); }", "Delegate", false)]
+    [DataRow("namespace Moved.Ns; public class Sib {} public delegate Sib Target(Sib other);", "Delegate", true)]
+    public async Task MoveType_EnumOrDelegate_MovesToOwnFileAndCompiles(string source, string kind, bool fileScoped)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = workspace.GetPath("SampleLib", "EnumDelegateSource.cs");
+        await File.WriteAllTextAsync(sourcePath, source);
+        var workspaceId = await workspace.LoadAsync(CancellationToken.None);
 
-        // Append an enum so Cat.cs becomes a multi-type file (a sibling class is required by
-        // the single-type guard) but the *target* of the move is the enum.
-        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
-        File.AppendAllText(catFile, "\npublic enum IngestionTerminalStatus\n{\n    Pending,\n    Completed,\n    Failed,\n}\n");
+        var preview = await TypeMoveService.PreviewMoveTypeToFileAsync(
+            workspaceId, sourcePath, "Target", null, CancellationToken.None);
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(apply.Success, apply.Error);
 
-        var wsId = await workspace.LoadAsync(CancellationToken.None);
+        var compilation = await WorkspaceManager.GetCurrentSolution(workspaceId).Projects
+            .Single(p => p.Name == "SampleLib").GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors.Select(d => d.ToString())));
+        var moved = compilation.GetTypeByMetadataName("Moved.Ns.Target");
+        Assert.IsNotNull(moved);
+        Assert.AreEqual(kind == "Enum" ? TypeKind.Enum : TypeKind.Delegate, moved.TypeKind);
+        Assert.AreEqual("Target.cs", Path.GetFileName(moved.Locations.Single().SourceTree!.FilePath));
 
-        var doc = WorkspaceManager.GetCurrentSolution(wsId)
-            .Projects.SelectMany(p => p.Documents)
-            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
-
-        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-            TypeMoveService.PreviewMoveTypeToFileAsync(
-                wsId, doc.FilePath!, "IngestionTerminalStatus", null, CancellationToken.None));
-
-        StringAssert.Contains(ex.Message, "type-kind Enum not supported",
-            $"Expected structured type-kind error citing Enum; got: {ex.Message}");
-        // Must NOT degrade into the misleading "not found" wording.
-        Assert.IsFalse(ex.Message.Contains("not found", StringComparison.Ordinal),
-            $"Enum should be reported as unsupported kind, not 'not found': {ex.Message}");
-    }
-
-    [TestMethod]
-    public async Task MoveType_DelegateDeclaration_ThrowsStructuredTypeKindError()
-    {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
-
-        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
-        File.AppendAllText(catFile, "\npublic delegate void NotificationHandler(string message);\n");
-
-        var wsId = await workspace.LoadAsync(CancellationToken.None);
-
-        var doc = WorkspaceManager.GetCurrentSolution(wsId)
-            .Projects.SelectMany(p => p.Documents)
-            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
-
-        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-            TypeMoveService.PreviewMoveTypeToFileAsync(
-                wsId, doc.FilePath!, "NotificationHandler", null, CancellationToken.None));
-
-        StringAssert.Contains(ex.Message, "type-kind Delegate not supported",
-            $"Expected structured type-kind error citing Delegate; got: {ex.Message}");
-        Assert.IsFalse(ex.Message.Contains("not found", StringComparison.Ordinal),
-            $"Delegate should be reported as unsupported kind, not 'not found': {ex.Message}");
+        var newText = (await File.ReadAllTextAsync(workspace.GetPath("SampleLib", "Target.cs"))).Replace("\r\n", "\n");
+        Assert.IsFalse(newText.StartsWith('\n'), "New file must not start with a blank line.");
+        Assert.AreEqual(fileScoped, newText.Contains("namespace Moved.Ns;", StringComparison.Ordinal), newText);
+        // SampleLib has implicit usings, so `using System;` is redundant and is dropped with the unused ones.
+        if (source.Contains("[Flags]", StringComparison.Ordinal))
+        {
+            StringAssert.Contains(newText, "using System.ComponentModel;");
+            Assert.IsFalse(newText.Contains("using System;", StringComparison.Ordinal), "Redundant using must be dropped: " + newText);
+        }
+        if (source.Contains("System.Net", StringComparison.Ordinal))
+        {
+            StringAssert.Contains(newText, "using System.Text;");
+            Assert.IsFalse(newText.Contains("System.Net", StringComparison.Ordinal), "Unused using must be dropped: " + newText);
+        }
+        var remaining = await File.ReadAllTextAsync(sourcePath);
+        Assert.IsFalse(remaining.Contains("Target", StringComparison.Ordinal), remaining);
+        StringAssert.Contains(remaining, "Sib");
     }
 
     [TestMethod]

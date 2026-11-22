@@ -39,23 +39,10 @@ public sealed class TypeMoveService : ITypeMoveService
         if (declaration is not null && declaration.Parent is not (CompilationUnitSyntax or BaseNamespaceDeclarationSyntax))
             throw new PublicInvalidOperationException("Nested types cannot be moved to a top-level file without changing their identity. Select a top-level declaration with document_symbols.");
 
-        var typeDecl = declaration as TypeDeclarationSyntax;
-
-        if (typeDecl is null)
-        {
-            // Distinguish "symbol found but unsupported kind" from "symbol not found".
-            // EnumDeclarationSyntax derives from BaseTypeDeclarationSyntax (not TypeDeclarationSyntax);
-            // DelegateDeclarationSyntax is a MemberDeclarationSyntax. Both are addressable by name from
-            // symbol_search, so callers reasonably expect the move tool to handle them — surface a
-            // structured error that names the resolved kind instead of the misleading "not found" text.
-            if (declaration is not null)
-            {
-                throw UnsupportedTypeKindRefusal.Create(declaration.Kind(), "move_type_to_file_preview",
-                    UnsupportedTypeKindRefusal.AnyTypeDeclaration);
-            }
-
-            throw new PublicInvalidOperationException("Type was not found in the source document. Use document_symbols to select a declaration from that file.");
-        }
+        // Every type-like kind moves: class, struct, record, interface, enum (a BaseTypeDeclarationSyntax)
+        // and delegate (a plain MemberDeclarationSyntax). The lookup above only matches those kinds.
+        var typeDecl = declaration as MemberDeclarationSyntax
+            ?? throw new PublicInvalidOperationException("Type was not found in the source document. Use document_symbols to select a declaration from that file.");
 
         // Validate source file has more than one type (otherwise move is pointless)
         var typeCount = sourceRoot.DescendantNodes().Count(NamespaceMemberClassifier.IsDirectNamespaceMember);
@@ -126,7 +113,7 @@ public sealed class TypeMoveService : ITypeMoveService
     }
 
     private static async Task ValidateMoveContextAsync(
-        Document document, CompilationUnitSyntax root, TypeDeclarationSyntax declaration, CancellationToken ct)
+        Document document, CompilationUnitSyntax root, MemberDeclarationSyntax declaration, CancellationToken ct)
     {
         // Directive trivia can belong to siblings or namespace braces. Copying/removing
         // a declaration cannot safely reconstruct that context or paired directives.
@@ -136,7 +123,7 @@ public sealed class TypeMoveService : ITypeMoveService
         var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new PublicInvalidOperationException("Source semantic information is unavailable. Reload the workspace and retry the type move.");
 
-        if (ContainsFileLocalType(model.GetDeclaredSymbol(declaration, ct)))
+        if (ContainsFileLocalType(model.GetDeclaredSymbol(declaration, ct) as ITypeSymbol))
             throw new PublicInvalidOperationException("File-local types cannot move to another file without changing their identity. Use move_file_preview to move the whole file.");
 
         // Imports are copied with the declaration, even when their names are unused.
@@ -167,7 +154,7 @@ public sealed class TypeMoveService : ITypeMoveService
     };
 
     private static CompilationUnitSyntax CreateMovedCompilationUnit(
-        CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax typeDecl)
+        CompilationUnitSyntax sourceRoot, MemberDeclarationSyntax typeDecl)
     {
         // Keep each namespace scope intact: flattening names or hoisting imports changes
         // alias, relative namespace, static import, and extern-alias binding.

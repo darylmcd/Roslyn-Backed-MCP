@@ -12,11 +12,11 @@ public sealed class UnsupportedTypeKindRefusalTests
     [DataRow(SyntaxKind.NamespaceDeclaration, "NamespaceDeclaration")]
     public void Create_Names_The_Kind_And_The_Calling_Tool(SyntaxKind kind, string expectedName)
     {
-        var refusal = UnsupportedTypeKindRefusal.Create(kind, "some_tool_preview", UnsupportedTypeKindRefusal.AnyTypeDeclaration);
+        var refusal = UnsupportedTypeKindRefusal.Create(kind, "some_tool_preview", UnsupportedTypeKindRefusal.ClassAndStruct);
 
         Assert.AreEqual(
             $"type-kind {expectedName} not supported for this refactor. " +
-            "some_tool_preview currently supports class, struct, record, and interface declarations only.",
+            "some_tool_preview currently supports class and struct declarations only.",
             refusal.Message);
     }
 }
