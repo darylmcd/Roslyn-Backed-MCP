@@ -13,14 +13,15 @@ internal static class MovedTypeDestinationIdentity
         Document projectedDocument,
         TextSpan projectedIdentifier,
         Solution finalProjection,
-        TypeDeclarationSyntax? originalDeclarationInTargetProject,
+        MemberDeclarationSyntax? originalDeclarationInTargetProject,
         CancellationToken ct)
     {
         var root = await projectedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("The destination syntax root is unavailable.");
         var identifier = root.FindToken(projectedIdentifier.Start);
-        if (identifier.Span != projectedIdentifier || identifier.Parent is not TypeDeclarationSyntax declaration ||
-            declaration.Identifier != identifier || !NamespaceMemberClassifier.IsDirectNamespaceMember(declaration))
+        if (identifier.Span != projectedIdentifier || identifier.Parent is not { } declaration ||
+            !NamespaceMemberClassifier.IsDirectNamespaceMember(declaration) ||
+            NamespaceMemberClassifier.GetTypeLikeIdentifier(declaration) != identifier)
         {
             // The emitted declaration may be inactive under the receiving project's preprocessor symbols.
             return;
@@ -55,7 +56,7 @@ internal static class MovedTypeDestinationIdentity
         }
     }
 
-    private static bool IsOriginalDeclaration(INamedTypeSymbol candidate, TypeDeclarationSyntax? originalDeclaration) =>
+    private static bool IsOriginalDeclaration(INamedTypeSymbol candidate, MemberDeclarationSyntax? originalDeclaration) =>
         originalDeclaration is not null && candidate.DeclaringSyntaxReferences is [var reference] &&
         reference.SyntaxTree == originalDeclaration.SyntaxTree && reference.Span == originalDeclaration.Span;
 

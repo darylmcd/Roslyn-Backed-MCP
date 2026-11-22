@@ -32,6 +32,14 @@ internal static class NamespaceMemberClassifier
         _ => null,
     };
 
+    /// <summary>The identifier token of a type-like node, or <see langword="default"/> for any other node.</summary>
+    internal static SyntaxToken GetTypeLikeIdentifier(SyntaxNode node) => node switch
+    {
+        BaseTypeDeclarationSyntax type => type.Identifier,
+        DelegateDeclarationSyntax @delegate => @delegate.Identifier,
+        _ => default,
+    };
+
     /// <summary>Finds a namespace by its successive names within the supplied namespace tree.</summary>
     internal static INamespaceSymbol? FindNamespaceSymbol(INamespaceSymbol global, IEnumerable<string> segments)
     {

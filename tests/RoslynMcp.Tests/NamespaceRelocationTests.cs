@@ -288,31 +288,149 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
                 CancellationToken.None));
     }
 
+    private const string EnumDeclaration = "public enum Selected { A, B }";
+    private const string DelegateDeclaration = "public delegate int Selected(int x);";
+
+    private const string EnumConsumerBody =
+        "public sealed class Consumer\n{\n    public Selected Value = Selected.A;\n\n    public bool IsB() => Value == Selected.B;\n}\n";
+
+    private const string DelegateConsumerBody =
+        "public sealed class Consumer\n{\n    public int Run()\n    {\n        Selected h = Twice;\n        return h(2) + new Selected(Twice)(1);\n    }\n\n    private static int Twice(int x) => x * 2;\n}\n";
+
+    private static readonly string[] EnumDelegateShapes =
+    [
+        "namespace Old\n{\n    @@DECL@@\n}\n",
+        "namespace Old;\n\n@@DECL@@\n",
+        "namespace Old\n{\n    @@DECL@@\n\n    public class Keep { }\n}\n",
+        "namespace Old;\n\n@@DECL@@\n\npublic class Keep { }\n",
+    ];
+
+    public static IEnumerable<object[]> EnumDelegateCases()
+    {
+        foreach (var relocate in new[] { false, true })
+        {
+            foreach (var shape in EnumDelegateShapes)
+            {
+                yield return [shape, EnumDeclaration, EnumConsumerBody, "Enum", relocate];
+                yield return [shape, DelegateDeclaration, DelegateConsumerBody, "Delegate", relocate];
+            }
+        }
+    }
+
     /// <summary>
-    /// Regression (relocation-selected-enum-delegate-reported-not-found): selecting an enum or a
-    /// delegate matched by name and namespace but was skipped for not being a
-    /// <c>TypeDeclarationSyntax</c>, so the caller was told the type "was not found".
+    /// Regression (relocation-support-enum-delegate-types): an enum or delegate selection was refused
+    /// with the #2180 kind refusal. It now relocates like any other type (in place, extracted into
+    /// a new block in the same file, or written to a new file), its consumers are rewritten, and the
+    /// previewed solution compiles.
     /// </summary>
     [TestMethod]
-    [DataRow("public enum Selected { A }", "Enum", DisplayName = "enum")]
-    [DataRow("public delegate void Selected();", "Delegate", DisplayName = "delegate")]
-    public async Task Preview_Names_The_Unsupported_Kind_For_An_Enum_Or_Delegate_Selection(string declaration, string kind)
+    [DynamicData(nameof(EnumDelegateCases))]
+    public async Task Preview_Relocates_An_Enum_Or_Delegate_And_Its_Consumers_Compile(
+        string shape, string declaration, string consumerBody, string kind, bool relocate)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var consumer = "using Old;\n\nnamespace Consumers;\n\n" + consumerBody;
+
+        var (modified, _, sourcePath, destinationPath, _) = await PreviewRelocationAsync(
+            workspace, shape.Replace("@@DECL@@", declaration, StringComparison.Ordinal), consumer, relocate: relocate);
+
+        var consumerPath = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory, "Consumer.cs");
+        var consumerText = (await modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, consumerPath, StringComparison.OrdinalIgnoreCase))
+            .GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(consumerText, "using New;", $"The consumer needs `using New;`:\n{consumerText}");
+        var errors = await CompileErrorsInAsync(modified, sourcePath, destinationPath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{consumerText}");
+
+        var compilation = await modified.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNull(compilation.GetTypeByMetadataName("Old.Selected"), "Selected must leave Old.");
+        var moved = compilation.GetTypeByMetadataName("New.Selected");
+        Assert.IsNotNull(moved, "Selected must arrive in New.");
+        Assert.AreEqual(kind == "Enum" ? Microsoft.CodeAnalysis.TypeKind.Enum : Microsoft.CodeAnalysis.TypeKind.Delegate, moved.TypeKind);
+    }
+
+    /// <summary>
+    /// A moved enum or delegate that is the sole member keeps the old namespace out of its consumers:
+    /// nothing remains in <c>Old</c>, so the consumer's <c>using Old;</c> is replaced, not kept.
+    /// </summary>
+    [TestMethod]
+    [DataRow(EnumDeclaration, EnumConsumerBody, DisplayName = "enum")]
+    [DataRow(DelegateDeclaration, DelegateConsumerBody, DisplayName = "delegate")]
+    public async Task Preview_Replaces_The_Old_Import_When_A_Sole_Enum_Or_Delegate_Moves(string declaration, string consumerBody)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, _, sourcePath, destinationPath, _) = await PreviewRelocationAsync(
+            workspace, "namespace Old\n{\n    " + declaration + "\n}\n", "using Old;\n\nnamespace Consumers;\n\n" + consumerBody);
+
+        var (text, consumerPath) = await ReadConsumerAsync(workspace, modified);
+        Assert.AreEqual(0, CountImportLines(text, "Old"), text);
+        Assert.AreEqual(1, CountImportLines(text, "New"), text);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, destinationPath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// A nested enum or delegate is a member of its type: moving it would change the containing
+    /// type, so it keeps the nested-type refusal (not the removed kind refusal, not "not found").
+    /// </summary>
+    [TestMethod]
+    [DataRow("public enum Selected { A }", DisplayName = "enum")]
+    [DataRow("public delegate void Selected();", DisplayName = "delegate")]
+    public async Task Preview_Refuses_A_Nested_Enum_Or_Delegate_As_A_Nested_Type(string declaration)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory);
         Directory.CreateDirectory(fixtureDir);
         await File.WriteAllTextAsync(Path.Combine(fixtureDir, "Source.cs"),
-            "namespace Old\n{\n    " + declaration + "\n\n    public class Keep { }\n}\n", CancellationToken.None);
+            "namespace Old\n{\n    public class Outer\n    {\n        " + declaration + "\n    }\n}\n", CancellationToken.None);
         var wsId = await workspace.LoadAsync(CancellationToken.None);
 
         var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             CreateService().PreviewChangeTypeNamespaceAsync(
                 wsId, "Selected", "Old", "New", newFilePath: null, CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, $"type-kind {kind} not supported");
-        StringAssert.Contains(ex.Message, "change_type_namespace_preview");
-        Assert.IsFalse(ex.Message.Contains("not found", StringComparison.Ordinal),
-            $"{kind} must be reported as an unsupported kind, not 'not found': {ex.Message}");
+        Assert.AreEqual("Moving a nested type would change its containing type. Select a top-level type.", ex.Message);
+    }
+
+    /// <summary>
+    /// A same-name type already in the destination refuses the move for an enum or delegate too: the
+    /// collision guard must see the moved declaration, whatever its kind.
+    /// </summary>
+    [TestMethod]
+    [DataRow(EnumDeclaration, "public class Selected { }", DisplayName = "enum onto a class")]
+    [DataRow(EnumDeclaration, "public enum Selected { Z }", DisplayName = "enum onto an enum")]
+    [DataRow(DelegateDeclaration, "public delegate int Selected(int x);", DisplayName = "delegate onto a delegate")]
+    [DataRow(DelegateDeclaration, "public enum Selected { Z }", DisplayName = "delegate onto an enum")]
+    public async Task Preview_Refuses_An_Enum_Or_Delegate_Whose_Destination_Already_Declares_The_Name(
+        string declaration, string existing)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            PreviewRelocationAsync(workspace, "namespace Old\n{\n    " + declaration + "\n}\n",
+                otherFile: ("SampleLib", "namespace New\n{\n    " + existing + "\n}\n")));
+
+        StringAssert.Contains(ex.Message, "The destination already contains a type with the same namespace, name, and arity.");
+    }
+
+    /// <summary>
+    /// The lookup matches by name and namespace only (the tool takes no arity), so a generic delegate
+    /// and a class of the same name in one namespace are ambiguous: refused, never a silent pick of
+    /// one of them. The same holds for a class and a generic class (control row).
+    /// </summary>
+    [TestMethod]
+    [DataRow("public delegate T Selected<T>(T x);", DisplayName = "generic delegate + class")]
+    [DataRow("public class Selected<T> { }", DisplayName = "generic class + class (control)")]
+    public async Task Preview_Reports_A_Same_Named_Generic_Type_As_Ambiguous(string generic)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            PreviewRelocationAsync(workspace, "namespace Old\n{\n    " + generic + "\n\n    public class Selected { }\n}\n"));
+
+        StringAssert.Contains(ex.Message, "matched multiple files");
     }
 
     /// <summary>

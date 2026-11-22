@@ -1021,7 +1021,7 @@
   },
   {
     "Path": "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.NamespaceRelocationService.ApplyNamespaceRewriteAsync(Microsoft.CodeAnalysis.Solution,Microsoft.CodeAnalysis.Document,Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax,Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax,System.String,System.String,System.String,System.Boolean,System.Threading.CancellationToken)",
+    "Member": "M:RoslynMcp.Roslyn.Services.NamespaceRelocationService.ApplyNamespaceRewriteAsync(Microsoft.CodeAnalysis.Solution,Microsoft.CodeAnalysis.Document,Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax,Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax,System.String,System.String,System.String,System.Boolean,System.Threading.CancellationToken)",
     "Fingerprint": "2E59D772D1EF4E3867C209F0F715605F0D7128D2AEDC72FDA97306C52AA78924",
     "Count": 1
   },
