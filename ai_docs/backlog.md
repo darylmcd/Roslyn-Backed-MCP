@@ -624,6 +624,7 @@
 | `relocation-service-type-selection-hygiene` | Low | — | **Tidy NamespaceRelocationService type selection and add enum/delegate edge tests** — FindTypeInNamespaceAsync ignores arity, raw InvalidOperationException sits in two paths, and enum/delegate attribute, doc-comment and #if cases are untested. [type: quality] [source: remediation run 2026-11-21] | S | items/relocation-service-type-selection-hygiene.md |
 | `move-type-to-project-selection-and-error-hygiene` | Low | — | **Tidy move_type_to_project selection and errors** — FindMovableTypeDeclaration ignores arity (an earlier same-named enum or delegate is selected over a class); raw InvalidOperationException on the move path. [type: quality] [source: remediation run 2026-11-21] | S | items/move-type-to-project-selection-and-error-hygiene.md |
 | `test-fixtures-prepared-flag-fresh-worktree-trap` | Low | — | **Document or guard -p:TestFixturesPrepared=true in a fresh worktree** — the justfile assumes prepared fixtures; a fresh worktree fails SampleLib.Tests with StringAssert compile errors. [type: tooling] [source: remediation run 2026-11-21] | S | items/test-fixtures-prepared-flag-fresh-worktree-trap.md |
+| `move-type-to-file-using-separator-blank-lines` | Low | — | **move_type_to_file leaves two blank lines between kept usings and the moved type** — NormalizeUsingToMemberSeparator output; its test only asserts at least one; also make the ITypeSymbol cast null-explicit. [type: bug] [source: remediation run 2026-11-21] | S | items/move-type-to-file-using-separator-blank-lines.md |
 
 ## Defer
 
