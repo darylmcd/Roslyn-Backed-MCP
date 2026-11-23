@@ -19,7 +19,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="11.0.0" />
     <!-- Test-only: FakeTimeProvider for deterministic clock control in WorkspaceExecutionGateTests
          (timeout-budget reset verified on a virtual clock, no wall-clock Task.Delay races). -->
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.1" />
     <PackageVersion Include="DiffPlex" Version="1.9.0" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.7.1" />
     <PackageVersion Include="Microsoft.Build" Version="18.7.1" />
