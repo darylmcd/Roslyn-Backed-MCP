@@ -129,7 +129,7 @@ doesn't have the plugin slash-command parser. Use **Option A** instead.
 
 1. **Push your change to GitHub `main`.** The plugin marketplace only sees commits that are
    on `main` of `darylmcd/Roslyn-Backed-MCP` — local-only changes are invisible
-   to the marketplace. Use `/ship` (or your normal PR + merge flow) first.
+   to the marketplace. Use `/land` (or your normal PR + merge flow) first.
 2. **Optional: rebuild the standalone global tool** when you use Option A:
 
    ```bash

@@ -111,7 +111,7 @@ $backlogAddendaPath = Join-Path $RepoRoot $backlogAddendaRelativePath
 
 # pr-reconciler-fail-closed-ship-cleanup: both the reconciler and its repository addenda are
 # readiness-only documents. Required handoff words alone are insufficient: a destructive command
-# in either body would let an autonomous reader bypass the parent-owned /ship cleanup boundary.
+# in either body would let an autonomous reader bypass the parent-owned /land cleanup boundary.
 $unsafeCleanupRules = @(
     @{
         Pattern = '(?im)^\s*git\b[^\r\n]*\bworktree\s+remove\b'
@@ -165,7 +165,7 @@ foreach ($unsafeRule in $unsafeCleanupRules) {
 # readiness-only instructions must remain valid as the rules evolve.
 $safeReadinessExamples = @(
     'gh pr view 123 --json state,mergeable,mergeStateStatus',
-    'HANDOFF: parent /ship --land=<pr>',
+    'HANDOFF: parent /land --land=<pr>',
     'Never force-push, merge, delete a branch, or remove a worktree.',
     'git -C "C:/repo with spaces" worktree list',
     'git branch --show-current',
@@ -186,7 +186,7 @@ else {
     $prReconciler = [System.IO.File]::ReadAllText($prReconcilerPath)
     $requiredReconcilerStatements = @(
         'readiness-only',
-        'HANDOFF: parent /ship --land=<pr>',
+        'HANDOFF: parent /land --land=<pr>',
         'SHIP_STATUS=landed-cleanup-failed',
         'Evaluate `state` before all other fields',
         'If `gh pr view` fails, wait 5 seconds and retry once.',
@@ -211,7 +211,7 @@ if (-not [System.IO.File]::Exists($backlogAddendaPath)) {
 else {
     $backlogAddenda = [System.IO.File]::ReadAllText($backlogAddendaPath)
     $requiredAddendaStatements = @(
-        'readiness-only; parent owns /ship --land=<pr>',
+        'readiness-only; parent owns /land --land=<pr>',
         'SHIP_STATUS=landed-cleanup-failed'
     )
     foreach ($requiredStatement in $requiredAddendaStatements) {

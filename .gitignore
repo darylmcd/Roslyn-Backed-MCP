@@ -538,7 +538,7 @@ $RECYCLE.BIN/
 !.cursor/rules/**
 .mcp.json
 
-# Release-managed edit override sentinel (created by /bump, /release-cut, /ship; transient)
+# Release-managed edit override sentinel (created by /bump, /release-cut, /land; transient)
 .release-managed-edit-allowed
 
 # Per-run audit output from /mcp-server-surface-test (prose reports + scorecards).

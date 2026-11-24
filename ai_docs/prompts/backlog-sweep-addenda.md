@@ -196,7 +196,7 @@ mandatory_companion_files:
 
 Further assertions in the same test class fire on a different trigger:
 
-- `ReadmePackageAndPluginSkillCounts_MatchShippedSkillDirectory` fires on an edit under `skills/`: the "N bundled agent skills" claim in `README.md`, `src/RoslynMcp.Host.Stdio/README.md`, **and** `.claude-plugin/plugin.json`'s description must match the shipped `skills/` directory. `.claude-plugin/plugin.json` is a **hard-blocked release-managed path** (see Hooks): a shipped-skill add/remove routes through `/bump`, `/release-cut`, or `/ship`, or creates the sentinel explicitly.
+- `ReadmePackageAndPluginSkillCounts_MatchShippedSkillDirectory` fires on an edit under `skills/`: the "N bundled agent skills" claim in `README.md`, `src/RoslynMcp.Host.Stdio/README.md`, **and** `.claude-plugin/plugin.json`'s description must match the shipped `skills/` directory. `.claude-plugin/plugin.json` is a **hard-blocked release-managed path** (see Hooks): a shipped-skill add/remove routes through `/bump`, `/release-cut`, or `/land`, or creates the sentinel explicitly.
 - `BacklogPlanningSurfaceCountClaims_MatchLiveServerSurfaceCatalog` sweeps every planning/backlog `ai_docs/**/*.md` for "`<N>` tools is approaching" and `server_info.surface.registered.tools <from> -> <to>` claims, so a stale tool count in a backlog item or in this file fails the build too.
 
 **Known over-trigger.** Description-, envelope-, and parameter-text-only edits touch those anchors without moving any count. Such rows are the `tool_surface_only` shape below: omit companions whose literals do not change, with the reason stated in Scope. Mechanical expansion is conservative; verify each companion against its gate source.
@@ -235,7 +235,7 @@ hooks:
     override: |
       A sentinel file <checkout-root>/.release-managed-edit-allowed whose mtime is within
       RELEASE_SENTINEL_TTL_SECONDS (default 1800s). /bump, /release-cut and
-      /ship create and remove it automatically. A subagent that needs one of
+      /land create and remove it automatically. A subagent that needs one of
       these paths must either route through those skills or create the
       sentinel explicitly — it cannot Edit its way past the guard.
       See ai_docs/workflow.md § Release-managed file guard.
@@ -290,11 +290,11 @@ See [ai_docs/runtime.md § Write-side by session shape](../runtime.md#write-side
 ## Subagents available in this repo
 
 ```yaml
-pr_reconciler:       .claude/agents/pr-reconciler.md         # readiness-only; parent owns /ship --land=<pr>
+pr_reconciler:       .claude/agents/pr-reconciler.md         # readiness-only; parent owns /land --land=<pr>
 backlog_intake_extractor: .claude/agents/backlog-intake-extractor.md  # Phase 1 of /backlog-intake
 ```
 
-When the global execute command's Step 7 subagent briefing mentions "if available", these are what's available. The reconciler only reports readiness. The parent invokes `/ship --land=<pr>` and must preserve `SHIP_STATUS=landed-cleanup-failed` whenever landing succeeds but any local or remote cleanup proof fails; that status is a remediation signal, not a successful clean landing.
+When the global execute command's Step 7 subagent briefing mentions "if available", these are what's available. The reconciler only reports readiness. The parent invokes `/land --land=<pr>` and must preserve `SHIP_STATUS=landed-cleanup-failed` whenever landing succeeds but any local or remote cleanup proof fails; that status is a remediation signal, not a successful clean landing.
 
 ## Skills wired to backlog-remediation workflow
 
@@ -303,7 +303,7 @@ draft_changelog_entry: /draft-changelog-entry
 close_backlog_rows: /close-backlog-rows
 reconcile_backlog_vs_issues: /reconcile-backlog-vs-issues
 recover_stalled_subagent: /recover-stalled-subagent
-ship: /ship
+ship: /land
 ```
 
 These are the preferred-path skills the global tooling references. `reconcile_backlog_vs_issues` and `recover_stalled_subagent` are repo-local under `.claude/skills/`; `draft_changelog_entry`, `close_backlog_rows` and `ship` are global under `~/.claude/skills/`.

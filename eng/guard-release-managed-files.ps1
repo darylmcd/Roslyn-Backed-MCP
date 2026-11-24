@@ -7,7 +7,7 @@
 # Override sentinel: a file at the root of the checkout being edited. The
 # project checkout and its linked worktrees share the guard, but each has its
 # own sentinel (default TTL 1800s / 30 min).
-# Skills like /bump, /release-cut, and /ship create this sentinel before mutating
+# Skills like /bump, /release-cut, and /land create this sentinel before mutating
 # release-managed files and remove it at end of flow.
 #
 # Replaces the prior prompt-based hook whose "look for phrase in reasoning text"
@@ -142,7 +142,7 @@ if ($null -ne $sentinelItem) {
     $staleMessage = " (sentinel exists but is stale: $([int]$age.TotalSeconds)s > ${ttlSeconds}s TTL -- re-touch it or re-run the skill)"
 }
 
-$msg = "Blocked: ``$matchedAs`` is a release-managed file. Use the ``/bump``, ``/release-cut``, or ``/ship`` skill (these create the override sentinel automatically), or manually run:`n`n    New-Item -ItemType File -Force `"$repoRoot/.release-managed-edit-allowed`" | Out-Null`n`nto create the sentinel for the next ${ttlSeconds}s.$staleMessage See ``ai_docs/workflow.md`` Release-managed file guard."
+$msg = "Blocked: ``$matchedAs`` is a release-managed file. Use the ``/bump``, ``/release-cut``, or ``/land`` skill (these create the override sentinel automatically), or manually run:`n`n    New-Item -ItemType File -Force `"$repoRoot/.release-managed-edit-allowed`" | Out-Null`n`nto create the sentinel for the next ${ttlSeconds}s.$staleMessage See ``ai_docs/workflow.md`` Release-managed file guard."
 
 [Console]::Error.WriteLine($msg)
 exit 2
