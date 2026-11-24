@@ -183,4 +183,4 @@ Recovered 3 modified files -> pushed as 1f3a9c2 -> worktree removed cleanly.
 
 ## Distinct from related skills
 
-- **`/ship`** — commits, pushes, opens a PR and merges. It applies only when work completed cleanly. A stalled subagent has no PR to land; recover its worktree with this skill instead.
+- **`/land`** — commits, pushes, opens a PR and merges. It applies only when work completed cleanly. A stalled subagent has no PR to land; recover its worktree with this skill instead.
