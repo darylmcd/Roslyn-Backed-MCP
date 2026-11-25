@@ -46,4 +46,66 @@ public sealed class BulkReplaceImportSpellingTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(text, "BulkNewType value");
         Assert.AreEqual(1, CountImports(text, "Bulk.NewNs.Sub"), text);
     }
+
+    [TestMethod]
+    [DataRow("namespace Bulk.NewNs; public class Consumer { public void M(OldType x) { } }", false)]
+    [DataRow("namespace Bulk { namespace NewNs { public class Consumer { public void M(OldType x) { } } } }", false)]
+    [DataRow("namespace Bulk.NewNs.Child { public class Consumer { public void M(OldType x) { } } }", false)]
+    [DataRow("namespace Bulk.NewNs { public class Consumer { public void M(OldType x) { } } } namespace Other { public class Consumer { public void M(OldType x) { } } }", true)]
+    [DataRow("namespace Other { using Bulk.NewNs; public class Consumer { public void M(OldType x) { } } }", false)]
+    public async Task AddsImportOnlyWhenARewrittenOccurrenceNeedsIt(string source, bool needsImport)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "ScopeOld.cs"),
+            "namespace Bulk.OldNs { public class OldType { } }");
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "ScopeNew.cs"),
+            "namespace Bulk.NewNs { public class NewType { } }");
+        var path = workspace.GetPath("SampleLib", "ScopeConsumer.cs");
+        await File.WriteAllTextAsync(path, "using Bulk.OldNs; " + source);
+        var id = await workspace.LoadAsync(CancellationToken.None);
+        var preview = await BulkRefactoringService.PreviewBulkReplaceTypeAsync(
+            id, "OldType", "NewType", "parameters", CancellationToken.None);
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var document = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        var text = (await document.GetTextAsync()).ToString();
+        Assert.AreEqual(needsImport ? 1 : 0, CountImports(text, "Bulk.NewNs"), text);
+        StringAssert.Contains(text, "NewType x");
+        var compilation = await document.Project.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors.Select(d => d.ToString())));
+    }
+
+    [TestMethod]
+    [DataRow("Other", "Bulk.NewNs", true)]
+    [DataRow("Bulk", "NewNs", false)]
+    public async Task LocalImportUsesBoundNamespaceRatherThanWrittenSpelling(string enclosingNamespace, string importName, bool needsImport)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "BindingTypes.cs"),
+            "namespace Bulk.OldNs { public class OldType { } } namespace Bulk.NewNs { public class NewType { } } namespace Other.Bulk.NewNs { public class Distractor { } }");
+        var path = workspace.GetPath("SampleLib", "BindingConsumer.cs");
+        await File.WriteAllTextAsync(path,
+            $"using Bulk.OldNs; namespace {enclosingNamespace} {{ using {importName}; public class Consumer {{ public void M(OldType x) {{ }} }} }}");
+        var id = await workspace.LoadAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(id).Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        var originalCompilation = await original.Project.GetCompilationAsync();
+        Assert.IsNotNull(originalCompilation);
+        Assert.AreEqual(0, originalCompilation.GetDiagnostics().Count(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
+        var preview = await BulkRefactoringService.PreviewBulkReplaceTypeAsync(
+            id, "OldType", "NewType", "parameters", CancellationToken.None);
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var document = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        var text = (await document.GetTextAsync()).ToString();
+        StringAssert.Contains(text, "NewType x");
+        var emitted = document.WithSyntaxRoot(CSharpSyntaxTree.ParseText(text).GetRoot());
+        var compilation = await emitted.Project.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors.Select(d => d.ToString())));
+        Assert.AreEqual(needsImport ? 1 : 0, CountImports(text, "Bulk.NewNs"), text);
+    }
 }
