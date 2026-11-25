@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:279-351`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:272-327`
 - `src/RoslynMcp.Core/Services/IDotnetCommandRunner.cs`
 - `src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:17-27`
 
@@ -22,6 +22,6 @@
 
 ## Notes
 
-Adjacent implementation debt in the same scan loop: DotnetCommandRunner.cs:339 says Regex cannot accept spans, but net10 reference metadata exposes Regex.IsMatch(ReadOnlySpan<char>, int). The current slice-to-string allocation and stale comment should disappear with the corrected bounded scanner.
-
 5.x screen at d9e2b3ff. The read-boundary fix changes when stable test_run exposes execution.earlyKillReason and failureEnvelope.summary, and whether execution.succeeded is false. Qualify with early-kill-reason-unconfirmed so newly detected markers cannot amplify a receipt for an unconfirmed kill. Select when the resulting wire behavior is qualified for 5.x or at the next approved major.
+
+2026-11-25 source re-derivation at0652f7fd: PumpAsync:272-288 passes each fresh chunk to EarlyKillCoordinator.ScanAndMaybeKill:313-327, which calls Regex.IsMatch(text) without a per-stream carry. The across-read mechanism remains; no runtime or wire qualification performed. The historical Notes claim about the span comment at old line339 no longer describes current code and is removed.
