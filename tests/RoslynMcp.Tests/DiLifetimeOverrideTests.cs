@@ -5,12 +5,7 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// di-lifetime-mismatch-detection: covers the override-chain analysis added to
-/// <c>get_di_registrations</c>. Tests use a self-contained shim of <c>IServiceCollection</c> +
-/// <c>ServiceCollectionExtensions</c> written into the isolated workspace, so the analyzer
-/// detects registrations purely by name-shape (containing-type name contains
-/// "ServiceCollection") without requiring a real Microsoft.Extensions.DependencyInjection
-/// package reference. This keeps the test independent of fixture-csproj package churn.
+/// Covers DI registration discovery and override chains using real framework references.
 /// </summary>
 [TestClass]
 public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
@@ -31,7 +26,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task ShowLifetimeOverrides_Off_Default_Result_Matches_Legacy_Shape()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
         await WriteRegistrationFileAsync(
             workspace,
             "RegistrationsAlpha.cs",
@@ -53,7 +48,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Last_Wins_Add_Then_Add_Marks_Earlier_Singleton_As_Overridden_With_Scoped_Winner()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         // Two separate composition-root files — first registers IFoo as Singleton, second as Scoped.
         // Validation per plan: winning lifetime = Scoped, overridden = [Singleton], deadCount = 1.
@@ -94,7 +89,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task TryAdd_First_Wins_Subsequent_TryAdd_Is_Shadowed()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         // First TryAdd takes effect; second TryAdd is a no-op because a descriptor exists.
         await WriteRegistrationFileAsync(
@@ -125,7 +120,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Single_Registration_Service_Type_Is_Excluded_From_Override_Chains()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
         await WriteRegistrationFileAsync(
             workspace,
             "RegistrationsAlpha.cs",
@@ -152,7 +147,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task IEnumerable_T_Consumer_Suppresses_Override_Chain_For_Service_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         // Three Add* registrations of IAnalyzer — all intentional because
         // AnalyzerEnumerableConsumer consumes IEnumerable<IAnalyzer>.
@@ -180,7 +175,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task IReadOnlyList_And_Array_Consumers_Suppress_Override_Chains()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         await WriteRegistrationFileAsync(
             workspace,
@@ -209,10 +204,10 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Multi_Registration_Without_Enumerable_Consumer_Still_Reports_Override_Chain()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         // Two Add* registrations of IFoo, but NO IEnumerable<IFoo>/IReadOnlyList<IFoo>/IFoo[]
-        // ctor or property exists in the shim or in the registration file. The chain must
+        // ctor or property exists in the fixture or in the registration file. The chain must
         // still surface so the consumer sees the second registration overriding the first.
         await WriteRegistrationFileAsync(
             workspace,
@@ -240,7 +235,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Factory_Lambda_With_GetRequiredService_Resolves_Implementation_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         // First registration: concrete FileSnapshotReader. Second registration: factory lambda
         // forwarding ISnapshotReader to FileSnapshotReader via sp.GetRequiredService.
@@ -268,7 +263,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Factory_Lambda_With_GetService_Resolves_Implementation_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         await WriteRegistrationFileAsync(
             workspace,
@@ -295,7 +290,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Factory_Lambda_Constructing_Impl_From_Resolved_Dependency_Reports_Constructed_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         await WriteRegistrationFileAsync(
             workspace,
@@ -322,7 +317,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Factory_Lambda_Constructing_Impl_Without_Dependencies_Reports_Constructed_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         await WriteRegistrationFileAsync(
             workspace,
@@ -349,7 +344,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Factory_Lambda_Block_Body_Reports_Returned_Construction_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         await WriteRegistrationFileAsync(
             workspace,
@@ -376,7 +371,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Factory_Lambda_Returning_Unrecognized_Shape_Falls_Back_To_Factory_String()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
 
         await WriteRegistrationFileAsync(
             workspace,
@@ -403,7 +398,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     public async Task Summary_Mode_Returns_Compact_Counts_And_Paged_Override_Chains()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
         await WriteRegistrationFileAsync(
             workspace,
             "RegistrationsAlpha.cs",
@@ -453,7 +448,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
         const int TotalRegistrations = 101;
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteServiceCollectionFixtureAsync(workspace, CancellationToken.None);
         await WriteManyRegistrationsAsync(workspace, TotalRegistrations, CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -519,7 +514,7 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     /// Materialises <paramref name="count"/> distinct service-type registrations into the
     /// workspace by emitting one file with <paramref name="count"/> interfaces, implementations,
     /// and AddSingleton&lt;,&gt; calls — sufficient for exercising paging on the detailed
-    /// response shape without interacting with the shared shim used by the other tests.
+    /// response shape without interacting with the shared service types used by the other tests.
     /// </summary>
     private static async Task WriteManyRegistrationsAsync(IsolatedWorkspaceScope workspace, int count, CancellationToken ct)
     {
@@ -550,51 +545,13 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
             ct).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Writes a self-contained shim of <c>IServiceCollection</c> + extension methods to
-    /// SampleLib. The DI registration walker matches by containing-type name shape
-    /// ("ServiceCollection") and method-name lifetime mapping, so this gives full semantic
-    /// binding without dragging in Microsoft.Extensions.DependencyInjection.
-    /// </summary>
-    private static async Task WriteServiceCollectionShimAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
+    private static async Task WriteServiceCollectionFixtureAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
     {
-        // get-di-registrations-multi-registration-overcounting: shim extended with the
-        // single-type-arg factory overload, an IServiceProvider stub with GetRequiredService /
-        // GetService extensions, and additional types/interfaces that the new tests register
-        // multiple times via IEnumerable<T>/IReadOnlyList<T>/T[] consumption.
-        var shim = """
+        AddDependencyInjectionReferences(workspace, "SampleLib");
+        var fixture = """
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace SampleLib;
-
-public interface IServiceCollection { }
-
-public sealed class FakeServiceCollection : IServiceCollection { }
-
-public interface IServiceProvider { }
-
-public static class ServiceCollectionExtensions
-{
-    public static IServiceCollection AddSingleton<TService, TImpl>(this IServiceCollection services)
-        where TImpl : TService => services;
-    public static IServiceCollection AddScoped<TService, TImpl>(this IServiceCollection services)
-        where TImpl : TService => services;
-    public static IServiceCollection AddTransient<TService, TImpl>(this IServiceCollection services)
-        where TImpl : TService => services;
-    public static IServiceCollection AddSingleton<TService>(this IServiceCollection services, System.Func<IServiceProvider, TService> factory) => services;
-    public static IServiceCollection AddScoped<TService>(this IServiceCollection services, System.Func<IServiceProvider, TService> factory) => services;
-    public static IServiceCollection AddTransient<TService>(this IServiceCollection services, System.Func<IServiceProvider, TService> factory) => services;
-    public static IServiceCollection TryAddSingleton<TService, TImpl>(this IServiceCollection services)
-        where TImpl : TService => services;
-    public static IServiceCollection TryAddScoped<TService, TImpl>(this IServiceCollection services)
-        where TImpl : TService => services;
-    public static IServiceCollection TryAddTransient<TService, TImpl>(this IServiceCollection services)
-        where TImpl : TService => services;
-}
-
-public static class ServiceProviderExtensions
-{
-    public static T GetRequiredService<T>(this IServiceProvider provider) => default!;
-    public static T? GetService<T>(this IServiceProvider provider) => default;
-}
 
 public interface IFoo { }
 public sealed class FooSingleton : IFoo { }
@@ -656,13 +613,255 @@ public static class OpaqueFactory
     public static IOpaque Create(CompositeImpl dependency) => new OpaqueImpl();
 }
 """;
-        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "DiShim.cs"), shim, ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "DiServices.cs"), fixture, ct).ConfigureAwait(false);
     }
 
     private static async Task WriteRegistrationFileAsync(IsolatedWorkspaceScope workspace, string fileName, string contents, CancellationToken ct)
     {
         await File.WriteAllTextAsync(workspace.GetPath("SampleLib", fileName), contents, ct).ConfigureAwait(false);
     }
+
+
+    [TestMethod]
+    public async Task FrameworkIdentity_Rejects_Lookalikes_Without_Changing_Public_Pages_Or_Chains()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddDependencyInjectionReferences(workspace, "SampleLib");
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "Identity.cs"), FrameworkIdentitySource);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        foreach (var overrides in new[] { false, true })
+        {
+            foreach (var summary in new[] { false, true })
+            {
+                var json = await AdvancedAnalysisTools.GetDiRegistrations(
+                    WorkspaceExecutionGate, DiRegistrationService, workspace.WorkspaceId,
+                    projectName: "SampleLib", showLifetimeOverrides: overrides, summary: summary, limit: 500);
+                using var document = JsonDocument.Parse(json);
+                var root = document.RootElement;
+                Assert.AreEqual(4,
+                    root.GetProperty(summary ? "count" : "totalCount").GetInt32(),
+                    "Unrelated lookalike registrations must not inflate the public inventory.");
+                Assert.IsTrue(root.GetProperty("isComplete").GetBoolean());
+                Assert.AreEqual("complete", root.GetProperty("totalCountMeaning").GetString());
+                if (overrides)
+                {
+                    Assert.AreEqual(1, root.GetProperty("overrideChainCount").GetInt32());
+                    var chain = root.GetProperty("overrideChains")[0];
+                    Assert.AreEqual("Singleton", chain.GetProperty("winningLifetime").GetString());
+                }
+            }
+            var pages = new List<string>();
+            for (var offset = 0; offset < 2; offset++)
+            {
+                using var page = JsonDocument.Parse(await AdvancedAnalysisTools.GetDiRegistrations(
+                    WorkspaceExecutionGate, DiRegistrationService, workspace.WorkspaceId,
+                    projectName: "SampleLib", showLifetimeOverrides: overrides, offset: offset, limit: 1));
+                Assert.AreEqual(1, page.RootElement.GetProperty("count").GetInt32());
+                Assert.IsTrue(page.RootElement.GetProperty("hasMore").GetBoolean());
+                pages.Add(page.RootElement.GetProperty("registrations")[0].GetRawText());
+            }
+            Assert.AreNotEqual(pages[0], pages[1]);
+        }
+    }
+
+    [TestMethod]
+    public async Task FrameworkIdentity_Preserves_Framework_Custom_And_Static_Forms()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddDependencyInjectionReferences(workspace, "SampleLib");
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "Forms.cs"), FrameworkFormsSource);
+        await workspace.LoadAsync(CancellationToken.None);
+        using var document = JsonDocument.Parse(await AdvancedAnalysisTools.GetDiRegistrations(
+            WorkspaceExecutionGate, DiRegistrationService, workspace.WorkspaceId,
+            projectName: "SampleLib", showLifetimeOverrides: true, limit: 500));
+        var rows = document.RootElement.GetProperty("registrations").EnumerateArray().ToArray();
+        var expected = new[]
+        {
+            ("AddSingleton", "Singleton", "SampleLib.Impl", 10),
+            ("AddScoped", "Scoped", "SampleLib.Impl", 6),
+            ("AddTransient", "Transient", "SampleLib.Impl", 2),
+            ("AddKeyedSingleton", "Singleton", "SampleLib.Impl", 1),
+            ("AddKeyedScoped", "Scoped", "SampleLib.Impl", 1),
+            ("AddKeyedTransient", "Transient", "SampleLib.Impl", 1),
+            ("AddHostedService", "Singleton", "SampleLib.Worker", 1),
+        };
+        var selfRegistrationLines = FrameworkFormsSource.Split((char)10)
+            .Select((text, index) => (text, index))
+            .Where(line => line.text.Contains("AddSingleton<Impl>", StringComparison.Ordinal))
+            .Select(line => line.index + 1)
+            .ToHashSet();
+        Assert.AreEqual(2, selfRegistrationLines.Count);
+        Assert.AreEqual(expected.Sum(item => item.Item4), rows.Length);
+        foreach (var (method, lifetime, implementation, count) in expected)
+        {
+            var matches = rows.Where(row => row.GetProperty("registrationMethod").GetString() == method).ToArray();
+            Assert.AreEqual(count, matches.Length, method);
+            foreach (var row in matches)
+            {
+                Assert.AreEqual(lifetime, row.GetProperty("lifetime").GetString(), method);
+                Assert.AreEqual(implementation, row.GetProperty("implementationType").GetString(), method);
+                Assert.AreEqual(method == "AddHostedService" ? "SampleLib.Worker" :
+                    selfRegistrationLines.Contains(row.GetProperty("line").GetInt32()) ?
+                        "SampleLib.Impl" : "SampleLib.IThing",
+                    row.GetProperty("serviceType").GetString(), method);
+            }
+        }
+        Assert.AreEqual(2, rows.Count(row => row.GetProperty("serviceType").GetString() == "SampleLib.Impl"));
+        using var legacy = JsonDocument.Parse(await AdvancedAnalysisTools.GetDiRegistrations(
+            WorkspaceExecutionGate, DiRegistrationService, workspace.WorkspaceId, projectName: "SampleLib", limit: 500));
+        Assert.AreEqual(rows.Length, legacy.RootElement.GetProperty("totalCount").GetInt32());
+        var chain = document.RootElement.GetProperty("overrideChains").EnumerateArray()
+            .Single(item => item.GetProperty("serviceType").GetString() == "SampleLib.IThing");
+        var tryAdds = chain.GetProperty("registrations").EnumerateArray()
+            .Where(row => row.GetProperty("registrationMethod").GetString()!.StartsWith("TryAdd", StringComparison.Ordinal))
+            .ToArray();
+        Assert.AreEqual(4, tryAdds.Length);
+        foreach (var (method, lifetime) in new[]
+        {
+            ("TryAddSingleton", "Singleton"),
+            ("TryAddScoped", "Scoped"),
+            ("TryAddTransient", "Transient"),
+            ("TryAddEnumerable", "Enumerable"),
+        })
+        {
+            var row = tryAdds.Single(item => item.GetProperty("registrationMethod").GetString() == method);
+            Assert.AreEqual(lifetime, row.GetProperty("lifetime").GetString());
+            Assert.AreEqual("SampleLib.Impl", row.GetProperty("implementationType").GetString());
+        }
+    }
+
+    [TestMethod]
+    public async Task FrameworkIdentity_Rejects_Source_Shadow_Of_Framework_Interface()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddDependencyInjectionReferences(workspace, "SampleLib");
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "Shadow.cs"), """
+            namespace Microsoft.Extensions.DependencyInjection
+            {
+                public interface IServiceCollection { }
+                public static class ServiceCollectionExtensions
+                {
+                    public static void AddSingleton<T, U>(this IServiceCollection services) { }
+                }
+                public static class SourceShadow
+                {
+                    public static void Configure(IServiceCollection services) => services.AddSingleton<object, object>();
+                }
+            }
+            """);
+        await workspace.LoadAsync(CancellationToken.None);
+        using var document = JsonDocument.Parse(await AdvancedAnalysisTools.GetDiRegistrations(
+            WorkspaceExecutionGate, DiRegistrationService, workspace.WorkspaceId, projectName: "SampleLib"));
+        Assert.AreEqual(0, document.RootElement.GetProperty("totalCount").GetInt32(),
+            "A source declaration with the framework full name must not substitute for metadata identity.");
+    }
+
+    private const string FrameworkIdentitySource = """
+        using Microsoft.Extensions.DependencyInjection;
+        using Microsoft.Extensions.DependencyInjection.Extensions;
+        namespace SampleLib
+        {
+            public interface IThing { }
+            public sealed class Impl : IThing { }
+            public static class Configure
+            {
+                public static void Register(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+                {
+                    services.AddSingleton<IThing, Impl>();
+                    services.AddScoped<IThing, Impl>();
+                    services.TryAddSingleton<IThing, Impl>();
+                    services.TryAddTransient<IThing, Impl>();
+                    Custom.AddTransient<IThing, Impl>(services);
+                    services.AddKeyedSingleton<IThing, Impl>("key");
+                    Fake.ServiceCollectionExtensions.AddSingleton<IThing, Impl>(new object());
+                    new Fake.Derived().AddTransient<IThing, Impl>();
+                    new Fake.ServiceCollectionLike().AddScoped<IThing, Impl>();
+                }
+            }
+            public static class Custom
+            {
+                public static void AddTransient<T, U>(Microsoft.Extensions.DependencyInjection.IServiceCollection collection) { }
+            }
+        }
+        namespace Fake
+        {
+            public interface IServiceCollection { }
+            public sealed class Derived : IServiceCollection
+            {
+                public void AddTransient<T, U>() { }
+            }
+            public sealed class ServiceCollectionLike
+            {
+                public void AddScoped<T, U>() { }
+            }
+            public static class ServiceCollectionExtensions
+            {
+                public static void AddSingleton<T, U>(object collection) { }
+            }
+        }
+        """;
+
+    private const string FrameworkFormsSource = """
+        using System;
+        using System.Collections.Generic;
+        using System.Threading;
+        using System.Threading.Tasks;
+        using Microsoft.Extensions.DependencyInjection;
+        using Microsoft.Extensions.DependencyInjection.Extensions;
+        using Microsoft.Extensions.Hosting;
+        namespace SampleLib;
+        public interface IThing { }
+        public sealed class Impl : IThing { }
+        public sealed class Worker : IHostedService
+        {
+            public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+            public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+        }
+        public sealed class CustomCollection : List<ServiceDescriptor>, IServiceCollection
+        {
+            public void AddScoped<T, U>() { }
+        }
+        public static class Custom
+        {
+            public static void AddScoped<T, U>(this IServiceCollection collection, int marker) { }
+            public static void AddSingleton<T, U>(IServiceCollection collection) { }
+            public static void TryAddEnumerable<T, U>(IServiceCollection collection) { }
+        }
+        public static class Configure
+        {
+            public static void Register(IServiceCollection services, CustomCollection custom, ServiceCollection concrete)
+            {
+                services.AddSingleton<IThing, Impl>();
+                ServiceCollectionServiceExtensions.AddSingleton<IThing, Impl>(services);
+                services.AddScoped<IThing, Impl>();
+                ServiceCollectionServiceExtensions.AddScoped<IThing, Impl>(services);
+                services.AddTransient<IThing, Impl>();
+                ServiceCollectionServiceExtensions.AddTransient<IThing, Impl>(services);
+                services.AddSingleton<IThing>(new Impl());
+                ServiceCollectionServiceExtensions.AddSingleton<IThing>(implementationInstance: new Impl(), services: services);
+                services.AddSingleton<IThing>(sp => new Impl());
+                ServiceCollectionServiceExtensions.AddSingleton<IThing>(implementationFactory: sp => new Impl(), services: services);
+                services.AddSingleton<Impl>();
+                ServiceCollectionServiceExtensions.AddSingleton<Impl>(services);
+                services.AddScoped(typeof(IThing), typeof(Impl));
+                ServiceCollectionServiceExtensions.AddScoped(implementationType: typeof(Impl), services: services, serviceType: typeof(IThing));
+                services.AddKeyedSingleton<IThing, Impl>("key");
+                services.AddKeyedScoped<IThing, Impl>("key");
+                services.AddKeyedTransient<IThing, Impl>("key");
+                services.AddHostedService<Worker>();
+                services.TryAddSingleton<IThing, Impl>();
+                services.TryAddScoped<IThing, Impl>();
+                services.TryAddTransient<IThing, Impl>();
+                services.TryAddEnumerable(ServiceDescriptor.Singleton<IThing, Impl>());
+                Custom.TryAddEnumerable<IThing, Impl>(services);
+                custom.AddScoped<IThing, Impl>();
+                services.AddScoped<IThing, Impl>(42);
+                Custom.AddSingleton<IThing, Impl>(services);
+                concrete.AddSingleton<IThing, Impl>();
+            }
+        }
+        """;
 
     private static string ImplementationLeaf(string fullyQualifiedTypeName)
     {
