@@ -623,6 +623,7 @@
 | `test-fixtures-prepared-flag-fresh-worktree-trap` | Low | — | **Document or guard -p:TestFixturesPrepared=true in a fresh worktree** — the justfile assumes prepared fixtures; a fresh worktree fails SampleLib.Tests with StringAssert compile errors. [type: tooling] [source: remediation run 2026-11-21] | S | items/test-fixtures-prepared-flag-fresh-worktree-trap.md |
 | `move-type-to-file-using-separator-blank-lines` | Low | — | **move_type_to_file leaves two blank lines between kept usings and the moved type** — NormalizeUsingToMemberSeparator output; its test only asserts at least one; also make the ITypeSymbol cast null-explicit. [type: bug] [source: remediation run 2026-11-21] | M | items/move-type-to-file-using-separator-blank-lines.md |
 | `di-inference-lookalike-symbols` | Low | — | **Correct DI inference identity** — bind collection suppression and factory-return inference to semantic identities. [type: bug] [source: remediation DI cold plan review 2026-11-25] | S | items/di-inference-lookalike-symbols.md |
+| `workspace-metadata-add-native-clr-lookup` | Low | — | **Fix native CLR lookup during supported metadata additions** — reproduce the direct workspace integration failure without adding a metadata-edit tool. [type: bug] [source: remediation 2026-11-25] | M | items/workspace-metadata-add-native-clr-lookup.md |
 
 ## Defer
 
