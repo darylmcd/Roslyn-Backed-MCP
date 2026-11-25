@@ -1,6 +1,6 @@
 # di-inference-lookalike-symbols — Correct collection and factory inference identity
 
-**row:** `di-inference-lookalike-symbols` · **pri:** `Low` · **size:** `S` · **verified:** `0652f7fd82c457c3fd0530bce210544a1a225b5c`
+**row:** `di-inference-lookalike-symbols` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
@@ -10,8 +10,8 @@
 
 ## Acceptance
 
-- [ ] A consumed user-defined List<T> or IEnumerable<T> lookalike must not suppress real DI lifetime override chains; genuine framework collection consumers retain suppression. Add a public red-first regression for the collection-identity path.
-- [ ] A real DI factory invoking an unrelated GetService<T>/GetRequiredService<T> helper that returns another valid implementation must not report T as that implementation; preserve genuine framework resolver inference. Add a public red-first regression for the factory-return path.
+- [ ] At `src/RoslynMcp.Roslyn/Services/DiRegistrationService.cs:325-330`, a consumed user-defined List<T> or IEnumerable<T> lookalike must not suppress real DI lifetime override chains; genuine framework collection consumers retain suppression. Add a public red-first regression for the collection-identity path.
+- [ ] At `src/RoslynMcp.Roslyn/Services/DiRegistrationService.cs:594-600`, a real DI factory invoking an unrelated GetService<T>/GetRequiredService<T> helper that returns another valid implementation must not report T as that implementation; preserve genuine framework resolver inference. Add a public red-first regression for the factory-return path.
 
 ## Evidence
 
