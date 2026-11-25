@@ -189,7 +189,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var sourceWithoutExtracted = attachedType.RemoveNodes(
             attachedType.Members.Where((_, index) => retainedByIndex[index] is null),
             SyntaxRemoveOptions.KeepUnbalancedDirectives)
-            ?? throw new InvalidOperationException("Removing child members must preserve the source type.");
+            ?? throw InvalidOperationErrors.Internal("Removing child members must preserve the source type.");
         var updatedTypeDecl = instanceSymbols.Count > 0
             ? InjectFieldAndCtorParameter(
                 sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct)

@@ -2871,7 +2871,7 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
                 var existing = reconstructed.Projects.SelectMany(p => p.Documents)
                     .SingleOrDefault(d => FileSystemPath.Comparer.Equals(d.FilePath!, change.FilePath));
                 var before = existing is null ? "" : (await existing.GetTextAsync()).ToString();
-                var after = ReconstructImportPreview(before, change.UnifiedDiff);
+                var after = ReconstructPreviewText(before, change.UnifiedDiff);
                 Assert.AreEqual(await GetModifiedDocumentTextAsync(preview.PreviewToken, change.FilePath), after,
                     "Serialized diff must reconstruct the actual emitted document exactly.");
                 var parsed = CSharpSyntaxTree.ParseText(after);
@@ -2976,7 +2976,7 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
         Assert.AreEqual(0, errors.Length, string.Join("\n", errors.Select(d => d.ToString())));
     }
 
-    private static string ReconstructImportPreview(string before, string diff)
+    internal static string ReconstructPreviewText(string before, string diff)
     {
         var original = Microsoft.CodeAnalysis.Text.SourceText.From(before).Lines;
         var result = new System.Text.StringBuilder();
