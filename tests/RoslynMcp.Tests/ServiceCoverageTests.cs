@@ -356,4 +356,32 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
         Assert.IsNotNull(result,
             "Test run result should not be null for SampleLib.Tests");
     }
+    [TestMethod]
+    public async Task GetCallersCallees_ExcludesDocumentationReferences()
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        await using var workspace = new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(
+            Path.GetDirectoryName(solutionPath)!, solutionPath, WorkspaceManager);
+        var path = workspace.GetPath("SampleLib", "CallerCrefFixture.cs");
+        await File.WriteAllTextAsync(path, """
+            namespace CallerCrefFixture;
+            /// <summary><see cref="Target"/></summary>
+            public class Subject
+            {
+                public void Target() { }
+                /// <summary>
+                /// Documentation only: <see cref="Target"/>.
+                /// </summary>
+                public void DocumentationOnly() { }
+                public void RealCaller() { Target(); }
+            }
+            """);
+        var id = await workspace.LoadAsync(CancellationToken.None);
+        var result = await SymbolRelationshipService.GetCallersCalleesAsync(
+            id, SymbolLocator.ByMetadataName("CallerCrefFixture.Subject.Target"), CancellationToken.None);
+        Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.Callers.Count, string.Join(Environment.NewLine, result.Callers));
+        Assert.AreEqual(10, result.Callers.Single().StartLine);
+        Assert.AreEqual(0, result.Callees.Count);
+    }
 }
