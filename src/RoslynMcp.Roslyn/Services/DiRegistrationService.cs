@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -227,6 +228,10 @@ public sealed class DiRegistrationService : IDiRegistrationService
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
+            var serviceCollectionType = compilation.SourceModule.ReferencedAssemblySymbols
+                .FirstOrDefault(assembly => assembly.Identity.Name == "Microsoft.Extensions.DependencyInjection.Abstractions")
+                ?.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
+
             foreach (var tree in compilation.SyntaxTrees)
             {
                 ct.ThrowIfCancellationRequested();
@@ -255,7 +260,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
                 var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
                 foreach (var invocation in invocations)
                 {
-                    if (TryCreateDiRegistration(invocation, semanticModel, ct, out var dto))
+                    if (TryCreateDiRegistration(invocation, semanticModel, serviceCollectionType, ct, out var dto))
                         results.Add(dto);
                 }
 
@@ -335,6 +340,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
     private static bool TryCreateDiRegistration(
         InvocationExpressionSyntax invocation,
         SemanticModel semanticModel,
+        INamedTypeSymbol? serviceCollectionType,
         CancellationToken ct,
         out DiRegistrationDto dto)
     {
@@ -344,15 +350,30 @@ public sealed class DiRegistrationService : IDiRegistrationService
         if (symbolInfo.Symbol is not IMethodSymbol method)
             return false;
 
-        var receiverType = method.ReceiverType ?? method.Parameters.FirstOrDefault()?.Type;
-        if (receiverType is null)
+        if (serviceCollectionType is null)
             return false;
 
-        var isServiceCollectionMethod = receiverType.Name is "IServiceCollection"
-            || receiverType.AllInterfaces.Any(i => i.Name == "IServiceCollection");
-
-        if (!isServiceCollectionMethod && !method.ContainingType.Name.Contains("ServiceCollection", StringComparison.Ordinal))
+        var explicitStaticCall = method.IsStatic && method.ReducedFrom is null;
+        var receiverType = explicitStaticCall
+            ? method.Parameters.FirstOrDefault()?.Type
+            : method.ReceiverType;
+        if (receiverType is null ||
+            !(SymbolEqualityComparer.Default.Equals(receiverType, serviceCollectionType) ||
+              receiverType.AllInterfaces.Any(type => SymbolEqualityComparer.Default.Equals(type, serviceCollectionType))))
             return false;
+
+        if (semanticModel.GetOperation(invocation, ct) is not IInvocationOperation operation)
+            return false;
+
+        // Bind payload order to parameters, so named static calls can place the receiver anywhere.
+        // Reduced extensions have an implicit receiver whose syntax is not an ArgumentSyntax.
+        var args = operation.Arguments
+            .Where(argument => !explicitStaticCall ||
+                !SymbolEqualityComparer.Default.Equals(argument.Parameter, method.Parameters[0]))
+            .OrderBy(argument => argument.Parameter?.Ordinal)
+            .Select(argument => argument.Syntax)
+            .OfType<ArgumentSyntax>()
+            .ToArray();
 
         var lifetime = MapDiLifetime(method.Name);
         if (lifetime is null)
@@ -369,8 +390,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
         else if (method.TypeArguments.Length == 1)
         {
             serviceType = method.TypeArguments[0].ToDisplayString();
-            var args = invocation.ArgumentList.Arguments;
-            if (args.Count > 0 &&
+            if (args.Length > 0 &&
                 args[0].Expression is AnonymousFunctionExpressionSyntax or LambdaExpressionSyntax)
             {
                 // Resolve the implementation from the lambda's returned expression: a forward
@@ -380,7 +400,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
                 // sentinel for any other returned shape.
                 implType = TryResolveLambdaReturnType(args[0].Expression, semanticModel, ct) ?? "factory";
             }
-            else if (args.Count > 0)
+            else if (args.Length > 0)
             {
                 // FLAG-11B: When the argument is an instance (not a lambda factory), the
                 // implementation is whatever runtime object the caller passes. Try to resolve
@@ -395,7 +415,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
         }
 
         if (serviceType == "unknown" &&
-            TryGetDiTypesFromTypeOfArguments(invocation, semanticModel, ct, out var st, out var it))
+            TryGetDiTypesFromTypeOfArguments(args, semanticModel, ct, out var st, out var it))
         {
             serviceType = st;
             implType = it;
@@ -441,7 +461,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
     };
 
     private static bool TryGetDiTypesFromTypeOfArguments(
-        InvocationExpressionSyntax invocation,
+        IReadOnlyList<ArgumentSyntax> args,
         SemanticModel semanticModel,
         CancellationToken ct,
         out string serviceType,
@@ -449,7 +469,6 @@ public sealed class DiRegistrationService : IDiRegistrationService
     {
         serviceType = "unknown";
         implType = "unknown";
-        var args = invocation.ArgumentList.Arguments;
         if (args.Count >= 2 &&
             args[0].Expression is TypeOfExpressionSyntax t0 &&
             args[1].Expression is TypeOfExpressionSyntax t1)
