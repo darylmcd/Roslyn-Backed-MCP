@@ -46,7 +46,7 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `change-signature-preview-latency` | High | — | **Bring change_signature_preview under 30 s on RoslynMcp.slnx** — refusal 56 s, success 67 s (baseline diagnostics, scan binding and candidate diagnostics are three full bindings). Cut passes without dropping a check. [type: perf] [source: remediation run 2026-11-21] | M | items/change-signature-preview-latency.md |
+| `change-signature-preview-latency` | High | — | **Bring change_signature_preview under 30 s** — measure and reduce the shared pipeline on RoslynMcp.slnx without dropping correctness checks. [type: perf] [source: remediation 2026-11-21] | M | items/change-signature-preview-latency.md |
 
 ## Medium
 
