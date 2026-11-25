@@ -1,4 +1,8 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -209,24 +213,99 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
         StringAssert.Contains(text, "return (a + 1).ToString();");
     }
 
+    [TestMethod]
+    [DataRow(false, true)]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    [DataRow(true, false)]
+    public async Task PreviewRestructure_TypeNameCapturesRemainUnparenthesized(bool wholeGoal, bool alias)
+    {
+        var source = (wholeGoal, alias) switch
+        {
+            (false, true) => "class C { object M() => typeof(global::System.Console); }",
+            (false, false) => "class C { object M() => typeof(System.IO.File); }",
+            (true, true) => "class GlobalType { public static string Name => \"ok\"; } class C { object M() => typeof(global::GlobalType).Name; }",
+            _ => "namespace N { class T { public static string Name => \"ok\"; } } class C { object M() => typeof(N.T).Name; }",
+        };
+        var name = wholeGoal ? (alias ? "global::GlobalType" : "N.T") : (alias ? "global::System" : "System.IO");
+        var pattern = wholeGoal ? "typeof(__a__)" : alias ? "typeof(__a__.Console)" : "typeof(__a__.File)";
+        var goal = wholeGoal ? "__a__" : alias ? "__a__.Console.Out" : "__a__.File.Exists(\"\")";
+        var suffix = wholeGoal ? ".Name" : alias ? ".Console.Out" : ".File.Exists(\"\")";
+        var originalType = CSharpSyntaxTree.ParseText(source).GetRoot().DescendantNodes().OfType<TypeOfExpressionSyntax>().Single().Type;
+        var captured = wholeGoal ? originalType : ((QualifiedNameSyntax)originalType).Left;
+        Assert.AreEqual(alias ? typeof(AliasQualifiedNameSyntax) : typeof(QualifiedNameSyntax), captured.GetType());
+        Assert.AreEqual(name, captured.ToString());
+        var patternExpression = SyntaxFactory.ParseExpression(pattern);
+        Assert.IsFalse(patternExpression.ContainsDiagnostics);
+        Assert.IsFalse(SyntaxFactory.ParseExpression(goal).ContainsDiagnostics);
+        var patternType = ((TypeOfExpressionSyntax)patternExpression).Type;
+        Assert.IsInstanceOfType<IdentifierNameSyntax>(wholeGoal ? patternType : ((QualifiedNameSyntax)patternType).Left);
+        await RestructureAdhocCoreAsync(source, pattern, goal, async document =>
+        {
+            var root = await document.GetSyntaxRootAsync();
+            var body = root!.DescendantNodes().OfType<MethodDeclarationSyntax>().Single(m => m.Identifier.ValueText == "M").ExpressionBody!.Expression;
+            Assert.AreEqual(name + suffix, body.ToString());
+            Assert.IsFalse(body.DescendantNodesAndSelf().OfType<ParenthesizedExpressionSyntax>().Any());
+            Assert.IsFalse(body.ToString().Contains("(" + name + ")", StringComparison.Ordinal));
+        });
+    }
+
     private static async Task<string> RestructureAdhocAsync(string source, string pattern, string goal)
     {
-        using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
-        var projectId = Microsoft.CodeAnalysis.ProjectId.CreateNewId();
-        var filePath = Path.Combine(Path.GetTempPath(), "RestructurePrecedenceSample.cs");
+        string? text = null;
+        await RestructureAdhocCoreAsync(source, pattern, goal, async document =>
+            text = (await document.GetTextAsync(CancellationToken.None)).ToString());
+        Assert.IsNotNull(text);
+        return text;
+    }
+
+    private static async Task RestructureAdhocCoreAsync(string source, string pattern, string goal, Func<Document, Task> assertChanged)
+    {
+        using var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        var documentId = DocumentId.CreateNewId(projectId);
+        var assemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+        Assert.IsFalse(string.IsNullOrEmpty(assemblies));
+        var references = assemblies.Split(Path.PathSeparator).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => MetadataReference.CreateFromFile(path));
+        var parseOptions = new CSharpParseOptions();
         var solution = workspace.CurrentSolution
-            .AddProject(projectId, "RestructurePrecedence", "RestructurePrecedence", Microsoft.CodeAnalysis.LanguageNames.CSharp)
-            .AddDocument(
-                Microsoft.CodeAnalysis.DocumentId.CreateNewId(projectId),
-                "RestructurePrecedenceSample.cs",
-                Microsoft.CodeAnalysis.Text.SourceText.From(source),
-                filePath: filePath);
+            .AddProject(projectId, "RestructurePrecedence", "RestructurePrecedence", LanguageNames.CSharp)
+            .WithProjectCompilationOptions(projectId, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+            .WithProjectParseOptions(projectId, parseOptions)
+            .AddMetadataReferences(projectId, references)
+            .AddDocument(documentId, "RestructurePrecedenceSample.cs", SourceText.From(source),
+                filePath: Path.Combine(Path.GetTempPath(), "RestructurePrecedenceSample.cs"));
+        await AssertCompilesAsync(solution.GetProject(projectId)!);
+        Assert.IsTrue(workspace.TryApplyChanges(solution));
+        solution = workspace.CurrentSolution;
+        var manager = new Helpers.FailClosedWorkspaceManagerStub
+        {
+            GetCurrentSolutionHandler = _ => solution,
+            GetCurrentVersionHandler = _ => 1,
+        };
+        var store = new PreviewStore();
+        var service = new RestructureService(manager, store);
+        var preview = await service.PreviewRestructureAsync("type-name-fixture", pattern, goal,
+            new RestructureScope(null, null), CancellationToken.None);
+        Assert.AreEqual(1, preview.Changes.Count);
+        StringAssert.Contains(preview.Description, "1 match(es)");
+        var entry = store.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(entry);
+        var document = entry.Value.ModifiedSolution.GetDocument(documentId)!;
+        await assertChanged(document);
+        var text = await document.GetTextAsync();
+        var reparsed = CSharpSyntaxTree.ParseText(text, parseOptions);
+        Assert.AreEqual(0, reparsed.GetDiagnostics().Count(d => d.Severity == DiagnosticSeverity.Error));
+        var reparsedDocument = document.WithSyntaxRoot(await reparsed.GetRootAsync());
+        await AssertCompilesAsync(reparsedDocument.Project);
+    }
 
-        var (newSolution, matchedDocuments, _) = await Service.PreviewRestructureOnSolutionAsync(
-            solution, pattern, goal, new RestructureScope(null, null), CancellationToken.None);
-
-        Assert.AreEqual(1, matchedDocuments, "Exactly the one adhoc document should change.");
-        var document = newSolution.Projects.Single().Documents.Single();
-        return (await document.GetTextAsync(CancellationToken.None)).ToString();
+    private static async Task AssertCompilesAsync(Project project)
+    {
+        var compilation = await project.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors.Select(d => d.ToString())));
     }
 }
