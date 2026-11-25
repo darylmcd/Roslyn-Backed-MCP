@@ -1,6 +1,6 @@
 ---
 name: pr-reconciler
-description: Assess one open PR for merge readiness and hand only a ready PR to the parent /ship owner. Never merge or clean up directly. Does not edit CHANGELOG.md or backlog.md.
+description: Assess one open PR for merge readiness and hand only a ready PR to the parent /land owner. Never merge or clean up directly. Does not edit CHANGELOG.md or backlog.md.
 model: haiku
 ---
 
@@ -43,7 +43,7 @@ If `prNumberOrUrl` is missing, emit `STATUS: error` and name the missing field.
 3. For `ready` or `landed-cleanup-pending`, emit this exact parent handoff:
 
    ```
-   HANDOFF: parent /ship --land=<pr>
+   HANDOFF: parent /land --land=<pr>
    ```
 
    The parent owns all merge and cleanup work. Its terminal report must preserve one exact cleanup outcome:
@@ -72,7 +72,7 @@ Emit one final block:
 STATUS: ready | not-ready | closed-without-merge | landed-cleanup-pending | error
 PR: <url>
 MERGE_SHA: <sha-or-n/a>
-HANDOFF: parent /ship --land=<pr>             # ready or landed-cleanup-pending only
+HANDOFF: parent /land --land=<pr>             # ready or landed-cleanup-pending only
 NOTES: <one line when needed>
 ```
 

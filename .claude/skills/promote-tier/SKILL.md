@@ -167,7 +167,7 @@ Next: stage the two edits, commit, and ship the tier flip in the next release. R
 ## Non-goals
 
 - **Do NOT edit `CHANGELOG.md`, `changelog.d/*.md`, the README.md surface counts, or any other doc.** Tier flips are tracked in `CHANGELOG.md` only when the maintainer chooses to call them out — usually as a single-line "Maintenance" or "Changed" entry — and that's `/draft-changelog-entry`'s job.
-- **Do NOT commit, push, or open a PR.** The caller stages the edits and ships them via `/ship` (typically batched with other release-cut bookkeeping).
+- **Do NOT commit, push, or open a PR.** The caller stages the edits and ships them via `/land` (typically batched with other release-cut bookkeeping).
 - **Do NOT flip the tier of multiple entries in one invocation.** One name per call. Bulk promotion is intentionally out of scope — each promotion is a release-quality decision that warrants individual review.
 - **Do NOT touch other fields on the attribute or catalog entry.** Only the tier literal at parameter index 1. Drift in other fields is a separate concern and surfaced by a different parity test.
 
@@ -224,7 +224,7 @@ The round-trip is bit-identical — the test that pairs with this skill (`tests/
 - **`/publish-preflight`**: surfaces `recommendation: "promote"` rows in Step 8 and emits the `Edit:` checklist. This skill replaces the manual edits it suggests.
 - **`/draft-changelog-entry`**: writes ONE `changelog.d/<row-id>.md` fragment. After a tier flip ships in a release, the maintainer may invoke this to record the promotion in the changelog (optional — minor tier flips often ride in a `## [X.Y.Z]` section's "Maintenance" bullet without a dedicated fragment).
 - **`/bump`**: rolls accumulated `changelog.d/*.md` fragments into a tagged release. Tier flips are visible to consumers from this point.
-- **`/release-cut`**: the atomic release pipeline (`/bump` → `/ship` → tag → reinstall). A typical release-cut sequence is: `/publish-preflight` → `/promote-tier` (per recommended row) → `/release-cut`.
+- **`/release-cut`**: the atomic release pipeline (`/bump` → `/land` → tag → reinstall). A typical release-cut sequence is: `/publish-preflight` → `/promote-tier` (per recommended row) → `/release-cut`.
 
 ## Implementation notes (for future maintainers of this skill)
 

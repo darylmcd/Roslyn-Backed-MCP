@@ -1,7 +1,7 @@
 ---
 name: release-cut
 installed_as: release-cut
-description: "Atomic release pipeline — bump -> verify -> ship -> tag -> refresh-plugin. Use when cutting a major/minor/patch release. Delegates to /bump, /ship, and the maintainer-local /update; checkpointed so mid-flow failure is re-runnable."
+description: "Atomic release pipeline — bump -> verify -> ship -> tag -> refresh-plugin. Use when cutting a major/minor/patch release. Delegates to /bump, /land, and the maintainer-local /update; checkpointed so mid-flow failure is re-runnable."
 user-invocable: true
 argument-hint: "patch | minor | major"
 ---
@@ -145,9 +145,9 @@ environmental; reproduce on a clean runner before closing a product investigatio
 
 Also run `pwsh -NoProfile -File eng/verify-ai-docs.ps1` (fast; covers shipped-skill generality + link check).
 
-### Step 4: Ship (delegate to `/ship`)
+### Step 4: Ship (delegate to `/land`)
 
-**Contract assumed from `/ship` (user-global skill at `~/.claude/skills/ship/SKILL.md`, not version-pinned to this repo):**
+**Contract assumed from `/land` (user-global skill at `~/.claude/skills/land/SKILL.md`, not version-pinned to this repo):**
 - Creates a release branch (convention: `release/vX.Y.Z`) if the working tree has uncommitted version-file edits.
 - Commits the 7 version-file edits plus the consumed `changelog.d/*.md` fragment deletions with message `release: vX.Y.Z` (exact casing per precedent).
 - Pushes the branch with `-u origin`.
@@ -158,7 +158,7 @@ Also run `pwsh -NoProfile -File eng/verify-ai-docs.ps1` (fast; covers shipped-sk
 
 **Worktree teardown discipline (Windows).** If this release cut runs from a worktree, and the release workspace was loaded into the Roslyn MCP server during the cut, call `workspace_close(workspaceId: <id>, drainProcesses: true)` BEFORE any `git worktree remove` call. The `drainProcesses: true` flag runs `dotnet build-server shutdown` after session disposal, releasing `VBCSCompiler.exe` / `MSBuild.exe` file-system locks that would otherwise cause `Permission denied` on `git worktree remove`. Omit this step only if you are certain no MCP workspace was loaded from the worktree path.
 
-If `/ship` is unavailable or its contract has drifted, fall back to the manual sequence (run from the primary repo root, not a worktree):
+If `/land` is unavailable or its contract has drifted, fall back to the manual sequence (run from the primary repo root, not a worktree):
 
 ```
 git checkout -b release/vX.Y.Z
@@ -302,6 +302,6 @@ Reminder: restart Claude Code to load the refreshed pinned server, skills, and h
 
 - **`/bump`**: version-file edits only. Does not verify, ship, tag, or reinstall. Invoked as Step 2 of this skill.
 - **`/publish-preflight`**: checklist of validations (version drift, AI docs, build/test, CHANGELOG, security versions). Overlaps Step 3 but does NOT advance past verify. Run `/publish-preflight` ad-hoc to gate readiness; `/release-cut` assumes it has already passed (or runs the superset via `verify-release.ps1`).
-- **`/ship`**: commit + push + PR + squash-merge. No version bump, no tag, no reinstall. Invoked as Step 4 of this skill.
+- **`/land`**: commit + push + PR + squash-merge. No version bump, no tag, no reinstall. Invoked as Step 4 of this skill.
 - **`/update` (maintainer-local override at `.claude/skills/update/`)**: agent-executable Layer 2 plugin-cache refresh via `pwsh eng/update-claude-plugin.ps1`, plus the required Layer 1 global-tool update. **This is what Step 6 invokes.**
 - **`/roslyn-mcp:update` (shipped, plugin-namespaced)**: documents the consumer-side `/plugin marketplace update` + `/plugin install` flow and optional global-tool path.
