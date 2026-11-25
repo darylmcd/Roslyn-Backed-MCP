@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -367,6 +369,159 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
             workspace.WorkspaceId, edits, "apply_multi_file_edit", CancellationToken.None);
         Assert.IsTrue(applied.Success);
         Assert.AreEqual(" " + before, await File.ReadAllTextAsync(filePath, CancellationToken.None));
+    }
+
+
+    [TestMethod]
+    [DataRow(false, false, false, false)]
+    [DataRow(true, false, false, false)]
+    [DataRow(false, true, false, false)]
+    [DataRow(false, false, true, false)]
+    [DataRow(false, false, false, true)]
+    [DataRow(false, true, true, false)]
+    public async Task DirectMultiFileEdit_ReportsCompletedApplications_AndRetainsBatchUndo(
+        bool badFirst, bool allBad, bool skipSyntaxCheck, bool verify)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var paths = new[] { workspace.GetPath("SampleLib", "Dog.cs"), workspace.GetPath("SampleLib", "Cat.cs") };
+        var originals = await Task.WhenAll(paths.Select(path => File.ReadAllBytesAsync(path)));
+        var insertions = new[] { badFirst || allBad ? "}\n" : "// valid\n", !badFirst || allBad ? "}\n" : "// valid\n" };
+        var expected = insertions.Select(s => skipSyntaxCheck || s.StartsWith("//", StringComparison.Ordinal)).ToArray();
+        var server = await GetPathAuthorizedServerAsync();
+        var json = await MultiFileEditTools.ApplyMultiFileEdit(server, WorkspaceExecutionGate, NewEditService(),
+            workspace.WorkspaceId, paths.Select((path, i) => new FileEditsDto(path, [new(1, 1, 1, 1, insertions[i])])).ToArray(),
+            skipSyntaxCheck: skipSyntaxCheck, verify: verify);
+        using var result = JsonDocument.Parse(json);
+        var files = result.RootElement.GetProperty("files").EnumerateArray().ToArray();
+        try
+        {
+            for (var i = 0; i < paths.Length; i++)
+            {
+                Assert.AreEqual(paths[i], files[i].GetProperty("filePath").GetString());
+                Assert.AreEqual(expected[i] ? 1 : 0, files[i].GetProperty("editsApplied").GetInt32());
+                Assert.AreEqual(expected[i] ? JsonValueKind.String : JsonValueKind.Null, files[i].GetProperty("diff").ValueKind);
+                var expectedText = (expected[i] ? insertions[i] : "") + System.Text.Encoding.UTF8.GetString(originals[i]).TrimStart('\uFEFF');
+                Assert.AreEqual(expectedText, await File.ReadAllTextAsync(paths[i]));
+                Assert.AreEqual(expectedText, await LoadedTextAsync(workspace.WorkspaceId, paths[i]));
+            }
+            if (verify) Assert.AreEqual("clean", result.RootElement.GetProperty("verification").GetProperty("status").GetString());
+        }
+        finally
+        {
+            Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None));
+            for (var i = 0; i < paths.Length; i++)
+            {
+                CollectionAssert.AreEqual(originals[i], await File.ReadAllBytesAsync(paths[i]));
+                Assert.AreEqual(System.Text.Encoding.UTF8.GetString(originals[i]).TrimStart('\uFEFF'), await LoadedTextAsync(workspace.WorkspaceId, paths[i]));
+            }
+        }
+        Assert.AreEqual(expected.All(x => x), result.RootElement.GetProperty("success").GetBoolean(), json);
+        Assert.AreEqual(expected.Count(x => x), result.RootElement.GetProperty("filesModified").GetInt32(), json);
+    }
+
+    [TestMethod]
+    public async Task DirectMultiFileEdit_AllGood_CountsFilesAndUndoesTogether()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var paths = new[] { workspace.GetPath("SampleLib", "Dog.cs"), workspace.GetPath("SampleLib", "Cat.cs") };
+        var originals = await Task.WhenAll(paths.Select(path => File.ReadAllBytesAsync(path)));
+        var server = await GetPathAuthorizedServerAsync();
+        using var result = JsonDocument.Parse(await MultiFileEditTools.ApplyMultiFileEdit(server, WorkspaceExecutionGate, NewEditService(),
+            workspace.WorkspaceId, paths.Select(path => new FileEditsDto(path, [new(1, 1, 1, 1, "// valid\n")])).ToArray()));
+        Assert.IsTrue(result.RootElement.GetProperty("success").GetBoolean());
+        Assert.AreEqual(2, result.RootElement.GetProperty("filesModified").GetInt32());
+        CollectionAssert.AreEqual(paths, result.RootElement.GetProperty("files").EnumerateArray().Select(f => f.GetProperty("filePath").GetString()).ToArray());
+        foreach (var path in paths) StringAssert.StartsWith(await File.ReadAllTextAsync(path), "// valid\n");
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None));
+        for (var i = 0; i < paths.Length; i++)
+        {
+            CollectionAssert.AreEqual(originals[i], await File.ReadAllBytesAsync(paths[i]));
+            Assert.AreEqual(System.Text.Encoding.UTF8.GetString(originals[i]).TrimStart('\uFEFF'), await LoadedTextAsync(workspace.WorkspaceId, paths[i]));
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DirectMultiFileEdit_CoreFailure_ContinuesAndCompensatesAllTargets(bool failPersistence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var paths = new[] { workspace.GetPath("SampleLib", "Dog.cs"), workspace.GetPath("SampleLib", "Cat.cs"), workspace.GetPath("SampleLib", "IAnimal.cs") };
+        var originals = await Task.WhenAll(paths.Select(path => File.ReadAllBytesAsync(path)));
+        var manager = new FailingApplyWorkspace(WorkspaceManager, paths[1], failPersistence);
+        var edit = new EditService(manager, NullLogger<EditService>.Instance, UndoService, ChangeTracker, PreviewStore, CompileCheckService);
+        var server = await GetPathAuthorizedServerAsync();
+        JsonDocument? result = null;
+        try
+        {
+            result = JsonDocument.Parse(await MultiFileEditTools.ApplyMultiFileEdit(server, WorkspaceExecutionGate, edit,
+                workspace.WorkspaceId, paths.Select(path => new FileEditsDto(path, [new(1, 1, 1, 1, "// core\n")])).ToArray()));
+            Assert.IsTrue(manager.Injected, "The real core failure branch must be exercised.");
+            var files = result.RootElement.GetProperty("files").EnumerateArray().ToArray();
+            for (var i = 0; i < paths.Length; i++)
+            {
+                Assert.AreEqual(paths[i], files[i].GetProperty("filePath").GetString());
+                Assert.AreEqual(i == 1 ? 0 : 1, files[i].GetProperty("editsApplied").GetInt32());
+                Assert.AreEqual(i == 1 ? JsonValueKind.Null : JsonValueKind.String, files[i].GetProperty("diff").ValueKind);
+                Assert.AreEqual((i != 1 || failPersistence ? "// core\n" : "") + System.Text.Encoding.UTF8.GetString(originals[i]).TrimStart('\uFEFF'),
+                    await LoadedTextAsync(workspace.WorkspaceId, paths[i]), "A persistence failure retains the owned workspace mutation.");
+                if (i != 1) StringAssert.StartsWith(await File.ReadAllTextAsync(paths[i]), "// core\n");
+                else if (failPersistence) Assert.IsTrue(Directory.Exists(paths[i]));
+                else CollectionAssert.AreEqual(originals[i], await File.ReadAllBytesAsync(paths[i]));
+            }
+        }
+        finally
+        {
+            manager.ClearInjection();
+            Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None));
+            for (var i = 0; i < paths.Length; i++)
+            {
+                CollectionAssert.AreEqual(originals[i], await File.ReadAllBytesAsync(paths[i]));
+                Assert.AreEqual(System.Text.Encoding.UTF8.GetString(originals[i]).TrimStart('\uFEFF'), await LoadedTextAsync(workspace.WorkspaceId, paths[i]));
+            }
+        }
+        using (result)
+        {
+            Assert.IsNotNull(result);
+            Assert.IsFalse(result.RootElement.GetProperty("success").GetBoolean(), result.RootElement.ToString());
+            Assert.AreEqual(2, result.RootElement.GetProperty("filesModified").GetInt32());
+        }
+    }
+
+    private static async Task<string> LoadedTextAsync(string workspaceId, string path) =>
+        (await WorkspaceManager.GetCurrentSolution(workspaceId).Projects.SelectMany(p => p.Documents)
+            .Single(d => d.FilePath == path).GetTextAsync()).ToString();
+
+    private sealed class FailingApplyWorkspace(IWorkspaceManager inner, string target, bool failPersistence)
+        : DelegatingWorkspaceManager(inner)
+    {
+        private bool _enabled = true;
+        public bool Injected { get; private set; }
+
+        public override bool TryApplyChanges(string workspaceId, Solution newSolution)
+        {
+            var hitsTarget = _enabled && !Injected && newSolution.GetChanges(GetCurrentSolution(workspaceId))
+                .GetProjectChanges().SelectMany(p => p.GetChangedDocuments()).Any(id => newSolution.GetDocument(id)?.FilePath == target);
+            if (hitsTarget && !failPersistence)
+            {
+                Injected = true;
+                return false;
+            }
+            var applied = base.TryApplyChanges(workspaceId, newSolution);
+            if (hitsTarget && applied)
+            {
+                File.Delete(target);
+                Directory.CreateDirectory(target);
+                Injected = true;
+            }
+            return applied;
+        }
+
+        public void ClearInjection()
+        {
+            _enabled = false;
+            if (Injected && failPersistence) Directory.Delete(target);
+        }
     }
 
     private static EditService NewEditService() => new(

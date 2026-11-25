@@ -184,6 +184,7 @@ public sealed class EditService : IEditService
         // suppressed via suppressChangeTrackerRecord:true above so a 2-file batch
         // produces a single workspace_changes / IUndoService.CommitPendingCapture
         // pair rather than splitting into N independent ledger entries.
+        // Persistence can fail after a workspace mutation; every target remains owned by batch undo.
         var batchAffectedFiles = results.Select(r => r.FilePath).ToList();
         _changeTracker?.RecordChange(workspaceId,
             $"Apply text edits to {fileEdits.Count} file(s)",
@@ -202,7 +203,17 @@ public sealed class EditService : IEditService
                 ct).ConfigureAwait(false);
         }
 
-        return new MultiFileEditResultDto(true, results.Count, results, verification);
+        var summaries = results.Select(result => new FileEditSummaryDto(
+            result.FilePath,
+            result.EditsApplied,
+            result.Changes.Count > 0
+                ? string.Join("\n", result.Changes.Select(change => change.UnifiedDiff))
+                : null)).ToList();
+        return new MultiFileEditResultDto(
+            results.All(result => result.Success),
+            results.Count(result => result.Success),
+            summaries,
+            verification);
     }
 
     private static async Task<List<(Document Document, SourceText SourceText, FileEditsDto FileEdit)>> ResolveBatchSnapshotsAsync(
@@ -242,14 +253,14 @@ public sealed class EditService : IEditService
         return ownerProjects.Count == 1 ? ownerProjects[0] : null;
     }
 
-    private async Task<List<FileEditSummaryDto>> ApplyBatchFilesAsync(
+    private async Task<List<TextEditResultDto>> ApplyBatchFilesAsync(
         string workspaceId,
         IReadOnlyList<(Document Document, SourceText SourceText, FileEditsDto FileEdit)> snapshots,
         string toolName,
         bool skipSyntaxCheck,
         CancellationToken ct)
     {
-        var results = new List<FileEditSummaryDto>();
+        var results = new List<TextEditResultDto>();
         foreach (var (resolvedDocument, sourceText, fileEdit) in snapshots)
         {
             // Apply each delta to the latest solution without resolving the requested path again.
@@ -260,7 +271,7 @@ public sealed class EditService : IEditService
                 && string.Equals(Path.GetExtension(fileEdit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)
                 && GetCSharpSyntaxErrors(merged, fileEdit.FilePath, ResolveParseContexts(_workspace.GetCurrentSolution(workspaceId), document)).Count > 0)
             {
-                results.Add(new FileEditSummaryDto(fileEdit.FilePath, 0, null));
+                results.Add(new TextEditResultDto(false, fileEdit.FilePath, 0, [], null));
                 continue;
             }
 
@@ -276,10 +287,7 @@ public sealed class EditService : IEditService
                 ct,
                 suppressChangeTrackerRecord: true,
                 canonicalWritePath: Path.GetFullPath(resolvedDocument.FilePath!)).ConfigureAwait(false);
-            var diff = result.Changes.Count > 0
-                ? string.Join("\n", result.Changes.Select(change => change.UnifiedDiff))
-                : null;
-            results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
+            results.Add(result);
         }
 
         return results;
