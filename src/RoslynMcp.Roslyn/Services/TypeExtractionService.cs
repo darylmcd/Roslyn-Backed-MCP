@@ -171,7 +171,25 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // Remove extracted members from the source type. The composition field and constructor parameter
         // are injected only when an instance member moves: an all-static move is reached through the
         // new type's name (the consumer rewriter's static branch), so the source needs no instance of it.
-        var sourceWithoutExtracted = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep));
+        // Remove whole members with Roslyn's paired-directive preservation. WithMembers alone
+        // drops boundary directives attached to moved members and strands their retained mates.
+        // Split fields remain replacements, so their retained declarators keep the original trivia.
+        var retainedByIndex = rewrittenTypeDecl.Members.Select((member, index) => (index, retained:
+            rewrittenMembersToKeep.SingleOrDefault(kept => ReferenceEquals(member, kept)
+                || member is FieldDeclarationSyntax originalField && kept is FieldDeclarationSyntax retainedField
+                && retainedField.Declaration.Variables.Any(variable => originalField.Declaration.Variables
+                    .Any(original => original.Identifier.ValueText == variable.Identifier.ValueText)))))
+            .ToDictionary(item => item.index, item => item.retained);
+        var withRetainedFields = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(
+            rewrittenTypeDecl.Members.Select((member, index) => retainedByIndex[index] ?? member)));
+        // Reattach before consulting related directives: a chain may start outside the type.
+        var sourceTypeAnnotation = new SyntaxAnnotation();
+        var attachedRoot = sourceRoot.ReplaceNode(typeDecl, withRetainedFields.WithAdditionalAnnotations(sourceTypeAnnotation));
+        var attachedType = (TypeDeclarationSyntax)attachedRoot.GetAnnotatedNodes(sourceTypeAnnotation).Single();
+        var sourceWithoutExtracted = attachedType.RemoveNodes(
+            attachedType.Members.Where((_, index) => retainedByIndex[index] is null),
+            SyntaxRemoveOptions.KeepUnbalancedDirectives)
+            ?? throw new InvalidOperationException("Removing child members must preserve the source type.");
         var updatedTypeDecl = instanceSymbols.Count > 0
             ? InjectFieldAndCtorParameter(
                 sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct)
@@ -1169,7 +1187,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // slot (override, abstract, virtual-with-overrides), so only a never-overridden `virtual` and a
         // hiding `new` can reach here; strip them after the widening because neither means anything
         // in a base-less sealed class.
-        var extractedMembers = membersToExtract
+        var extractedMembers = CopyScopeNodes(membersToExtract)
             .Select(member => WidenIfReferencedByRetainedCode(member, referencedExtractedNames))
             .Select(StripInheritanceOnlyModifiers)
             .ToList();
@@ -1188,18 +1206,19 @@ public sealed class TypeExtractionService : ITypeExtractionService
             BaseNamespaceDeclarationSyntax shell = scope is FileScopedNamespaceDeclarationSyntax
                 ? SyntaxFactory.FileScopedNamespaceDeclaration(name)
                 : SyntaxFactory.NamespaceDeclaration(name);
+            var imports = CopyScopeNodes(scope.Externs.Cast<SyntaxNode>().Concat(scope.Usings));
             topLevelMember = shell
-                .WithExterns(SyntaxFactory.List(scope.Externs.Select(WithoutImportScopeTrivia)))
-                .WithUsings(SyntaxFactory.List(scope.Usings.Select(WithoutImportScopeTrivia)))
+                .WithExterns(SyntaxFactory.List(imports.OfType<ExternAliasDirectiveSyntax>()))
+                .WithUsings(SyntaxFactory.List(imports.OfType<UsingDirectiveSyntax>()))
                 .WithMembers(SyntaxFactory.SingletonList(topLevelMember));
         }
 
+        // Global imports remain in the original document and already apply to this same project.
+        var rootImports = CopyScopeNodes(sourceRoot.Externs.Cast<SyntaxNode>().Concat(sourceRoot.Usings
+            .Where(usingDirective => !usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))));
         var compilationUnit = SyntaxFactory.CompilationUnit()
-            .WithExterns(SyntaxFactory.List(sourceRoot.Externs.Select(WithoutImportScopeTrivia)))
-            // Global imports remain in the original document and already apply to this same project.
-            .WithUsings(SyntaxFactory.List(sourceRoot.Usings
-                .Where(usingDirective => !usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))
-                .Select(WithoutImportScopeTrivia)))
+            .WithExterns(SyntaxFactory.List(rootImports.OfType<ExternAliasDirectiveSyntax>()))
+            .WithUsings(SyntaxFactory.List(rootImports.OfType<UsingDirectiveSyntax>()))
             .WithMembers(SyntaxFactory.SingletonList(topLevelMember))
             .NormalizeWhitespace();
 
@@ -1212,14 +1231,43 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return EnsureBlankLineBetweenNamespaceAndType(compilationUnit);
     }
 
-    // An import carries only active syntax. Its conditional and region scaffolding belongs
-    // to the original file and can span omitted namespaces or types, so it cannot travel.
-    private static T WithoutImportScopeTrivia<T>(T node) where T : SyntaxNode =>
-        node.ReplaceTrivia(node.DescendantTrivia(descendIntoTrivia: true).Where(trivia =>
-            trivia.Kind() is SyntaxKind.IfDirectiveTrivia or SyntaxKind.ElifDirectiveTrivia
+    // Each transplanted scope keeps complete internal directive chains, including chains
+    // spanning selected members or imports. Chains crossing omitted wrappers/pieces stay in
+    // the source. Inactive sibling text travels only inside a complete retained conditional.
+    private static IReadOnlyList<T> CopyScopeNodes<T>(IEnumerable<T> nodes) where T : SyntaxNode
+    {
+        var pieces = nodes.ToArray();
+        var trivia = pieces.SelectMany(node => node.DescendantTrivia(descendIntoTrivia: true)).ToArray();
+        var copied = trivia.ToHashSet();
+        var directives = trivia.Select(item => item.GetStructure()).OfType<DirectiveTriviaSyntax>()
+            .Where(directive => directive.Kind() is SyntaxKind.IfDirectiveTrivia or SyntaxKind.ElifDirectiveTrivia
                 or SyntaxKind.ElseDirectiveTrivia or SyntaxKind.EndIfDirectiveTrivia
-                or SyntaxKind.RegionDirectiveTrivia or SyntaxKind.EndRegionDirectiveTrivia
-                or SyntaxKind.DisabledTextTrivia), (_, _) => default);
+                or SyntaxKind.RegionDirectiveTrivia or SyntaxKind.EndRegionDirectiveTrivia).ToArray();
+        var retained = new HashSet<SyntaxTrivia>();
+        var conditionalSpans = new List<(SyntaxTree Tree, Microsoft.CodeAnalysis.Text.TextSpan Span)>();
+        foreach (var directive in directives)
+        {
+            var related = directive.GetRelatedDirectives();
+            if (related.Count == 0 || !related.All(part => copied.Contains(part.ParentTrivia)))
+                continue;
+            var first = related[0];
+            var last = related[^1];
+            if (!(first.IsKind(SyntaxKind.IfDirectiveTrivia) && last.IsKind(SyntaxKind.EndIfDirectiveTrivia))
+                && !(first.IsKind(SyntaxKind.RegionDirectiveTrivia) && last.IsKind(SyntaxKind.EndRegionDirectiveTrivia)))
+                continue;
+            foreach (var part in related)
+                retained.Add(part.ParentTrivia);
+            if (first.IsKind(SyntaxKind.IfDirectiveTrivia))
+                conditionalSpans.Add((first.SyntaxTree,
+                    Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(first.FullSpan.Start, last.FullSpan.End)));
+        }
+        var removed = directives.Select(directive => directive.ParentTrivia).Where(item => !retained.Contains(item))
+            .Concat(trivia.Where(item => item.IsKind(SyntaxKind.DisabledTextTrivia)
+                && !conditionalSpans.Any(scope => scope.Tree == item.SyntaxTree && scope.Span.Contains(item.FullSpan))))
+            .ToHashSet();
+        return pieces.Select(node => node.ReplaceTrivia(
+            node.DescendantTrivia(descendIntoTrivia: true).Where(removed.Contains), (_, _) => default)).ToArray();
+    }
 
     /// <summary>
     /// After normalization, add the conventional blank line before the generated type, including

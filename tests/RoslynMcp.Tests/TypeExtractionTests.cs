@@ -2784,6 +2784,17 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
     [DataRow("root-global")]
     [DataRow("conditional")]
     [DataRow("region")]
+    [DataRow("region-selected-pair")]
+    [DataRow("conditional-selected-pair")]
+    [DataRow("region-split-field")]
+    [DataRow("region-member-end")]
+    [DataRow("region-member-start")]
+    [DataRow("region-between-members")]
+    [DataRow("region-internal")]
+    [DataRow("conditional-member-end")]
+    [DataRow("conditional-member-start")]
+    [DataRow("conditional-between-members")]
+    [DataRow("conditional-internal")]
     [DataRow("instance")]
     [DataRow("extern-root")]
     [DataRow("extern-scoped")]
@@ -2800,6 +2811,17 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
             "root-global" => ("global using ProjectChoice = System.Decimal; using RootChoice = System.Int32; using static System.Math; namespace ImportScope { using RootChoice = System.String; public class ImportHost { private static object Move() => (typeof(ProjectChoice), typeof(RootChoice), Abs(-3)); } }", "decimal|string", "ImportScope"),
             "conditional" => ("namespace ImportScope {\n#if NEVER_DEFINED_SYMBOL\nusing Chosen = System.Int32;\n#else\n// active import\nusing Chosen = System.String;\n#endif\npublic class ImportHost { private static object Move() => typeof(Chosen); } }", "string", "ImportScope"),
             "region" => ("namespace ImportScope {\n#region imports\n// active import\nusing System.Collections.Specialized;\n#endregion\npublic class ImportHost { private static object Move() => typeof(StringCollection); } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "region-member-end" => ("namespace ImportScope {\n#region imports\nusing System.Collections.Specialized;\npublic class ImportHost {\n#endregion\nprivate static object Move() => typeof(StringCollection); } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "region-member-start" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost {\n#region imports\nprivate static object Move() => typeof(StringCollection);\n}\n#endregion\n}", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "region-between-members" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost {\n#region imports\nprivate static object Move() => typeof(StringCollection);\n#endregion\nprivate static int Keep() => 1; } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "region-internal" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost { private static object Move() {\n#region imports\nreturn typeof(StringCollection);\n#endregion\n} } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "conditional-member-end" => ("namespace ImportScope {\n#if true\nusing System.Collections.Specialized;\npublic class ImportHost {\n#endif\nprivate static object Move() => typeof(StringCollection); } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "conditional-member-start" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost {\n#if true\nprivate static object Move() => typeof(StringCollection);\n}\n#endif\n}", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "conditional-between-members" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost {\n#if true\nprivate static object Move() => typeof(StringCollection);\n#endif\nprivate static int Keep() => 1; } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "conditional-internal" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost { private static object Move() {\n#if false\nreturn typeof(int);\n#else\nreturn typeof(StringCollection);\n#endif\n} } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "region-selected-pair" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost {\n#region moved\nprivate static object Move() => typeof(StringCollection);\n#endregion\nprivate static int More() => 1; private static int Keep() => 2; } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "conditional-selected-pair" => ("namespace ImportScope { using System.Collections.Specialized; public class ImportHost {\n#if true\nprivate static object Move() => typeof(StringCollection);\n#endif\nprivate static int More() => 1; private static int Keep() => 2; } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "region-split-field" => ("namespace ImportScope {\n#region imports\nusing System.Collections.Specialized;\npublic class ImportHost {\n#endregion\nprivate static StringCollection A = new(), B = new(); private static object Move() => typeof(StringCollection); private static int Keep() => B.Count; } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
             "instance" => ("namespace ImportScope { using Chosen = System.String; public class ImportHost { private object Move() => typeof(Chosen); public object Keep() => Move(); } }", "string", "ImportScope"),
             "extern-root" => ("extern alias External; namespace ImportScope { using Chosen = External::ExternalTypes.Marker; public class ImportHost { private static object Move() => typeof(Chosen); } }", "ExternalTypes.Marker", "ImportScope"),
             "extern-scoped" => ("namespace ImportScope { extern alias External; using Chosen = External::ExternalTypes.Marker; public class ImportHost { private static object Move() => typeof(Chosen); } }", "ExternalTypes.Marker", "ImportScope"),
@@ -2834,7 +2856,9 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
             AssertImportCompilation((await baselineProject.GetCompilationAsync())!);
             await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(directory, CancellationToken.None);
             var json = await TypeExtractionTools.PreviewExtractType(session.Server, WorkspaceExecutionGate,
-                TypeExtractionService, loaded.WorkspaceId, filePath, "ImportHost", ["Move"], "ImportedHelper", ct: CancellationToken.None);
+                TypeExtractionService, loaded.WorkspaceId, filePath, "ImportHost",
+                scenario.EndsWith("-selected-pair", StringComparison.Ordinal) ? ["Move", "More"]
+                    : scenario == "region-split-field" ? ["A", "Move"] : ["Move"], "ImportedHelper", ct: CancellationToken.None);
             using var serialized = System.Text.Json.JsonDocument.Parse(json);
             CollectionAssert.AreEquivalent(new[] { "previewToken", "description", "changes", "warnings", "callsiteUpdates", "guidanceMessage" },
                 serialized.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
@@ -2856,6 +2880,19 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
                     ? reconstructed.AddDocument(DocumentId.CreateNewId(baselineProject.Id), Path.GetFileName(change.FilePath),
                         Microsoft.CodeAnalysis.Text.SourceText.From(after), filePath: change.FilePath)
                     : reconstructed.WithDocumentText(existing.Id, Microsoft.CodeAnalysis.Text.SourceText.From(after));
+            }
+            if ((scenario.StartsWith("region-", StringComparison.Ordinal) || scenario.StartsWith("conditional-", StringComparison.Ordinal))
+                && !scenario.EndsWith("-internal", StringComparison.Ordinal)
+                && !scenario.EndsWith("-selected-pair", StringComparison.Ordinal))
+            {
+                var retainedSource = reconstructed.GetDocument(baselineProject.Documents.Single(d => d.FilePath == filePath).Id)!;
+                var retainedRoot = (await retainedSource.GetSyntaxRootAsync())!;
+                CollectionAssert.AreEqual(
+                    CSharpSyntaxTree.ParseText(source).GetRoot().DescendantTrivia(descendIntoTrivia: true)
+                        .Where(t => t.IsDirective).Select(t => t.GetStructure()!.ToString()).ToArray(),
+                    retainedRoot.DescendantTrivia(descendIntoTrivia: true)
+                        .Where(t => t.IsDirective).Select(t => t.GetStructure()!.ToString()).ToArray(),
+                    "Directive chains crossing the moved member boundary must remain in the source.");
             }
             var compilation = (await reconstructed.GetProject(baselineProject.Id)!.GetCompilationAsync())!;
             AssertImportCompilation(compilation);
@@ -2914,6 +2951,16 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
                 Assert.IsFalse(root.DescendantTrivia(descendIntoTrivia: true).Any(t => t.IsDirective || t.IsKind(SyntaxKind.DisabledTextTrivia)));
                 StringAssert.Contains(root.ToFullString(), "// active import");
             }
+            if (scenario.EndsWith("-internal", StringComparison.Ordinal) || scenario.EndsWith("-selected-pair", StringComparison.Ordinal))
+                Assert.IsTrue(root.DescendantTrivia(descendIntoTrivia: true).Any(t => t.IsDirective), "Balanced member directives must travel with the member.");
+            if (scenario == "region-split-field")
+            {
+                Assert.AreEqual("System.Collections.Specialized.StringCollection", helper.GetMembers("A").OfType<IFieldSymbol>().Single().Type.ToDisplayString());
+                Assert.AreEqual("System.Collections.Specialized.StringCollection", compilation.GetTypeByMetadataName("ImportScope.ImportHost")!
+                    .GetMembers("B").OfType<IFieldSymbol>().Single().Type.ToDisplayString());
+            }
+            if (scenario == "conditional-internal")
+                StringAssert.Contains(root.ToFullString(), "return typeof(int);");
             if (scenario.StartsWith("extern-", StringComparison.Ordinal))
                 Assert.AreEqual("ExternalTypes", model.GetTypeInfo(root.DescendantNodes().OfType<TypeOfExpressionSyntax>().Single().Type).Type!.ContainingAssembly.Name);
         }
