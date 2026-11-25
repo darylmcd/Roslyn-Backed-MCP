@@ -1179,24 +1179,27 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 SyntaxFactory.Token(SyntaxKind.SealedKeyword)))
             .WithMembers(SyntaxFactory.List(extractedMembers));
 
-        // extract-type-nested-namespace-identity: the extracted type lives in the source type's FULL
-        // containing namespace, joined across every enclosing namespace scope (the previous code copied
-        // only the innermost scope's own name). The wrapper style follows the outermost scope, as in
-        // InterfaceExtractionService.BuildInterfaceFile; the global namespace emits no wrapper.
-        var namespaceName = NamespaceMemberClassifier.GetContainingNamespaceName(typeDecl);
+        // Keep lexical namespace scopes: lifting imports into a flattened namespace changes
+        // relative lookup and alias shadowing. Fresh shells omit siblings and wrapper trivia.
         MemberDeclarationSyntax topLevelMember = newTypeDecl;
-        if (namespaceName.Length > 0)
+        foreach (var scope in typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>())
         {
-            var outermostScope = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Last();
-            var name = SyntaxFactory.ParseName(namespaceName);
-            var members = SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl);
-            topLevelMember = outermostScope is FileScopedNamespaceDeclarationSyntax
-                ? SyntaxFactory.FileScopedNamespaceDeclaration(name).WithMembers(members)
-                : SyntaxFactory.NamespaceDeclaration(name).WithMembers(members);
+            var name = SyntaxFactory.ParseName(string.Concat(scope.Name.DescendantTokens().Select(token => token.Text)));
+            BaseNamespaceDeclarationSyntax shell = scope is FileScopedNamespaceDeclarationSyntax
+                ? SyntaxFactory.FileScopedNamespaceDeclaration(name)
+                : SyntaxFactory.NamespaceDeclaration(name);
+            topLevelMember = shell
+                .WithExterns(SyntaxFactory.List(scope.Externs.Select(WithoutImportScopeTrivia)))
+                .WithUsings(SyntaxFactory.List(scope.Usings.Select(WithoutImportScopeTrivia)))
+                .WithMembers(SyntaxFactory.SingletonList(topLevelMember));
         }
 
         var compilationUnit = SyntaxFactory.CompilationUnit()
-            .WithUsings(sourceRoot.Usings)
+            .WithExterns(SyntaxFactory.List(sourceRoot.Externs.Select(WithoutImportScopeTrivia)))
+            // Global imports remain in the original document and already apply to this same project.
+            .WithUsings(SyntaxFactory.List(sourceRoot.Usings
+                .Where(usingDirective => !usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))
+                .Select(WithoutImportScopeTrivia)))
             .WithMembers(SyntaxFactory.SingletonList(topLevelMember))
             .NormalizeWhitespace();
 
@@ -1209,45 +1212,27 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return EnsureBlankLineBetweenNamespaceAndType(compilationUnit);
     }
 
+    // An import carries only active syntax. Its conditional and region scaffolding belongs
+    // to the original file and can span omitted namespaces or types, so it cannot travel.
+    private static T WithoutImportScopeTrivia<T>(T node) where T : SyntaxNode =>
+        node.ReplaceTrivia(node.DescendantTrivia(descendIntoTrivia: true).Where(trivia =>
+            trivia.Kind() is SyntaxKind.IfDirectiveTrivia or SyntaxKind.ElifDirectiveTrivia
+                or SyntaxKind.ElseDirectiveTrivia or SyntaxKind.EndIfDirectiveTrivia
+                or SyntaxKind.RegionDirectiveTrivia or SyntaxKind.EndRegionDirectiveTrivia
+                or SyntaxKind.DisabledTextTrivia), (_, _) => default);
+
     /// <summary>
-    /// After a `NormalizeWhitespace()` pass, inject a blank line before the first type
-    /// declaration that sits inside (or immediately after) a namespace declaration so the
-    /// emitted file reads `namespace Foo;\n\npublic sealed class NewType` or
-    /// `namespace Foo\n{\n    public sealed class NewType` — the standard C# layout.
-    /// Called from <see cref="BuildNewFileRoot"/> only; safe on both file-scoped and block
-    /// namespace shapes.
+    /// After normalization, add the conventional blank line before the generated type, including
+    /// when nested block namespaces sit inside a block or file-scoped outer namespace.
     /// </summary>
     private static CompilationUnitSyntax EnsureBlankLineBetweenNamespaceAndType(CompilationUnitSyntax root)
     {
-        var blankLine = SyntaxFactory.EndOfLine(Environment.NewLine);
-
-        // File-scoped namespace: the type sits directly on the compilation unit's member
-        // list after the namespace declaration. Inject the blank line on the first type's
-        // leading trivia.
-        var fileScopedNs = root.Members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault();
-        if (fileScopedNs is not null)
-        {
-            var firstType = fileScopedNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
-            if (firstType is not null)
-            {
-                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
-            }
-            return root;
-        }
-
-        // Block namespace: type lives inside the namespace's Members list. Same injection —
-        // prepend a blank line to the first type declaration's leading trivia.
-        var blockNs = root.Members.OfType<NamespaceDeclarationSyntax>().FirstOrDefault();
-        if (blockNs is not null)
-        {
-            var firstType = blockNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
-            if (firstType is not null)
-            {
-                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
-            }
-        }
-
-        return root;
+        var generatedType = root.Members.OfType<BaseNamespaceDeclarationSyntax>().SingleOrDefault()?
+            .DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+        return generatedType is null
+            ? root
+            : root.ReplaceNode(generatedType,
+                PrependBlankLine(generatedType, SyntaxFactory.EndOfLine(Environment.NewLine)));
     }
 
     private static TypeDeclarationSyntax PrependBlankLine(TypeDeclarationSyntax typeDecl, SyntaxTrivia blankLine)

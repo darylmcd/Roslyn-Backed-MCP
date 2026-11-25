@@ -2774,6 +2774,198 @@ public sealed class TypeExtractionTests : TypeExtractionTestBase
         Assert.IsFalse(addedText.Contains("Wrong", StringComparison.Ordinal), addedText);
     }
 
+    [TestMethod]
+    [DataRow("block")]
+    [DataRow("file")]
+    [DataRow("alias")]
+    [DataRow("static-extension")]
+    [DataRow("shadow")]
+    [DataRow("nested-relative")]
+    [DataRow("root-global")]
+    [DataRow("conditional")]
+    [DataRow("region")]
+    [DataRow("instance")]
+    [DataRow("extern-root")]
+    [DataRow("extern-scoped")]
+    public async Task ExtractType_LexicalImports_PreserveSerializedCompilationAndBinding(string scenario)
+    {
+        var (source, expectedType, expectedNamespace) = scenario switch
+        {
+            "block" => ("namespace ImportScope { using System.Collections.Generic; using System.Collections.Specialized; public class ImportHost { private static object Move(List<int> values, StringCollection names) => (typeof(List<int>), typeof(StringCollection)); } }", "System.Collections.Generic.List<int>|System.Collections.Specialized.StringCollection", "ImportScope"),
+            "file" => ("namespace ImportScope; using System.Collections.Generic; using System.Collections.Specialized; public class ImportHost { private static object Move(List<int> values, StringCollection names) => (typeof(List<int>), typeof(StringCollection)); }", "System.Collections.Generic.List<int>|System.Collections.Specialized.StringCollection", "ImportScope"),
+            "alias" => ("namespace ImportScope { using Chosen = System.Text.StringBuilder; public class ImportHost { private static object Move(Chosen value) => typeof(Chosen); } }", "System.Text.StringBuilder", "ImportScope"),
+            "static-extension" => ("namespace ImportExtensions { public static class Extensions { public static int Twice(this int value) => value * 2; } } namespace ImportScope { using static System.Math; using ImportExtensions; public class ImportHost { private static int Move() => Abs(-3) + (2).Twice(); } }", "", "ImportScope"),
+            "shadow" => ("using Chosen = System.Int32; namespace ImportScope { using Chosen = System.String; public class ImportHost { private static string Move() => typeof(Chosen).FullName!; } }", "string", "ImportScope"),
+            "nested-relative" => ("namespace ImportScope { using Models; using Chosen = System.Int32; namespace Models { public class Marker {} } namespace Inner { using Chosen = Models.Marker; public class ImportHost { private static object Move() => (typeof(Chosen), typeof(Marker)); } } namespace Sibling { using Chosen = System.DateTime; public class Unrelated {} } }", "ImportScope.Models.Marker|ImportScope.Models.Marker", "ImportScope.Inner"),
+            "root-global" => ("global using ProjectChoice = System.Decimal; using RootChoice = System.Int32; using static System.Math; namespace ImportScope { using RootChoice = System.String; public class ImportHost { private static object Move() => (typeof(ProjectChoice), typeof(RootChoice), Abs(-3)); } }", "decimal|string", "ImportScope"),
+            "conditional" => ("namespace ImportScope {\n#if NEVER_DEFINED_SYMBOL\nusing Chosen = System.Int32;\n#else\n// active import\nusing Chosen = System.String;\n#endif\npublic class ImportHost { private static object Move() => typeof(Chosen); } }", "string", "ImportScope"),
+            "region" => ("namespace ImportScope {\n#region imports\n// active import\nusing System.Collections.Specialized;\n#endregion\npublic class ImportHost { private static object Move() => typeof(StringCollection); } }", "System.Collections.Specialized.StringCollection", "ImportScope"),
+            "instance" => ("namespace ImportScope { using Chosen = System.String; public class ImportHost { private object Move() => typeof(Chosen); public object Keep() => Move(); } }", "string", "ImportScope"),
+            "extern-root" => ("extern alias External; namespace ImportScope { using Chosen = External::ExternalTypes.Marker; public class ImportHost { private static object Move() => typeof(Chosen); } }", "ExternalTypes.Marker", "ImportScope"),
+            "extern-scoped" => ("namespace ImportScope { extern alias External; using Chosen = External::ExternalTypes.Marker; public class ImportHost { private static object Move() => typeof(Chosen); } }", "ExternalTypes.Marker", "ImportScope"),
+            _ => throw new AssertFailedException("Unknown scenario: " + scenario)
+        };
+        var copiedSolution = CreateQueuedSampleSolutionCopy();
+        var directory = Path.GetDirectoryName(copiedSolution)!;
+        var filePath = Path.Combine(directory, "SampleLib", "ImportHost.cs");
+        await File.WriteAllTextAsync(filePath, source);
+        if (scenario.StartsWith("extern-", StringComparison.Ordinal))
+        {
+            var referencePath = Path.Combine(directory, "ExternalTypes.dll");
+            var referenceCompilation = CSharpCompilation.Create("ExternalTypes",
+                [CSharpSyntaxTree.ParseText("namespace ExternalTypes { public class Marker {} }")],
+                [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var emitted = referenceCompilation.Emit(referencePath);
+            Assert.IsTrue(emitted.Success, string.Join("\n", emitted.Diagnostics));
+            var projectPath = Path.Combine(directory, "SampleLib", "SampleLib.csproj");
+            var project = System.Xml.Linq.XDocument.Load(projectPath);
+            project.Root!.Add(new System.Xml.Linq.XElement("ItemGroup",
+                new System.Xml.Linq.XElement("Reference", new System.Xml.Linq.XAttribute("Include", "ExternalTypes"),
+                    new System.Xml.Linq.XElement("HintPath", referencePath),
+                    new System.Xml.Linq.XElement("Aliases", "External"))));
+            project.Save(projectPath);
+        }
+        var loaded = await WorkspaceManager.LoadAsync(copiedSolution, CancellationToken.None);
+        try
+        {
+            var baseline = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
+            var baselineProject = baseline.Projects.Single(p => p.Name == "SampleLib");
+            AssertImportCompilation((await baselineProject.GetCompilationAsync())!);
+            await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(directory, CancellationToken.None);
+            var json = await TypeExtractionTools.PreviewExtractType(session.Server, WorkspaceExecutionGate,
+                TypeExtractionService, loaded.WorkspaceId, filePath, "ImportHost", ["Move"], "ImportedHelper", ct: CancellationToken.None);
+            using var serialized = System.Text.Json.JsonDocument.Parse(json);
+            CollectionAssert.AreEquivalent(new[] { "previewToken", "description", "changes", "warnings", "callsiteUpdates", "guidanceMessage" },
+                serialized.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
+            var preview = System.Text.Json.JsonSerializer.Deserialize<RefactoringPreviewDto>(json, RoslynMcp.Host.Stdio.JsonDefaults.Indented)!;
+            Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken));
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            var reconstructed = baseline;
+            foreach (var change in preview.Changes)
+            {
+                var existing = reconstructed.Projects.SelectMany(p => p.Documents)
+                    .SingleOrDefault(d => FileSystemPath.Comparer.Equals(d.FilePath!, change.FilePath));
+                var before = existing is null ? "" : (await existing.GetTextAsync()).ToString();
+                var after = ReconstructImportPreview(before, change.UnifiedDiff);
+                Assert.AreEqual(await GetModifiedDocumentTextAsync(preview.PreviewToken, change.FilePath), after,
+                    "Serialized diff must reconstruct the actual emitted document exactly.");
+                var parsed = CSharpSyntaxTree.ParseText(after);
+                Assert.AreEqual(0, parsed.GetDiagnostics().Count(d => d.Severity == DiagnosticSeverity.Error), after);
+                reconstructed = existing is null
+                    ? reconstructed.AddDocument(DocumentId.CreateNewId(baselineProject.Id), Path.GetFileName(change.FilePath),
+                        Microsoft.CodeAnalysis.Text.SourceText.From(after), filePath: change.FilePath)
+                    : reconstructed.WithDocumentText(existing.Id, Microsoft.CodeAnalysis.Text.SourceText.From(after));
+            }
+            var compilation = (await reconstructed.GetProject(baselineProject.Id)!.GetCompilationAsync())!;
+            AssertImportCompilation(compilation);
+            var helper = SingleType(compilation, "ImportedHelper");
+            Assert.AreEqual(expectedNamespace, helper.ContainingNamespace.ToDisplayString());
+            var tree = helper.DeclaringSyntaxReferences.Single().SyntaxTree;
+            var root = await tree.GetRootAsync();
+            var model = compilation.GetSemanticModel(tree);
+            var types = root.DescendantNodes().OfType<TypeOfExpressionSyntax>()
+                .Select(t => model.GetTypeInfo(t.Type).Type!.ToDisplayString()).ToArray();
+            CollectionAssert.AreEqual(expectedType.Length == 0 ? Array.Empty<string>() : expectedType.Split('|'), types);
+            if (scenario is "block" or "file" or "alias")
+            {
+                var parameters = helper.GetMembers("Move").OfType<IMethodSymbol>().Single().Parameters;
+                CollectionAssert.AreEqual(types, parameters.Select(p => p.Type.ToDisplayString()).ToArray());
+            }
+            var calls = root.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Select(i => (IMethodSymbol)model.GetSymbolInfo(i).Symbol!).ToArray();
+            if (scenario is "static-extension" or "root-global")
+                Assert.IsTrue(calls.Any(m => m.Name == "Abs" && m.ContainingType.ToDisplayString() == "System.Math"));
+            if (scenario == "static-extension")
+                Assert.IsTrue(calls.Any(m => m.Name == "Twice" && m.ContainingType.ToDisplayString() == "ImportExtensions.Extensions"));
+            if (scenario == "shadow")
+            {
+                using var image = new MemoryStream();
+                var emitted = compilation.Emit(image);
+                Assert.IsTrue(emitted.Success, string.Join("\n", emitted.Diagnostics));
+                var context = new System.Runtime.Loader.AssemblyLoadContext("import-shadow", isCollectible: true);
+                try
+                {
+                    image.Position = 0;
+                    var assembly = context.LoadFromStream(image);
+                    var move = assembly.GetType("ImportScope.ImportedHelper")!.GetMethod("Move",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+                    Assert.AreEqual("System.String", move.Invoke(null, null));
+                }
+                finally
+                {
+                    context.Unload();
+                }
+            }
+            if (scenario == "instance")
+            {
+                var field = compilation.GetTypeByMetadataName("ImportScope.ImportHost")!.GetMembers().OfType<IFieldSymbol>().Single();
+                Assert.IsTrue(SymbolEqualityComparer.Default.Equals(helper, field.Type));
+            }
+            if (scenario == "root-global")
+                Assert.IsFalse(root.DescendantNodes().OfType<UsingDirectiveSyntax>().Any(u => u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)));
+            if (scenario == "nested-relative")
+            {
+                Assert.IsFalse(root.ToFullString().Contains("Sibling", StringComparison.Ordinal));
+                StringAssert.Contains(root.ToFullString().ReplaceLineEndings("\n"), "\n\n        public sealed class ImportedHelper");
+            }
+            if (scenario is "conditional" or "region")
+            {
+                Assert.IsFalse(root.DescendantTrivia(descendIntoTrivia: true).Any(t => t.IsDirective || t.IsKind(SyntaxKind.DisabledTextTrivia)));
+                StringAssert.Contains(root.ToFullString(), "// active import");
+            }
+            if (scenario.StartsWith("extern-", StringComparison.Ordinal))
+                Assert.AreEqual("ExternalTypes", model.GetTypeInfo(root.DescendantNodes().OfType<TypeOfExpressionSyntax>().Single().Type).Type!.ContainingAssembly.Name);
+        }
+        finally
+        {
+            WorkspaceManager.Close(loaded.WorkspaceId);
+        }
+    }
+
+    private static void AssertImportCompilation(Compilation compilation)
+    {
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join("\n", errors.Select(d => d.ToString())));
+    }
+
+    private static string ReconstructImportPreview(string before, string diff)
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From(before).Lines;
+        var result = new System.Text.StringBuilder();
+        var cursor = 0;
+        var records = diff.Split('\n');
+        for (var i = 2; i < records.Length; i++)
+        {
+            var record = records[i];
+            if (record.StartsWith("@@", StringComparison.Ordinal))
+            {
+                var start = int.Parse(record.Split(' ')[1].Split(',')[0].AsSpan(1), System.Globalization.CultureInfo.InvariantCulture) - 1;
+                while (cursor < start)
+                {
+                    var line = original[cursor++];
+                    result.Append(before.AsSpan(line.Start, line.EndIncludingLineBreak - line.Start));
+                }
+            }
+            else if (record.Length > 0 && record[0] is '+' or '-' or ' ')
+            {
+                if (record[0] != '-')
+                {
+                    var noNewline = i + 1 < records.Length && records[i + 1].StartsWith("\\ No newline", StringComparison.Ordinal);
+                    result.Append(noNewline ? record.AsSpan(1).TrimEnd('\r') : record.AsSpan(1));
+                    if (!noNewline) result.Append('\n');
+                }
+                if (record[0] != '+') cursor++;
+            }
+        }
+        while (cursor < original.Count && original[cursor].Start < before.Length)
+        {
+            var line = original[cursor++];
+            result.Append(before.AsSpan(line.Start, line.EndIncludingLineBreak - line.Start));
+        }
+        return result.ToString();
+    }
+
     private static async Task<Compilation> GetModifiedSampleLibCompilationAsync(string previewToken)
     {
         var project = PreviewStore.Retrieve(previewToken)!.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib");
