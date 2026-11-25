@@ -41,6 +41,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             "using Microsoft.Extensions.DependencyInjection;\nusing SampleLib;\n\npublic static class SplitServiceRegistration\n{\n    public static void AddServices(IServiceCollection services)\n    {\n        services.AddTransient<FooService>();\n    }\n}\n",
             CancellationToken.None);
 
+        AddDependencyInjectionReferences(workspace, "SampleApp");
         await workspace.LoadAsync(CancellationToken.None);
 
         var compositeStore = new CompositePreviewStore();
@@ -669,13 +670,6 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         // live in one file. The facade edit and the registration rewrite used to be staged as two
         // full-text replacements of that path; apply is last-wins, so the facade was silently lost.
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        // SampleApp does not reference Microsoft.Extensions.DependencyInjection; a minimal stand-in
-        // keeps the applied graph compilable so the test can prove it.
-        await File.WriteAllTextAsync(
-            workspace.GetPath("SampleApp", "DiStub.cs"),
-            "namespace Microsoft.Extensions.DependencyInjection;\n\npublic interface IServiceCollection { }\n\n" +
-            "public static class DiStubExtensions\n{\n    public static IServiceCollection AddTransient<T>(this IServiceCollection services) where T : class => services;\n}\n",
-            CancellationToken.None);
         var serviceFilePath = workspace.GetPath("SampleApp", "SameFileService.cs");
         await File.WriteAllTextAsync(
             serviceFilePath,
@@ -683,6 +677,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             "public class SameFileService\n{\n    public string Alpha(string input) => input + \"-alpha\";\n\n    public string Beta(string input) => input + \"-beta\";\n}\n\n" +
             "public static class SameFileRegistrations\n{\n    public static void AddServices(IServiceCollection services)\n    {\n        services.AddTransient<SameFileService>();\n    }\n}\n",
             CancellationToken.None);
+        AddDependencyInjectionReferences(workspace, "SampleApp");
         await workspace.LoadAsync(CancellationToken.None);
 
         var compositeStore = new CompositePreviewStore();
@@ -730,6 +725,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             "using Microsoft.Extensions.DependencyInjection;\n\nnamespace SampleApp;\n\n" +
             "public class MovedRegService\n{\n    public void Register(IServiceCollection services)\n    {\n        services.AddTransient<MovedRegService>();\n    }\n\n    public int Beta(int x) => x + 1;\n}\n",
             CancellationToken.None);
+        AddDependencyInjectionReferences(workspace, "SampleApp");
         await workspace.LoadAsync(CancellationToken.None);
 
         var compositeStore = new CompositePreviewStore();
@@ -778,6 +774,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             "    public void RegisterMoved(IServiceCollection services)\n    {\n        services.AddTransient<MixedRegService>();\n    }\n\n" +
             "    public int Beta(int x) => x + 1;\n}\n",
             CancellationToken.None);
+        AddDependencyInjectionReferences(workspace, "SampleApp");
         await workspace.LoadAsync(CancellationToken.None);
 
         var compositeStore = new CompositePreviewStore();
@@ -822,6 +819,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             "public class FieldRegService\n{\n    private readonly Action<IServiceCollection> _register = services =>\n    {\n        services.AddTransient<FieldRegService>();\n    };\n\n" +
             "    public void Alpha(IServiceCollection services) => _register(services);\n\n    public int Beta(int x) => x + 2;\n}\n",
             CancellationToken.None);
+        AddDependencyInjectionReferences(workspace, "SampleApp");
         await workspace.LoadAsync(CancellationToken.None);
 
         var compositeStore = new CompositePreviewStore();
@@ -861,6 +859,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         const string registrationText =
             "using Microsoft.Extensions.DependencyInjection;\nusing SampleLib;\n\npublic static class NoMatchRegistration\n{\n    public static void AddServices(IServiceCollection services)\n    {\n        _ = services.AddTransient<NoMatchService>();\n    }\n}\n";
         await File.WriteAllTextAsync(registrationsFile, registrationText, CancellationToken.None);
+        AddDependencyInjectionReferences(workspace, "SampleApp");
         await workspace.LoadAsync(CancellationToken.None);
 
         var compositeStore = new CompositePreviewStore();

@@ -208,19 +208,14 @@ public sealed class AnalysisScanCompletenessTests : IsolatedWorkspaceTestBase
 
     private static async Task WriteScanFixturesAsync(IsolatedWorkspaceScope workspace)
     {
+        AddDependencyInjectionReferences(workspace, "SampleLib");
         var healthyPath = workspace.GetPath(Path.Combine("SampleLib", "ScanHealthy.cs"));
         var failurePath = workspace.GetPath(Path.Combine("SampleLib", "ScanFailure.cs"));
         await File.WriteAllTextAsync(healthyPath, """
             using System;
+            using Microsoft.Extensions.DependencyInjection;
 
             namespace SampleLib;
-
-            public interface IServiceCollection { }
-
-            public static class ServiceCollectionExtensions
-            {
-                public static IServiceCollection AddSingleton<TService>(this IServiceCollection services) => services;
-            }
 
             public static class ScanHealthy
             {

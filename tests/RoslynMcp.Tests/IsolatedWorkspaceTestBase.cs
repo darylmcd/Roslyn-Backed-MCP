@@ -16,6 +16,24 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         return new IsolatedWorkspaceScope(rootPath, solutionPath, WorkspaceManager);
     }
 
+    protected static void AddDependencyInjectionReferences(IsolatedWorkspaceScope workspace, string projectName)
+    {
+        var projectPath = workspace.GetPath(projectName, projectName + ".csproj");
+        var project = XDocument.Load(projectPath);
+        var assemblies = new[]
+        {
+            typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection).Assembly,
+            typeof(Microsoft.Extensions.DependencyInjection.ServiceCollection).Assembly,
+            typeof(Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions).Assembly,
+            typeof(Microsoft.Extensions.Hosting.IHostedService).Assembly,
+        };
+        project.Root!.Add(new XElement("ItemGroup",
+            assemblies.Distinct().Select(assembly => new XElement("Reference",
+                new XAttribute("Include", assembly.GetName().Name!),
+                new XElement("HintPath", assembly.Location)))));
+        project.Save(projectPath);
+    }
+
     protected static async Task<IsolatedWorkspaceScope> CreateIsolatedWorkspaceAsync(CancellationToken ct = default)
     {
         var workspace = CreateIsolatedWorkspaceCopy();

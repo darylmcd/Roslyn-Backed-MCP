@@ -1,4 +1,7 @@
 using System.Text.Json.Nodes;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -75,7 +78,30 @@ public sealed class ExtractTypeNestedNamespaceWireTests : IsolatedWorkspaceTestB
         Assert.IsFalse(payload.ContainsKey("error"), frame.ToJsonString());
         Assert.IsNotNull(payload["previewToken"], frame.ToJsonString());
         Assert.IsNotNull(payload["description"], frame.ToJsonString());
-        var diff = string.Join("\n", payload["changes"]!.AsArray().Select(change => change!["unifiedDiff"]!.GetValue<string>()));
-        StringAssert.Contains(diff, "+namespace SampleLib.Inner");
+        var addedPath = workspace.GetPath("SampleLib", "ExtractedType.cs");
+        var addedChanges = payload["changes"]!.AsArray().Where(change =>
+            string.Equals(Path.GetFullPath(change!["filePath"]!.GetValue<string>()),
+                Path.GetFullPath(addedPath), StringComparison.OrdinalIgnoreCase)).ToArray();
+        Assert.HasCount(1, addedChanges, frame.ToJsonString());
+        var generatedText = TypeExtractionTests.ReconstructPreviewText(
+            string.Empty, addedChanges.Single()!["unifiedDiff"]!.GetValue<string>());
+        var tree = CSharpSyntaxTree.ParseText(generatedText);
+        Assert.IsFalse(tree.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error), generatedText);
+        var compilation = CSharpCompilation.Create("NestedNamespaceWire", [tree],
+            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.IsEmpty(errors, string.Join("\n", errors.Select(d => d.ToString())));
+        var declaration = tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>().Single();
+        var generatedType = compilation.GetSemanticModel(tree).GetDeclaredSymbol(declaration)!;
+        Assert.AreEqual("SampleLib.Inner.ExtractedType", generatedType.ToDisplayString());
+        Assert.IsTrue(SymbolEqualityComparer.Default.Equals(
+            generatedType, compilation.GetTypeByMetadataName("SampleLib.Inner.ExtractedType")));
+        Assert.IsNull(compilation.GetTypeByMetadataName("SampleLib.ExtractedType"));
+        Assert.IsNull(compilation.GetTypeByMetadataName("Inner.ExtractedType"));
+        Assert.IsNull(compilation.GetTypeByMetadataName("ExtractedType"));
+        var moved = generatedType.GetMembers(isStatic ? "Unused" : "Helper").OfType<IMethodSymbol>().Single();
+        Assert.AreEqual(isStatic, moved.IsStatic);
+        Assert.AreEqual(SpecialType.System_Int32, moved.ReturnType.SpecialType);
     }
 }
