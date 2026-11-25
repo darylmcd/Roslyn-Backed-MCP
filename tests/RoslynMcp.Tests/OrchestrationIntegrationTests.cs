@@ -552,6 +552,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         var appProjectFile = workspace.GetPath("SampleApp", "SampleApp.csproj");
         InjectProjectReference(appProjectFile, "..\\SampleLib\\SampleLib.csproj");
         InjectProjectReference(appProjectFile, "..\\Contracts\\Contracts.csproj");
+        AddDependencyInjectionReferences(workspace, "SampleApp");
         var registrationsFile = workspace.GetPath("SampleApp", "ServiceRegistration.cs");
         File.WriteAllText(
             registrationsFile,
