@@ -174,6 +174,14 @@ public sealed class TestDiscoveryService : ITestDiscoveryService, IDisposable
         {
             (rawMatches, referenceSweepCompleted) =
                 await CollectRelatedTestsAsync(discovery, solution, symbol, ct).ConfigureAwait(false);
+            if (rawMatches.Count == 0
+                && symbol.DeclaredAccessibility is (Accessibility.Private or Accessibility.Internal)
+                && symbol.ContainingType is { } containingType)
+            {
+                var fallback = await CollectRelatedTestsAsync(discovery, solution, containingType, ct).ConfigureAwait(false);
+                rawMatches = fallback.Matches;
+                referenceSweepCompleted &= fallback.ReferenceSweepCompleted;
+            }
         }
 
         // Each match carries its owning project (a test's identity is project + FQN), which

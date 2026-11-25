@@ -372,6 +372,11 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         {
             foreach (var refLocation in refSymbol.Locations)
             {
+                var root = await refLocation.Document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                if (root?.FindNode(refLocation.Location.SourceSpan, findInsideTrivia: true)
+                    .AncestorsAndSelf().Any(node => node is DocumentationCommentTriviaSyntax) == true)
+                    continue;
+
                 var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(
                     refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
                 if (containingSymbol is not null && !SymbolEqualityComparer.Default.Equals(containingSymbol, symbol))

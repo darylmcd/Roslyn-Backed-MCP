@@ -125,6 +125,55 @@ public sealed class TestDiscoveryProjectIdentityTests
         Assert.AreEqual(1, symbol.Pagination.Total);
     }
 
+    [TestMethod]
+    [DataRow("private", false)]
+    [DataRow("internal", false)]
+    [DataRow("private", true)]
+    [DataRow("internal", true)]
+    public async Task SymbolRoute_UnreferencedHiddenMemberFallsBackToContainer(string accessibility, bool nested)
+    {
+        using var fixture = new MultiProjectFixture(forceInboundFallback: false);
+        var declaration = $"public partial class Engine {{ {accessibility} void Hidden() {{ }} public void Run() => Hidden(); }}";
+        fixture.AddProductFile("Engine.cs", "namespace Product; " + (nested ? "public class Outer { " + declaration + " }" : declaration));
+        var typeName = nested ? "Product.Outer.Engine" : "Product.Engine";
+        var metadataName = nested ? "Product.Outer+Engine" : "Product.Engine";
+        var source = $"namespace Verification; class First {{ [TestMethod] void Runs() {{ new {typeName}().Run(); }} }}";
+        fixture.AddTestFile("Tests.A", source);
+        fixture.AddTestFile("Tests.B", source);
+        var service = fixture.Service;
+        var container = await service.FindRelatedTestsAsync("fixture", SymbolLocator.ByMetadataName(metadataName), 100, CancellationToken.None);
+        Assert.AreEqual(2, container.Tests.Count, "The type-reference control must find both project-qualified identities.");
+        var member = await service.FindRelatedTestsAsync("fixture", SymbolLocator.ByMetadataName(metadataName + ".Hidden"), 100, CancellationToken.None);
+        Assert.AreEqual(2, member.Tests.Count);
+        CollectionAssert.AreEquivalent(container.Tests.Select(t => (t.ProjectName, t.FullyQualifiedName)).ToArray(),
+            member.Tests.Select(t => (t.ProjectName, t.FullyQualifiedName)).ToArray());
+        Assert.AreEqual(container.DotnetTestFilter, member.DotnetTestFilter);
+        Assert.AreEqual(0, member.Diagnostics.MissReasons.Count);
+        var page = await service.FindRelatedTestsAsync("fixture", SymbolLocator.ByMetadataName(metadataName + ".Hidden"), 1, CancellationToken.None);
+        Assert.AreEqual(1, page.Tests.Count);
+        Assert.AreEqual(2, page.Pagination.Total);
+        Assert.IsTrue(page.Pagination.HasMore);
+    }
+
+    [TestMethod]
+    public async Task SymbolRoute_NonemptyMemberReferencesDoNotBroadenToContainer()
+    {
+        using var fixture = new MultiProjectFixture(forceInboundFallback: false);
+        fixture.AddProductFile("Engine.cs", """
+            [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Tests.A")]
+            namespace Product;
+            public class Engine { internal void Direct() { } public void Run() { } }
+            """);
+        fixture.AddTestFile("Tests.A", "namespace Verification; class First { [TestMethod] void Runs() { new Product.Engine().Direct(); } }");
+        fixture.AddTestFile("Tests.B", "namespace Verification; class First { [TestMethod] void Runs() { new Product.Engine().Run(); } }");
+        var service = fixture.Service;
+        var container = await service.FindRelatedTestsAsync("fixture", SymbolLocator.ByMetadataName("Product.Engine"), 100, CancellationToken.None);
+        Assert.AreEqual(2, container.Tests.Count);
+        var member = await service.FindRelatedTestsAsync("fixture", SymbolLocator.ByMetadataName("Product.Engine.Direct"), 100, CancellationToken.None);
+        Assert.AreEqual(1, member.Tests.Count);
+        Assert.AreEqual("Tests.A", member.Tests.Single().ProjectName);
+    }
+
     internal sealed class MultiProjectFixture : IDisposable
     {
         private const string AttributeSource = "class TestMethodAttribute : System.Attribute { }";
@@ -170,6 +219,8 @@ public sealed class TestDiscoveryProjectIdentityTests
             }
             return AddDocument(projectName, "Checks.cs", source);
         }
+
+        public string AddProductFile(string name, string source) => AddDocument("Product", name, source);
 
         private void AddProject(string name, ProjectId? reference = null)
         {

@@ -420,4 +420,39 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
             $"`Console.WriteLine` call site. Console hits: {consoleHits.Count}, WriteLine hits: {writeLineHits.Count}, " +
             $"intersection: {sharedLines.Count}.");
     }
+    [TestMethod]
+    [DataRow(0, "\n")]
+    [DataRow(0, "\r\n")]
+    [DataRow(1, "\n")]
+    [DataRow(1, "\r\n")]
+    [DataRow(2, "\n")]
+    [DataRow(2, "\r\n")]
+    public async Task SemanticGrep_CommentLocationPointsToFirstMatch(int form, string newline)
+    {
+        var prefix = form == 2 ? "    /// " : "     * ";
+        var lines = Enumerable.Repeat(string.Empty, 63).Concat(new[]
+        {
+            form == 2 ? "    /// <summary>" : form == 1 ? "    /** <summary>" : "    /*",
+        }).Concat(Enumerable.Repeat(prefix + new string('x', 65), 5))
+          .Concat(new[] { prefix + "TODO first TODO second", form == 2 ? "    /// </summary>" : "     */", "class CommentTarget { }" });
+        var source = string.Join(newline, lines);
+        using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
+        var project = workspace.AddProject("CommentLocations", Microsoft.CodeAnalysis.LanguageNames.CSharp);
+        var document = workspace.AddDocument(project.Id, "CommentTarget.cs", Microsoft.CodeAnalysis.Text.SourceText.From(source));
+        var solution = document.Project.Solution.WithDocumentFilePath(document.Id, Path.Combine(Path.GetTempPath(), "CommentTarget.cs"));
+        var manager = new Helpers.FailClosedWorkspaceManagerStub { GetCurrentSolutionHandler = _ => solution };
+        var service = new RoslynMcp.Roslyn.Services.SemanticGrepService(manager,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<RoslynMcp.Roslyn.Services.SemanticGrepService>.Instance);
+        var hits = await service.SearchAsync("comments", "TODO", "comments", null, 10, CancellationToken.None);
+        Assert.AreEqual(1, hits.Count, "One result per matching trivia, even with repeated matches.");
+        var hit = hits.Single();
+        Assert.AreEqual(70, hit.Line);
+        Assert.AreEqual(prefix.Length + 1, hit.Column);
+        StringAssert.Contains(hit.Snippet, "TODO");
+        Assert.IsTrue(hit.Snippet.Length <= 200);
+        Assert.IsFalse(hit.Snippet.Contains('\r') || hit.Snippet.Contains('\n'));
+        var text = Microsoft.CodeAnalysis.Text.SourceText.From(source);
+        var offset = text.Lines[hit.Line - 1].Start + hit.Column - 1;
+        Assert.AreEqual("TODO", source.Substring(offset, 4));
+    }
 }

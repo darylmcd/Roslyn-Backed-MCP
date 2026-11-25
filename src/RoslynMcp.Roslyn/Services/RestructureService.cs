@@ -406,7 +406,7 @@ public sealed class RestructureService : IRestructureService
 
         private static bool IsPrimaryExpression(ExpressionSyntax expression) => expression switch
         {
-            IdentifierNameSyntax or GenericNameSyntax or PredefinedTypeSyntax => true,
+            IdentifierNameSyntax or GenericNameSyntax or QualifiedNameSyntax or AliasQualifiedNameSyntax or PredefinedTypeSyntax => true,
             LiteralExpressionSyntax or InterpolatedStringExpressionSyntax => true,
             ParenthesizedExpressionSyntax or TupleExpressionSyntax => true,
             MemberAccessExpressionSyntax or InvocationExpressionSyntax or ElementAccessExpressionSyntax => true,
