@@ -41,7 +41,7 @@ The SDK floor follows the Roslyn API family: the repository's release analyzer i
 | `Microsoft.Extensions.Http` | `11.0.0` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.Logging` | `11.0.0` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.Logging.Console` | `11.0.0` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.TimeProvider.Testing` | `11.0.0` | `Directory.Packages.props` | Test-only; routine servicing group |
+| `Microsoft.Extensions.TimeProvider.Testing` | `11.0.1` | `Directory.Packages.props` | Test-only; routine servicing group |
 | `DiffPlex` | `1.9.0` | `Directory.Packages.props` | Independent |
 | `Microsoft.Build.Framework` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build` | `18.7.1` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
