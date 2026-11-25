@@ -18,7 +18,7 @@
 - Trigger -> harm: symbol_info at a valid Base<int> usage returns a handle that find_implementations cannot resolve, producing NotFound instead of navigation. Impact P2; reach L1; origin pre-existing.
 - Base 16271513 (empty plan commit on 0652f7fd): literal 2025-11-25 and 2026-07-28 captures both refuse constructed-generic-source-handle with KeyNotFoundException. Dispatch head has seven passing cases and one failing handle assertion; no test normalization/removal authorized.
 - Serializer stores constructed display text with declaration coordinates; replay resolves Base<T> then rejects the mismatched display. Existing payload omits argument assembly identity. Source independently re-derived on 2026-11-25; source hashes equal current main.
-- Raw artifacts: C:/Users/daryl/.codex/scratch/roslyn-remediate-20261125/abstract-implementations-implement/base-2025-11-25-raw.jsonl and base-2026-07-28-raw.jsonl; head-results/abstract-head.trx.
+- Raw artifacts: ~/.codex/scratch/roslyn-remediate-20261125/abstract-implementations-implement/base-2025-11-25-raw.jsonl and base-2026-07-28-raw.jsonl; head-results/abstract-head.trx.
 
 ## Context
 
