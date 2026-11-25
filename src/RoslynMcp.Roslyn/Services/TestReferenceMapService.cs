@@ -582,6 +582,7 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
     {
         foreach (var method in type.GetMembers().OfType<IMethodSymbol>())
         {
+            if (method.IsImplicitlyDeclared) continue;
             if (method.MethodKind is not (MethodKind.Ordinary or MethodKind.Constructor)) continue;
             if (method.Locations.All(l => l.Kind == LocationKind.MetadataFile)) continue;
             if (method.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal or Accessibility.Protected or Accessibility.ProtectedOrInternal))
