@@ -4,8 +4,8 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:245-259`
-- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:333-350`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:257-270`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:313-327`
 - `src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs:204-218`
 
 ## Acceptance
@@ -19,3 +19,7 @@
 ## Context
 
 - Qualify stable test_run before selection. Measure whether the complete correction changes execution.earlyKillReason, failureEnvelope.summary, or execution.succeeded on both supported protocol eras. If incompatible, defer to the next operator-approved major with ADR, migration, and raw-wire coverage.
+
+## Notes
+
+2026-11-25 source re-derivation at0652f7fd: ScanAndMaybeKill:321-324 stores KillReason before TryKillProcessTree; the latter catches kill failures at257-270 without clearing that receipt. DotnetOutputParser:204-218 still treats a nonempty reason as termination proof. Source-only anchor refresh; real process/wire qualification remains required.

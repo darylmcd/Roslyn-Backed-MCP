@@ -171,7 +171,25 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // Remove extracted members from the source type. The composition field and constructor parameter
         // are injected only when an instance member moves: an all-static move is reached through the
         // new type's name (the consumer rewriter's static branch), so the source needs no instance of it.
-        var sourceWithoutExtracted = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep));
+        // Remove whole members with Roslyn's paired-directive preservation. WithMembers alone
+        // drops boundary directives attached to moved members and strands their retained mates.
+        // Split fields remain replacements, so their retained declarators keep the original trivia.
+        var retainedByIndex = rewrittenTypeDecl.Members.Select((member, index) => (index, retained:
+            rewrittenMembersToKeep.SingleOrDefault(kept => ReferenceEquals(member, kept)
+                || member is FieldDeclarationSyntax originalField && kept is FieldDeclarationSyntax retainedField
+                && retainedField.Declaration.Variables.Any(variable => originalField.Declaration.Variables
+                    .Any(original => original.Identifier.ValueText == variable.Identifier.ValueText)))))
+            .ToDictionary(item => item.index, item => item.retained);
+        var withRetainedFields = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(
+            rewrittenTypeDecl.Members.Select((member, index) => retainedByIndex[index] ?? member)));
+        // Reattach before consulting related directives: a chain may start outside the type.
+        var sourceTypeAnnotation = new SyntaxAnnotation();
+        var attachedRoot = sourceRoot.ReplaceNode(typeDecl, withRetainedFields.WithAdditionalAnnotations(sourceTypeAnnotation));
+        var attachedType = (TypeDeclarationSyntax)attachedRoot.GetAnnotatedNodes(sourceTypeAnnotation).Single();
+        var sourceWithoutExtracted = attachedType.RemoveNodes(
+            attachedType.Members.Where((_, index) => retainedByIndex[index] is null),
+            SyntaxRemoveOptions.KeepUnbalancedDirectives)
+            ?? throw InvalidOperationErrors.Internal("Removing child members must preserve the source type.");
         var updatedTypeDecl = instanceSymbols.Count > 0
             ? InjectFieldAndCtorParameter(
                 sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct)
@@ -1169,7 +1187,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // slot (override, abstract, virtual-with-overrides), so only a never-overridden `virtual` and a
         // hiding `new` can reach here; strip them after the widening because neither means anything
         // in a base-less sealed class.
-        var extractedMembers = membersToExtract
+        var extractedMembers = CopyScopeNodes(membersToExtract)
             .Select(member => WidenIfReferencedByRetainedCode(member, referencedExtractedNames))
             .Select(StripInheritanceOnlyModifiers)
             .ToList();
@@ -1179,24 +1197,28 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 SyntaxFactory.Token(SyntaxKind.SealedKeyword)))
             .WithMembers(SyntaxFactory.List(extractedMembers));
 
-        // extract-type-nested-namespace-identity: the extracted type lives in the source type's FULL
-        // containing namespace, joined across every enclosing namespace scope (the previous code copied
-        // only the innermost scope's own name). The wrapper style follows the outermost scope, as in
-        // InterfaceExtractionService.BuildInterfaceFile; the global namespace emits no wrapper.
-        var namespaceName = NamespaceMemberClassifier.GetContainingNamespaceName(typeDecl);
+        // Keep lexical namespace scopes: lifting imports into a flattened namespace changes
+        // relative lookup and alias shadowing. Fresh shells omit siblings and wrapper trivia.
         MemberDeclarationSyntax topLevelMember = newTypeDecl;
-        if (namespaceName.Length > 0)
+        foreach (var scope in typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>())
         {
-            var outermostScope = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Last();
-            var name = SyntaxFactory.ParseName(namespaceName);
-            var members = SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl);
-            topLevelMember = outermostScope is FileScopedNamespaceDeclarationSyntax
-                ? SyntaxFactory.FileScopedNamespaceDeclaration(name).WithMembers(members)
-                : SyntaxFactory.NamespaceDeclaration(name).WithMembers(members);
+            var name = SyntaxFactory.ParseName(string.Concat(scope.Name.DescendantTokens().Select(token => token.Text)));
+            BaseNamespaceDeclarationSyntax shell = scope is FileScopedNamespaceDeclarationSyntax
+                ? SyntaxFactory.FileScopedNamespaceDeclaration(name)
+                : SyntaxFactory.NamespaceDeclaration(name);
+            var imports = CopyScopeNodes(scope.Externs.Cast<SyntaxNode>().Concat(scope.Usings));
+            topLevelMember = shell
+                .WithExterns(SyntaxFactory.List(imports.OfType<ExternAliasDirectiveSyntax>()))
+                .WithUsings(SyntaxFactory.List(imports.OfType<UsingDirectiveSyntax>()))
+                .WithMembers(SyntaxFactory.SingletonList(topLevelMember));
         }
 
+        // Global imports remain in the original document and already apply to this same project.
+        var rootImports = CopyScopeNodes(sourceRoot.Externs.Cast<SyntaxNode>().Concat(sourceRoot.Usings
+            .Where(usingDirective => !usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))));
         var compilationUnit = SyntaxFactory.CompilationUnit()
-            .WithUsings(sourceRoot.Usings)
+            .WithExterns(SyntaxFactory.List(rootImports.OfType<ExternAliasDirectiveSyntax>()))
+            .WithUsings(SyntaxFactory.List(rootImports.OfType<UsingDirectiveSyntax>()))
             .WithMembers(SyntaxFactory.SingletonList(topLevelMember))
             .NormalizeWhitespace();
 
@@ -1209,45 +1231,56 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return EnsureBlankLineBetweenNamespaceAndType(compilationUnit);
     }
 
+    // Each transplanted scope keeps complete internal directive chains, including chains
+    // spanning selected members or imports. Chains crossing omitted wrappers/pieces stay in
+    // the source. Inactive sibling text travels only inside a complete retained conditional.
+    private static IReadOnlyList<T> CopyScopeNodes<T>(IEnumerable<T> nodes) where T : SyntaxNode
+    {
+        var pieces = nodes.ToArray();
+        var trivia = pieces.SelectMany(node => node.DescendantTrivia(descendIntoTrivia: true)).ToArray();
+        var copied = trivia.ToHashSet();
+        var directives = trivia.Select(item => item.GetStructure()).OfType<DirectiveTriviaSyntax>()
+            .Where(directive => directive.Kind() is SyntaxKind.IfDirectiveTrivia or SyntaxKind.ElifDirectiveTrivia
+                or SyntaxKind.ElseDirectiveTrivia or SyntaxKind.EndIfDirectiveTrivia
+                or SyntaxKind.RegionDirectiveTrivia or SyntaxKind.EndRegionDirectiveTrivia).ToArray();
+        var retained = new HashSet<SyntaxTrivia>();
+        var conditionalSpans = new List<(SyntaxTree Tree, Microsoft.CodeAnalysis.Text.TextSpan Span)>();
+        foreach (var directive in directives)
+        {
+            var related = directive.GetRelatedDirectives();
+            if (related.Count == 0 || !related.All(part => copied.Contains(part.ParentTrivia)))
+                continue;
+            var first = related[0];
+            var last = related[^1];
+            if (!(first.IsKind(SyntaxKind.IfDirectiveTrivia) && last.IsKind(SyntaxKind.EndIfDirectiveTrivia))
+                && !(first.IsKind(SyntaxKind.RegionDirectiveTrivia) && last.IsKind(SyntaxKind.EndRegionDirectiveTrivia)))
+                continue;
+            foreach (var part in related)
+                retained.Add(part.ParentTrivia);
+            if (first.IsKind(SyntaxKind.IfDirectiveTrivia))
+                conditionalSpans.Add((first.SyntaxTree,
+                    Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(first.FullSpan.Start, last.FullSpan.End)));
+        }
+        var removed = directives.Select(directive => directive.ParentTrivia).Where(item => !retained.Contains(item))
+            .Concat(trivia.Where(item => item.IsKind(SyntaxKind.DisabledTextTrivia)
+                && !conditionalSpans.Any(scope => scope.Tree == item.SyntaxTree && scope.Span.Contains(item.FullSpan))))
+            .ToHashSet();
+        return pieces.Select(node => node.ReplaceTrivia(
+            node.DescendantTrivia(descendIntoTrivia: true).Where(removed.Contains), (_, _) => default)).ToArray();
+    }
+
     /// <summary>
-    /// After a `NormalizeWhitespace()` pass, inject a blank line before the first type
-    /// declaration that sits inside (or immediately after) a namespace declaration so the
-    /// emitted file reads `namespace Foo;\n\npublic sealed class NewType` or
-    /// `namespace Foo\n{\n    public sealed class NewType` — the standard C# layout.
-    /// Called from <see cref="BuildNewFileRoot"/> only; safe on both file-scoped and block
-    /// namespace shapes.
+    /// After normalization, add the conventional blank line before the generated type, including
+    /// when nested block namespaces sit inside a block or file-scoped outer namespace.
     /// </summary>
     private static CompilationUnitSyntax EnsureBlankLineBetweenNamespaceAndType(CompilationUnitSyntax root)
     {
-        var blankLine = SyntaxFactory.EndOfLine(Environment.NewLine);
-
-        // File-scoped namespace: the type sits directly on the compilation unit's member
-        // list after the namespace declaration. Inject the blank line on the first type's
-        // leading trivia.
-        var fileScopedNs = root.Members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault();
-        if (fileScopedNs is not null)
-        {
-            var firstType = fileScopedNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
-            if (firstType is not null)
-            {
-                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
-            }
-            return root;
-        }
-
-        // Block namespace: type lives inside the namespace's Members list. Same injection —
-        // prepend a blank line to the first type declaration's leading trivia.
-        var blockNs = root.Members.OfType<NamespaceDeclarationSyntax>().FirstOrDefault();
-        if (blockNs is not null)
-        {
-            var firstType = blockNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
-            if (firstType is not null)
-            {
-                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
-            }
-        }
-
-        return root;
+        var generatedType = root.Members.OfType<BaseNamespaceDeclarationSyntax>().SingleOrDefault()?
+            .DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+        return generatedType is null
+            ? root
+            : root.ReplaceNode(generatedType,
+                PrependBlankLine(generatedType, SyntaxFactory.EndOfLine(Environment.NewLine)));
     }
 
     private static TypeDeclarationSyntax PrependBlankLine(TypeDeclarationSyntax typeDecl, SyntaxTrivia blankLine)
