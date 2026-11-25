@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -548,6 +549,7 @@ public sealed class SuppressionServiceTests
 
         try
         {
+            using var workspace = new AdhocWorkspace();
             var compileCheck = new StubCompileCheckService
             {
                 OnCheck = (_, _, _) => throw new AssertFailedException("compile check should not run for a missing workspace")
@@ -555,7 +557,7 @@ public sealed class SuppressionServiceTests
             var sut = new SuppressionService(
                 new StubEditorConfig(),
                 new StubEditService(),
-                new StubWorkspaceManager(containsWorkspace: false),
+                new StubWorkspaceManager(false, workspace.CurrentSolution),
                 compileCheck);
 
             var result = await sut.VerifyPragmaSuppressesAsync("missing", filePath, 6, "CS0219", CancellationToken.None)
@@ -628,6 +630,7 @@ public sealed class SuppressionServiceTests
 
         try
         {
+            using var workspace = new AdhocWorkspace();
             var compileCheck = new StubCompileCheckService
             {
                 OnCheck = (_, _, _) => throw new InvalidOperationException(
@@ -636,7 +639,7 @@ public sealed class SuppressionServiceTests
             var sut = new SuppressionService(
                 new StubEditorConfig(),
                 new StubEditService(),
-                new StubWorkspaceManager(containsWorkspace: true),
+                new StubWorkspaceManager(true, workspace.CurrentSolution),
                 compileCheck);
 
             var result = await sut.VerifyPragmaSuppressesAsync("ws", filePath, 6, "CS0219", CancellationToken.None)
@@ -655,6 +658,158 @@ public sealed class SuppressionServiceTests
         {
             File.Delete(filePath);
         }
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ProjectSymbols_AddIgnoresInactiveDisable(bool defined)
+    {
+        const string source = "#if !PROJECT_DEFINE\n#pragma warning disable CS0168\n#endif\nclass C { }\n";
+        await WithProjectAsync(source, defined, async (sut, path) =>
+        {
+            var result = await sut.AddPragmaWarningDisableAsync("ws", path, 4, "CS0168", CancellationToken.None);
+            Assert.AreEqual(defined ? 1 : 0, result.EditsApplied);
+            var expected = defined ? source.Replace("class C", "#pragma warning disable CS0168\nclass C", StringComparison.Ordinal) : source;
+            Assert.AreEqual(expected, await File.ReadAllTextAsync(path));
+            var again = await sut.AddPragmaWarningDisableAsync("ws", path, 4, "CS0168", CancellationToken.None);
+            Assert.AreEqual(0, again.EditsApplied);
+            var root = CSharpSyntaxTree.ParseText(expected, new CSharpParseOptions(preprocessorSymbols: defined ? ["PROJECT_DEFINE"] : [])).GetRoot();
+            Assert.HasCount(1, root.DescendantTrivia(descendIntoTrivia: true).Select(t => t.GetStructure())
+                .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.PragmaWarningDirectiveTriviaSyntax>()
+                .Where(d => d.IsActive && d.DisableOrRestoreKeyword.IsKind(SyntaxKind.DisableKeyword)).ToArray());
+        });
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ProjectSymbols_VerifyChoosesActivePair(bool defined)
+    {
+        const string source = "#if PROJECT_DEFINE\n#pragma warning disable CS0168\n#else\n#pragma warning disable CS0168\n#endif\nclass C { }\n#if PROJECT_DEFINE\n#pragma warning restore CS0168\n#else\n#pragma warning restore CS0168\n#endif\n";
+        await WithProjectAsync(source, defined, async (sut, path) =>
+        {
+            var result = await sut.VerifyPragmaSuppressesAsync("ws", path, 6, "CS0168", CancellationToken.None);
+            Assert.IsTrue(result.Suppresses);
+            Assert.AreEqual(defined ? 2 : 4, result.DisableLine);
+            Assert.AreEqual(defined ? 8 : 10, result.RestoreLine);
+            Assert.AreEqual(source, await File.ReadAllTextAsync(path));
+        });
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ProjectSymbols_WidenNeverMovesInactivePair(bool defined)
+    {
+        const string source = "#if !PROJECT_DEFINE\n#pragma warning disable CS0168\n#pragma warning restore CS0168\n#endif\nclass C { }\n";
+        await WithProjectAsync(source, defined, async (sut, path) =>
+        {
+            var result = await sut.WidenPragmaScopeAsync("ws", path, 5, "CS0168", CancellationToken.None);
+            Assert.AreEqual(!defined, result.Success);
+            Assert.AreEqual(defined ? null : 2, result.DisableLine);
+            if (defined)
+            {
+                Assert.AreEqual("No '#pragma warning disable CS0168' found at or before line 5; nothing to widen.", result.Reason);
+                Assert.AreEqual(source, await File.ReadAllTextAsync(path));
+            }
+            else
+            {
+                Assert.AreEqual(6, result.NewRestoreLine);
+                Assert.AreEqual(source.Replace("#pragma warning restore CS0168\n", "", StringComparison.Ordinal) + Environment.NewLine + "#pragma warning restore CS0168", await File.ReadAllTextAsync(path));
+            }
+        });
+    }
+
+    [TestMethod]
+    public async Task ProjectSymbols_WidenPastInactiveNestedDisableKeepsRestoreActive()
+    {
+        const string source = "#pragma warning disable CS0168\nclass C { }\n#pragma warning restore CS0168\n#if !PROJECT_DEFINE\n#pragma warning disable CS0168\n#endif\nclass D { }\n";
+        await WithProjectAsync(source, true, async (sut, path) =>
+        {
+            var result = await sut.WidenPragmaScopeAsync("ws", path, 7, "CS0168", CancellationToken.None);
+            Assert.IsTrue(result.Success);
+            Assert.IsFalse(result.AlreadyCovered);
+            Assert.AreEqual(1, result.DisableLine);
+            Assert.AreEqual(3, result.OriginalRestoreLine);
+            Assert.AreEqual(8, result.NewRestoreLine);
+            Assert.AreEqual(source.Replace("#pragma warning restore CS0168\n", "", StringComparison.Ordinal) + Environment.NewLine + "#pragma warning restore CS0168", await File.ReadAllTextAsync(path));
+            var verified = await sut.VerifyPragmaSuppressesAsync("ws", path, 6, "CS0168", CancellationToken.None);
+            Assert.IsTrue(verified.Suppresses);
+            Assert.AreEqual(1, verified.DisableLine);
+            Assert.AreEqual(8, verified.RestoreLine);
+        });
+    }
+
+    [TestMethod]
+    public async Task ProjectSymbols_WidenStillRefusesActiveAdjacentDisable()
+    {
+        const string source = "#pragma warning disable CS0168\nclass C { }\n#pragma warning restore CS0168\nclass D { }\n#pragma warning disable CS0168\n";
+        await WithProjectAsync(source, true, async (sut, path) =>
+        {
+            var result = await sut.WidenPragmaScopeAsync("ws", path, 4, "CS0168", CancellationToken.None);
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains(result.Reason, "nest into another");
+            Assert.AreEqual(source, await File.ReadAllTextAsync(path));
+        });
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ProjectSymbols_LinkedFileUsesCanonicalFirstDocument(bool defined)
+    {
+        const string source = "#if PROJECT_DEFINE\n#pragma warning disable CS0168\n#endif\nclass C { }\n";
+        await WithProjectAsync(source, defined, async (sut, path) =>
+        {
+            var result = await sut.VerifyPragmaSuppressesAsync("ws", path, 4, "CS0168", CancellationToken.None);
+            Assert.AreEqual(defined, result.Suppresses);
+            Assert.AreEqual(defined ? 2 : null, result.DisableLine);
+        }, linked: true);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ProjectSymbols_MissingDocumentOrClosedWorkspaceUsesDefaultOptions(bool loaded)
+    {
+        const string source = "#if !PROJECT_DEFINE\n#pragma warning disable CS0168\n#endif\nclass C { }\n";
+        using var workspace = new AdhocWorkspace();
+        var path = Path.Combine(Path.GetTempPath(), "pragma-fallback-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(path, source);
+        try
+        {
+            var sut = new SuppressionService(new StubEditorConfig(), new ApplyToDiskEditService(),
+                new StubWorkspaceManager(loaded, workspace.CurrentSolution));
+            var result = await sut.VerifyPragmaSuppressesAsync("ws", path, 4, "CS0168", CancellationToken.None);
+            Assert.IsTrue(result.Suppresses);
+            Assert.AreEqual(2, result.DisableLine);
+            Assert.AreEqual(source, await File.ReadAllTextAsync(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    private static async Task WithProjectAsync(string source, bool defined,
+        Func<SuppressionService, string, Task> assertion, bool linked = false)
+    {
+        using var workspace = new AdhocWorkspace();
+        var path = Path.Combine(Path.GetTempPath(), "pragma-options-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(path, source);
+        try
+        {
+            var solution = workspace.CurrentSolution;
+            foreach (var symbols in linked ? new[] { defined, !defined } : [defined])
+            {
+                var projectId = ProjectId.CreateNewId();
+                solution = solution.AddProject(projectId, projectId.ToString(), projectId.ToString(), LanguageNames.CSharp)
+                    .WithProjectParseOptions(projectId, new CSharpParseOptions(preprocessorSymbols: symbols ? ["PROJECT_DEFINE"] : []))
+                    .AddDocument(DocumentId.CreateNewId(projectId), "Target.cs", Microsoft.CodeAnalysis.Text.SourceText.From(source), filePath: path);
+            }
+            var sut = new SuppressionService(new StubEditorConfig(), new ApplyToDiskEditService(),
+                new StubWorkspaceManager(true, solution));
+            await assertion(sut, path);
+        }
+        finally { File.Delete(path); }
     }
 
     private static int CountPragmas(string text)
@@ -775,7 +930,7 @@ public sealed class SuppressionServiceTests
             ?? Task.FromResult(new CompileCheckDto(true, 0, 0, 0, 0, 0, options.Limit, false, [], 0));
     }
 
-    private sealed class StubWorkspaceManager(bool containsWorkspace) : IWorkspaceManager
+    private sealed class StubWorkspaceManager(bool containsWorkspace, Solution solution) : IWorkspaceManager
     {
         public event Action<string>? WorkspaceClosed;
 
@@ -817,7 +972,7 @@ public sealed class SuppressionServiceTests
 
         public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
 
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
+        public Solution GetCurrentSolution(string workspaceId) => solution;
 
         public Project? GetProject(string workspaceId, string projectNameOrPath) => throw new NotSupportedException();
 
