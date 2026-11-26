@@ -1,4 +1,4 @@
-# change-signature-preview-latency — Bring change_signature_preview under 30 s on RoslynMcp.slnx
+# change-signature-preview-latency — Qualify change_signature_preview against a matched baseline
 
 **row:** `change-signature-preview-latency` · **pri:** `High` · **size:** `M`
 
@@ -13,8 +13,8 @@
 
 ## Acceptance
 
-- [ ] A failed `change_signature_preview` returns well inside the writer budget: on `RoslynMcp.slnx` an op=add with an unknown `parameterType` is refused in under 30 s (56.3 s measured 2026-11-21 at f7016d6c after PR1; the audit saw 14-48 s).
-- [ ] A successful add/remove/reorder on `PhysicalPathResolver.CanonicalizeDriveRoot` returns in under 30 s (67.2 s measured).
+- [ ] Operator decision (2026-11-26, collab seq 164): **Replace with ≤75% rule.** Per case, median(candidate) <= 0.75 × median(main) and max(candidate) <= max(main).
+- [ ] Run UnknownType, Add, Remove and Reorder with three interleaved fresh-process repetitions per side per case. Build both hosts at their pinned heads and use identical frozen scenario fixtures, one machine and the full reply oracle. Keep setup outside the timer. Record per-run times, exact host and fixture identities, and gate decisions.
 - [ ] Every refusal and diagnostic-evidence check covered by the existing `ChangeSignature*` suites still fires (no weaker verification); before/after seconds recorded in the row note.
 
 ## Evidence
@@ -28,4 +28,6 @@ The baseline diagnostics pass runs before any scan, so it cannot move without re
 
 ## Notes
 
-2026-11-25 policy/source re-derivation supersedes the earlier mandatory-decomposition blocker: current remediation permits one complete shared-mechanism cluster; size/operation count alone does not force a split. No operator decision is needed merely for valid disposable fixture preparation. The old56.3/67.2s figures are historical at f7016d6c, not fresh timings or proof of three independent full bindings. Future measurement must establish that premise without dropping diagnostics, binding, caller-info, cancellation or publication checks. Valid setup: original method/callers for unknown-type refusal and adding an unused required int marker; for remove/reorder, prepare an independent copied solution with (string pathRoot,int latencyMarker), NO default, and append literal0 to both semantically resolved calls. Remove index1 or reorder1,0; preserve original pathRoot/body/argument bindings and compiler validity. Optional marker before required pathRoot is invalid CS1737 and is not a successful reorder witness. Exclude setup/workspace load from invocation-through-response timing, use a fresh process/workspace per case, record actual prewarm conditions, and keep <30s plus all existing checks. No current runtime/semver proof or new cache/mechanism is authorized; D5/D6/D8/V3 decisions still apply if a later design actually needs them.
+2026-11-25 policy/source re-derivation supersedes the earlier mandatory-decomposition blocker: current remediation permits one complete shared-mechanism cluster; size/operation count alone does not force a split. No operator decision is needed merely for valid disposable fixture preparation. The old56.3/67.2s figures are historical at f7016d6c, not fresh timings or proof of three independent full bindings. Future measurement must establish that premise without dropping diagnostics, binding, caller-info, cancellation or publication checks. Valid setup: original method/callers for unknown-type refusal and adding an unused required int marker; for remove/reorder, prepare an independent copied solution with (string pathRoot,int latencyMarker), NO default, and append literal0 to both semantically resolved calls. Remove index1 or reorder1,0; preserve original pathRoot/body/argument bindings and compiler validity. Optional marker before required pathRoot is invalid CS1737 and is not a successful reorder witness. Exclude setup/workspace load from invocation-through-response timing, use a fresh process/workspace per case, record actual prewarm conditions, and apply the paired rule in Acceptance plus all existing checks. No current runtime/semver proof or new cache/mechanism is authorized; D5/D6/D8/V3 decisions still apply if a later design actually needs them.
+
+2026-11-26 operator decision (collab seq 164): the paired rule replaces the original cold 30-second target. Keep the audit skill redesign in its separate backlog item.
