@@ -10,6 +10,657 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ChangeSignatureBindingsTests : ChangeSignatureTestBase
 {
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public void ChangeSignaturePreview_DenseAnnotations_MatchOriginalReplacement(bool script, bool nestedRoot)
+    {
+        var options = new CSharpParseOptions(LanguageVersion.Preview, DocumentationMode.Diagnose,
+            script ? SourceCodeKind.Script : SourceCodeKind.Regular, ["SIGNATURE_CONTROL"]);
+        const string source = "class C { /// <summary><see cref=\"Missing\"/></summary>\nint M(int x) { return F(,); } }";
+        var root = CSharpSyntaxTree.ParseText(Microsoft.CodeAnalysis.Text.SourceText.From(source,
+            System.Text.Encoding.UTF8, Microsoft.CodeAnalysis.Text.SourceHashAlgorithm.Sha256), options, "control.csx").GetRoot();
+        if (nestedRoot)
+            root = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>().Single();
+        root = root.ReplaceSyntax(root.DescendantNodesAndSelf(descendIntoTrivia: true),
+            (_, rewritten) => rewritten.WithAdditionalAnnotations(new SyntaxAnnotation("unrelated", "node")),
+            root.DescendantTokens(descendIntoTrivia: true), (_, rewritten) => rewritten.WithAdditionalAnnotations(new SyntaxAnnotation("unrelated", "token")),
+            [], (_, rewritten) => rewritten);
+        var kinds = new[] { "signature-declaration", "signature-binding", "signature-argument",
+            "signature-conditional", "signature-alias-scope", ChangeSignatureStructConstruction.OwnerTag,
+            ChangeSignatureStructConstruction.OriginalOnlyAttributeTag };
+        var nodes = root.DescendantNodesAndSelf(descendIntoTrivia: true).ToDictionary(node => node,
+            node => kinds.Select(kind => new SyntaxAnnotation(kind, node.RawKind.ToString()))
+                .Append(new SyntaxAnnotation("signature-binding", "second")).ToList());
+        var tokens = root.DescendantTokens(descendIntoTrivia: true).ToDictionary(token => token,
+            token => new List<SyntaxAnnotation> { new("signature-diagnostic", "first"), new("signature-diagnostic", "second") });
+        Assert.IsTrue(tokens.Keys.Any(token => token.IsMissing));
+        Assert.IsTrue(nodes.Keys.Any(node => node.IsStructuredTrivia));
+        var expected = root.ReplaceSyntax(nodes.Keys,
+            (original, rewritten) => rewritten.WithAdditionalAnnotations(nodes[original].ToArray()),
+            tokens.Keys, (original, rewritten) => rewritten.WithAdditionalAnnotations(tokens[original].ToArray()),
+            [], (_, rewritten) => rewritten);
+        var method = typeof(ChangeSignatureAddRemovePreviewBuilder).GetMethod("AttachAnnotations",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.IsNotNull(method);
+        var actual = (SyntaxNode)method.Invoke(null, [root, nodes, tokens])!;
+        AssertSignatureSyntaxEqual(expected, actual, kinds.Append("signature-diagnostic").Append("unrelated").ToArray());
+        Assert.IsTrue(source.Contains(root.ToFullString(), StringComparison.Ordinal));
+        var unchanged = (SyntaxNode)method.Invoke(null, [root,
+            new Dictionary<SyntaxNode, List<SyntaxAnnotation>>(), new Dictionary<SyntaxToken, List<SyntaxAnnotation>>()])!;
+        Assert.AreSame(root, unchanged);
+    }
+
+    [TestMethod]
+    public void ChangeSignaturePreview_RoundTripAnnotations_PreserveNestedAndDiagnosticIdentities()
+    {
+        var options = new CSharpParseOptions(LanguageVersion.Preview, DocumentationMode.Diagnose,
+            SourceCodeKind.Script, ["SIGNATURE_CONTROL"]);
+        const string source = "/// <summary><see cref=\"Missing\"/></summary>\nclass C { int M(int x) { return F(,); } }";
+        var root = CSharpSyntaxTree.ParseText(source, options, "control.csx").GetRoot();
+        var selected = root.DescendantNodesAndSelf().Where(node => node == root
+            || node is Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax
+            || node is Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax).ToArray();
+        var nodeMap = selected.ToDictionary(node => node, node => new[]
+        {
+            new SyntaxAnnotation("signature-declaration", node.RawKind.ToString()),
+            new SyntaxAnnotation("signature-binding", "first"),
+            new SyntaxAnnotation("signature-binding", "second"),
+            new SyntaxAnnotation("signature-argument", "argument"),
+        });
+        var tokenMap = root.DescendantTokens(descendIntoTrivia: true).ToDictionary(token => token,
+            token => new[] { new SyntaxAnnotation("signature-diagnostic", token.RawKind.ToString()),
+                new SyntaxAnnotation("signature-diagnostic", "second") });
+        Assert.IsTrue(tokenMap.Keys.Any(token => token.IsMissing));
+        Assert.IsTrue(tokenMap.Keys.Any(token => token.Parent!.AncestorsAndSelf().Any(node => node.IsStructuredTrivia)));
+        root = root.ReplaceSyntax(nodeMap.Keys,
+            (original, rewritten) => rewritten.WithAdditionalAnnotations(nodeMap[original]),
+            tokenMap.Keys, (original, rewritten) => rewritten.WithAdditionalAnnotations(tokenMap[original]),
+            [], (_, rewritten) => rewritten);
+        using var workspace = new AdhocWorkspace();
+        var project = workspace.AddProject("AnnotationControl", LanguageNames.CSharp).WithParseOptions(options);
+        var document = project.AddDocument("control.csx", source, filePath: "control.csx");
+        var method = typeof(ChangeSignatureAddRemovePreviewBuilder).GetMethod("RoundTripRoot",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.IsNotNull(method);
+        var result = (SyntaxNode)method.Invoke(null, [root, document, CancellationToken.None])!;
+        Assert.AreEqual(source, result.ToFullString());
+        Assert.AreEqual(options, result.SyntaxTree.Options);
+        Assert.AreEqual("control.csx", result.SyntaxTree.FilePath);
+        Assert.AreEqual(SourceCodeKind.Script, result.SyntaxTree.Options.Kind);
+        foreach (var kind in new[] { "signature-declaration", "signature-binding", "signature-argument" })
+            CollectionAssert.AreEqual(root.DescendantNodesAndSelf().SelectMany(node => node.GetAnnotations(kind)).ToArray(),
+                result.DescendantNodesAndSelf().SelectMany(node => node.GetAnnotations(kind)).ToArray());
+        CollectionAssert.AreEqual(root.DescendantTokens(descendIntoTrivia: true)
+            .SelectMany(token => token.GetAnnotations("signature-diagnostic")).ToArray(),
+            result.DescendantTokens(descendIntoTrivia: true)
+                .SelectMany(token => token.GetAnnotations("signature-diagnostic")).ToArray());
+    }
+
+    [TestMethod]
+    public void ChangeSignaturePreview_GeneratedConstructorCleanup_MatchesOriginalReplacement()
+    {
+        var constructor = (Microsoft.CodeAnalysis.CSharp.Syntax.ConstructorDeclarationSyntax)
+            SyntaxFactory.ParseMemberDeclaration("/// <summary>C</summary>\nC(int x) { /* retain shape */ F(x); }")!;
+        var kinds = new[] { "signature-declaration", "signature-binding", "signature-argument",
+            "signature-conditional", "signature-alias-scope", ChangeSignatureStructConstruction.OwnerTag,
+            ChangeSignatureStructConstruction.OriginalOnlyAttributeTag };
+        constructor = constructor.ReplaceSyntax(constructor.DescendantNodesAndSelf(),
+            (_, rewritten) => rewritten.WithAdditionalAnnotations(kinds.Select(kind => new SyntaxAnnotation(kind))
+                .Append(new SyntaxAnnotation("unrelated", "node")).ToArray()),
+            constructor.DescendantTokens(), (_, rewritten) => rewritten.WithAdditionalAnnotations(
+                new SyntaxAnnotation("signature-diagnostic"), new SyntaxAnnotation("unrelated", "token")),
+            [], (_, rewritten) => rewritten);
+        var identity = constructor.GetAnnotations("signature-declaration").ToArray();
+        var expected = constructor.ReplaceSyntax(constructor.DescendantNodesAndSelf(),
+            (_, rewritten) => rewritten.WithoutAnnotations(kinds.SelectMany(rewritten.GetAnnotations).ToArray()),
+            constructor.DescendantTokens(), (_, rewritten) => rewritten.WithoutAnnotations("signature-diagnostic").WithoutTrivia(),
+            [], (_, rewritten) => rewritten)
+            .WithAdditionalAnnotations(identity).NormalizeWhitespace(eol: " ")
+            .WithLeadingTrivia(SyntaxFactory.Space).WithTrailingTrivia(SyntaxFactory.Space);
+        var actual = ChangeSignatureAddRemovePreviewBuilder.PrepareGeneratedConstructor(constructor);
+        AssertSignatureSyntaxEqual(expected, actual, kinds.Append("signature-diagnostic").Append("unrelated").ToArray());
+        CollectionAssert.AreEqual(identity, actual.GetAnnotations("signature-declaration").ToArray());
+        Assert.AreEqual(" C(int x) {     F(x); } ", actual.ToFullString());
+    }
+
+    private static void AssertSignatureSyntaxEqual(SyntaxNode expected, SyntaxNode actual, string[] kinds)
+    {
+        Assert.AreEqual(expected.ToFullString(), actual.ToFullString());
+        Assert.AreEqual(expected.RawKind, actual.RawKind);
+        Assert.AreEqual(expected.SyntaxTree.Options, actual.SyntaxTree.Options);
+        Assert.AreEqual(expected.SyntaxTree.FilePath, actual.SyntaxTree.FilePath);
+        Assert.AreEqual(expected.SyntaxTree.Encoding, actual.SyntaxTree.Encoding);
+        Assert.AreEqual(expected.SyntaxTree.GetText().ChecksumAlgorithm, actual.SyntaxTree.GetText().ChecksumAlgorithm);
+        Assert.AreEqual(expected.SyntaxTree.HasCompilationUnitRoot, actual.SyntaxTree.HasCompilationUnitRoot);
+        var expectedNodes = expected.DescendantNodesAndSelf(descendIntoTrivia: true).ToArray();
+        var actualNodes = actual.DescendantNodesAndSelf(descendIntoTrivia: true).ToArray();
+        Assert.AreEqual(expectedNodes.Length, actualNodes.Length);
+        for (var index = 0; index < expectedNodes.Length; index++)
+        {
+            Assert.AreEqual(expectedNodes[index].RawKind, actualNodes[index].RawKind);
+            Assert.AreEqual(expectedNodes[index].Span, actualNodes[index].Span);
+            foreach (var kind in kinds)
+                CollectionAssert.AreEqual(expectedNodes[index].GetAnnotations(kind).ToArray(), actualNodes[index].GetAnnotations(kind).ToArray());
+        }
+        var expectedTokens = expected.DescendantTokens(descendIntoTrivia: true).ToArray();
+        var actualTokens = actual.DescendantTokens(descendIntoTrivia: true).ToArray();
+        Assert.AreEqual(expectedTokens.Length, actualTokens.Length);
+        for (var index = 0; index < expectedTokens.Length; index++)
+        {
+            Assert.AreEqual(expectedTokens[index].RawKind, actualTokens[index].RawKind);
+            Assert.AreEqual(expectedTokens[index].Span, actualTokens[index].Span);
+            Assert.AreEqual(expectedTokens[index].IsMissing, actualTokens[index].IsMissing);
+            foreach (var kind in kinds)
+                CollectionAssert.AreEqual(expectedTokens[index].GetAnnotations(kind).ToArray(), actualTokens[index].GetAnnotations(kind).ToArray());
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ChangeSignaturePreview_CompetingAliasRequests_ReuseInputOrderedPlan(bool diagnostic)
+    {
+        var fixture = await CreateLateAliasFixtureAsync(diagnostic, exchange: false);
+        await using var workspace = fixture.Workspace;
+        AddSignatureAliasReference(workspace, "AliasSecond", "second");
+        var secondFactoryPath = workspace.GetPath("SampleLib", "SecondAliasFactory.cs");
+        const string secondFactorySource = "extern alias second; namespace SampleLib; public static class SecondAliasFactory { public static second::Shared.Value Create() => new second::Shared.Value(); }";
+        await File.WriteAllTextAsync(secondFactoryPath, secondFactorySource);
+        var secondPath = workspace.GetPath("SampleLib", "ZAliasRequest.cs");
+        const string secondSource = "using second = System.String; namespace SampleLib; public static class SecondAliasRequest { public static int Run() => SignatureProof.Compute(SecondAliasFactory.Create(), 2); }";
+        await File.WriteAllTextAsync(secondPath, secondSource);
+        await workspace.ReloadAsync(CancellationToken.None);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = original.Projects.Single(p => p.Name == "SampleLib");
+        Assert.IsTrue(project.Documents.ToList().FindIndex(d => d.FilePath == fixture.TargetPath)
+            < project.Documents.ToList().FindIndex(d => d.FilePath == secondPath));
+        var before = (await project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(diagnostic ? 1 : 0, before.Length);
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+            SymbolLocator.BySource(fixture.TargetPath, 3, fixture.Source.Split('\n')[2].IndexOf("Compute", StringComparison.Ordinal) + 1),
+            new ChangeSignatureRequest("remove", Name: "missing"), CancellationToken.None);
+        Assert.AreEqual(2, preview.CallsiteUpdates!.Sum(update => update.CallsiteCount));
+        var candidate = Services.PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        Assert.AreEqual(original.Projects.Sum(p => p.DocumentIds.Count), candidate.Projects.Sum(p => p.DocumentIds.Count));
+        var aliasDirectives = new List<string>();
+        foreach (var document in candidate.GetProject(project.Id)!.Documents)
+        {
+            var root = (Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax)(await document.GetSyntaxRootAsync())!;
+            aliasDirectives.AddRange(root.Usings.Where(use => use.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)
+                && use.Alias?.Name.Identifier.ValueText.StartsWith("__signatureAssembly", StringComparison.Ordinal) == true)
+                .Select(use => use.ToString()));
+        }
+        CollectionAssert.AreEquivalent(new[] { "global using __signatureAssembly = first;", "global using __signatureAssembly0 = second;" }, aliasDirectives);
+        var firstCaller = candidate.GetDocument(candidate.GetDocumentIdsWithFilePath(fixture.TargetPath).Single())!;
+        StringAssert.Contains((await firstCaller.GetTextAsync()).ToString(), "__signatureAssembly::Shared.Value");
+        var secondCaller = candidate.GetDocument(candidate.GetDocumentIdsWithFilePath(secondPath).Single())!;
+        StringAssert.Contains((await secondCaller.GetTextAsync()).ToString(), "__signatureAssembly0::Shared.Value");
+        await AssertLateAliasFactoryBindingsAsync(original, candidate, fixture.FactoryPath);
+        var after = (await candidate.GetProject(project.Id)!.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(before.Length, after.Length);
+        if (diagnostic)
+        {
+            Assert.AreEqual(before[0].Id, after[0].Id);
+            Assert.AreEqual(before[0].GetMessage(), after[0].GetMessage());
+            Assert.AreEqual(original.GetDocument(before[0].Location.SourceTree!)!.Id, candidate.GetDocument(after[0].Location.SourceTree!)!.Id);
+        }
+        Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        Assert.AreEqual(fixture.Source, await File.ReadAllTextAsync(fixture.TargetPath));
+        Assert.AreEqual(fixture.FactorySource, await File.ReadAllTextAsync(fixture.FactoryPath));
+        Assert.AreEqual(secondSource, await File.ReadAllTextAsync(secondPath));
+        Assert.AreEqual(secondFactorySource, await File.ReadAllTextAsync(secondFactoryPath));
+    }
+
+    [TestMethod]
+    public async Task ChangeSignaturePreview_LaterBatchAndDependentProject_RetainCompleteBindings()
+    {
+        await using var workspace = CreateLibraryTestsWorkspace();
+        var targetPath = workspace.GetPath("SampleLib", "BatchTarget.cs");
+        const string targetSource = "namespace SampleLib; public static class BatchTarget { public static int Compute(int unused, int retained) => retained; }";
+        await File.WriteAllTextAsync(targetPath, targetSource);
+        var bound = Math.Max(1, Math.Min(4, Environment.ProcessorCount));
+        for (var index = 0; index <= bound; index++)
+            await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "ABatch" + index + ".cs"),
+                "namespace SampleLib; public static class BatchPadding" + index + " { public static object Make() => new object(); }");
+        var evidencePath = workspace.GetPath("SampleLib", "BatchEvidence.cs");
+        const string evidenceSource = "namespace SampleLib; public struct BatchValue { public static implicit operator int(BatchValue value) => 7; public static BatchValue operator +(BatchValue a, BatchValue b) => new BatchValue(); } public static class BatchEvidence { public static int Unrelated(int x) => x; public static T Identity<T>(T x) => x; public static System.Func<int, int> Reference => Unrelated; public static int Line([System.Runtime.CompilerServices.CallerLineNumber] int line = 0) => line; public static int Run() => Reference((int)(new BatchValue() + new BatchValue())) + Line() + Identity(1) + Unrelated(new BatchValue()); }";
+        await File.WriteAllTextAsync(evidencePath, evidenceSource);
+        var callerPath = workspace.GetPath("SampleLib", "ZBatchCaller.cs");
+        const string callerSource = "namespace SampleLib; public static class BatchCaller { public static int Run() => BatchTarget.Compute(1, 2) + BatchEvidence.Run(); }";
+        await File.WriteAllTextAsync(callerPath, callerSource);
+        var dependentPath = workspace.GetPath("SampleLib.Tests", "BatchDependent.cs");
+        const string dependentSource = "namespace SampleLib.Tests; public static class BatchDependent { public static int Run() => SampleLib.BatchTarget.Compute(3, 4); }";
+        await File.WriteAllTextAsync(dependentPath, dependentSource);
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = original.Projects.Single(p => p.Name == "SampleLib");
+        Assert.IsTrue(project.Documents.ToList().FindIndex(d => d.FilePath == callerPath) >= bound,
+            "The related call must occur after the first finite batch.");
+        Assert.IsTrue(original.GetProjectDependencyGraph().GetProjectsThatTransitivelyDependOnThisProject(project.Id)
+            .Any(id => original.GetProject(id)!.Name == "SampleLib.Tests"));
+        var evidenceDocument = original.GetDocument(original.GetDocumentIdsWithFilePath(evidencePath).Single())!;
+        var evidenceModel = (await evidenceDocument.GetSemanticModelAsync())!;
+        var evidenceRoot = (await evidenceDocument.GetSyntaxRootAsync())!;
+        var unrelatedInvocation = evidenceRoot.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+            .Single(node => node.Expression.ToString() == "Unrelated");
+        var unrelatedMethod = (IMethodSymbol)evidenceModel.GetSymbolInfo(unrelatedInvocation).Symbol!;
+        Assert.AreSame(unrelatedMethod, (unrelatedMethod.ReducedFrom ?? unrelatedMethod).OriginalDefinition);
+        var identityInvocation = evidenceRoot.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+            .Single(node => node.Expression.ToString() == "Identity");
+        var identityMethod = (IMethodSymbol)evidenceModel.GetSymbolInfo(identityInvocation).Symbol!;
+        Assert.AreNotSame(identityMethod, (identityMethod.ReducedFrom ?? identityMethod).OriginalDefinition);
+        Assert.AreEqual(SpecialType.System_Int32, identityMethod.TypeArguments.Single().SpecialType);
+        var identityTypes = evidenceModel.GetTypeInfo(identityInvocation);
+        Assert.AreEqual(SpecialType.System_Int32, identityTypes.Type!.SpecialType);
+        Assert.AreSame(identityTypes.Type, identityTypes.ConvertedType);
+        var convertedConstruction = unrelatedInvocation.ArgumentList.Arguments.Single().Expression;
+        Assert.IsInstanceOfType<Microsoft.CodeAnalysis.CSharp.Syntax.ObjectCreationExpressionSyntax>(convertedConstruction);
+        Assert.AreEqual("new BatchValue()", convertedConstruction.ToString());
+        var convertedTypes = evidenceModel.GetTypeInfo(convertedConstruction);
+        Assert.AreEqual("SampleLib.BatchValue", convertedTypes.Type!.ToDisplayString());
+        Assert.AreEqual(SpecialType.System_Int32, convertedTypes.ConvertedType!.SpecialType);
+        Assert.AreNotSame(convertedTypes.Type, convertedTypes.ConvertedType);
+        Assert.IsTrue(evidenceModel.GetConversion(convertedConstruction).IsUserDefined);
+        async Task<string[]> EvidenceAsync(Solution solution)
+        {
+            var document = solution.GetDocument(solution.GetDocumentIdsWithFilePath(evidencePath).Single())!;
+            var model = (await document.GetSemanticModelAsync())!;
+            var root = (await document.GetSyntaxRootAsync())!;
+            return root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ExpressionSyntax>()
+                .Where(node => model.GetSymbolInfo(node).Symbol is IMethodSymbol)
+                .Select(node => model.GetSymbolInfo(node).Symbol!.ToDisplayString() + "|" + model.GetTypeInfo(node).Type?.ToDisplayString()
+                    + "|" + model.GetTypeInfo(node).ConvertedType?.ToDisplayString() + "|" + model.GetConversion(node)).ToArray();
+        }
+        var before = await EvidenceAsync(original);
+        Assert.IsTrue(before.Length >= 8, "Retain constructions, invocation, method reference, operator and conversion bindings.");
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+            SymbolLocator.BySource(targetPath, 1, targetSource.IndexOf("Compute", StringComparison.Ordinal) + 1),
+            new ChangeSignatureRequest("remove", Position: 0), CancellationToken.None);
+        Assert.AreEqual(2, preview.CallsiteUpdates!.Sum(update => update.CallsiteCount));
+        CollectionAssert.AreEquivalent(new[] { targetPath, callerPath, dependentPath }, preview.Changes.Select(change => change.FilePath).ToArray());
+        var candidate = Services.PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        CollectionAssert.AreEqual(before, await EvidenceAsync(candidate));
+        Assert.AreEqual(await RunSignatureFixtureAsync(original, "SampleLib.BatchCaller"), await RunSignatureFixtureAsync(candidate, "SampleLib.BatchCaller"));
+        foreach (var (path, source) in new[] { (targetPath, targetSource), (callerPath, callerSource), (dependentPath, dependentSource), (evidencePath, evidenceSource) })
+            Assert.AreEqual(source, await File.ReadAllTextAsync(path));
+        Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+    }
+
+    [TestMethod]
+    public async Task ChangeSignaturePreview_ConcurrentWorkspaces_IsolateAliasesDiagnosticsAndTokens()
+    {
+        var left = await CreateLateAliasFixtureAsync(diagnostic: true, exchange: false);
+        await using var leftWorkspace = left.Workspace;
+        var right = await CreateLateAliasFixtureAsync(diagnostic: true, exchange: false);
+        await using var rightWorkspace = right.Workspace;
+        async Task PrepareAsync(string workspaceId, string targetPath, string factoryPath, string name)
+        {
+            var solution = Services.WorkspaceManager.GetCurrentSolution(workspaceId);
+            foreach (var path in new[] { targetPath, factoryPath })
+            {
+                var document = solution.GetDocument(solution.GetDocumentIdsWithFilePath(path).Single())!;
+                var text = (await document.GetTextAsync()).ToString().Replace("SignatureProof", name + "Proof", StringComparison.Ordinal)
+                    .Replace("MissingAliasHostType", "Missing" + name + "Type", StringComparison.Ordinal);
+                solution = solution.WithDocumentText(document.Id, Microsoft.CodeAnalysis.Text.SourceText.From(text));
+            }
+            Assert.IsTrue(Services.WorkspaceManager.TryApplyChanges(workspaceId, solution));
+        }
+        await PrepareAsync(leftWorkspace.WorkspaceId, left.TargetPath, left.FactoryPath, "Left");
+        await PrepareAsync(rightWorkspace.WorkspaceId, right.TargetPath, right.FactoryPath, "Right");
+        var originals = new[] { Services.WorkspaceManager.GetCurrentSolution(leftWorkspace.WorkspaceId), Services.WorkspaceManager.GetCurrentSolution(rightWorkspace.WorkspaceId) };
+        var fixtures = new[] { left, right };
+        var disk = await Task.WhenAll(fixtures.SelectMany(f => new[] { f.TargetPath, f.FactoryPath }).Select(path => File.ReadAllTextAsync(path)));
+        async Task<RefactoringPreviewDto> PreviewAsync(int index)
+        {
+            var fixture = fixtures[index];
+            var source = (await originals[index].GetDocument(originals[index].GetDocumentIdsWithFilePath(fixture.TargetPath).Single())!.GetTextAsync()).ToString();
+            return await ChangeSignature.PreviewChangeSignatureAsync(fixture.Workspace.WorkspaceId,
+                SymbolLocator.BySource(fixture.TargetPath, 3, source.Split('\n')[2].IndexOf("Compute", StringComparison.Ordinal) + 1),
+                new ChangeSignatureRequest("remove", Name: "missing"), CancellationToken.None);
+        }
+        var previews = await Task.WhenAll(PreviewAsync(0), PreviewAsync(1));
+        Assert.AreNotEqual(previews[0].PreviewToken, previews[1].PreviewToken);
+        for (var index = 0; index < fixtures.Length; index++)
+        {
+            var fixture = fixtures[index];
+            var other = fixtures[1 - index];
+            var candidate = Services.PreviewStore.Retrieve(previews[index].PreviewToken)!.Value.ModifiedSolution;
+            Assert.AreEqual(1, previews[index].CallsiteUpdates!.Sum(update => update.CallsiteCount));
+            CollectionAssert.AreEquivalent(new[] { fixture.TargetPath, fixture.FactoryPath }, previews[index].Changes.Select(change => change.FilePath).ToArray());
+            Assert.IsFalse(candidate.GetDocumentIdsWithFilePath(other.TargetPath).Any());
+            var factory = candidate.GetDocument(candidate.GetDocumentIdsWithFilePath(fixture.FactoryPath).Single())!;
+            StringAssert.Contains((await factory.GetTextAsync()).ToString(), "global using __signatureAssembly = first;");
+            await AssertLateAliasFactoryBindingsAsync(originals[index], candidate, fixture.FactoryPath);
+            var diagnostic = (await factory.Project.GetCompilationAsync())!.GetDiagnostics().Single(d => d.Severity == DiagnosticSeverity.Error);
+            Assert.AreEqual("CS0246", diagnostic.Id);
+            StringAssert.Contains(diagnostic.GetMessage(), index == 0 ? "MissingLeftType" : "MissingRightType");
+            Assert.AreEqual(factory.Id, candidate.GetDocument(diagnostic.Location.SourceTree!)!.Id);
+            Assert.AreSame(originals[index], Services.WorkspaceManager.GetCurrentSolution(fixture.Workspace.WorkspaceId));
+        }
+        CollectionAssert.AreEqual(disk, await Task.WhenAll(fixtures.SelectMany(f => new[] { f.TargetPath, f.FactoryPath }).Select(path => File.ReadAllTextAsync(path))));
+    }
+
+    [TestMethod]
+    public async Task ChangeSignaturePreview_ReadBatch_FinitePassBoundAndRefill()
+    {
+        var bound = AssertSignatureReaderWidth();
+        var count = bound + 3;
+        var started = Enumerable.Range(0, count).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var release = Enumerable.Range(0, count).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var active = 0;
+        var peak = 0;
+        var sync = new object();
+        var pending = ReadSignatureBatchAsync(Enumerable.Range(0, count).ToArray(), async index =>
+        {
+            lock (sync) peak = Math.Max(peak, ++active);
+            started[index].SetResult();
+            try { await release[index].Task; return index; }
+            finally { lock (sync) active--; }
+        });
+        try
+        {
+            await Task.WhenAll(started.Take(bound).Select(signal => signal.Task)).WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.AreEqual(bound, peak, "The finite pass must own at most B active readers.");
+            Assert.IsFalse(started[bound].Task.IsCompleted, "An input beyond B cannot start while B readers are held.");
+            var firstReleased = bound == 1 ? 0 : 1;
+            release[firstReleased].SetResult();
+            await started[bound].Task.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.IsFalse(pending.IsCompleted, "Refill must not publish before all owned readers join.");
+            if (bound > 1) Assert.IsFalse(release[0].Task.IsCompleted, "Refill must proceed while the earliest reader is held.");
+            if (bound == 1)
+            {
+                for (var index = 1; index < count; index++)
+                {
+                    await started[index].Task.WaitAsync(TimeSpan.FromSeconds(30));
+                    Assert.IsFalse(pending.IsCompleted, "The last held sole reader must still join.");
+                    Assert.AreEqual(1, active);
+                    release[index].SetResult();
+                }
+            }
+            foreach (var signal in release) signal.TrySetResult();
+            var outcomes = await pending.WaitAsync(TimeSpan.FromSeconds(30));
+            CollectionAssert.AreEqual(Enumerable.Range(0, count).ToArray(), outcomes.Select(result => result()).ToArray());
+            Assert.AreEqual(bound, peak);
+            Assert.AreEqual(0, active);
+        }
+        finally
+        {
+            foreach (var signal in release) signal.TrySetResult();
+            await pending.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    [TestMethod]
+    public async Task ChangeSignaturePreview_ReadBatch_JoinsReverseCompletionAndRetainsInputOrder()
+    {
+        var bound = Math.Max(1, Math.Min(4, Environment.ProcessorCount));
+        var started = Enumerable.Range(0, bound).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var release = Enumerable.Range(0, bound).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var finished = Enumerable.Range(0, bound).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var calls = new int[bound];
+        var active = 0;
+        var peak = 0;
+        var order = new List<int>();
+        var sync = new object();
+        var pending = ReadSignatureBatchAsync(Enumerable.Range(0, bound).ToArray(), async index =>
+        {
+            Interlocked.Increment(ref calls[index]);
+            lock (sync) peak = Math.Max(peak, ++active);
+            started[index].SetResult();
+            try
+            {
+                await release[index].Task;
+                lock (sync) order.Add(index);
+                return index;
+            }
+            finally
+            {
+                lock (sync) active--;
+                finished[index].SetResult();
+            }
+        });
+        try
+        {
+            await Task.WhenAll(started.Select(signal => signal.Task)).WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.AreEqual(bound, active);
+            Assert.AreEqual(bound, peak);
+            if (Environment.ProcessorCount > 1) Assert.IsTrue(peak > 1);
+            for (var index = bound - 1; index >= 0; index--)
+            {
+                release[index].SetResult();
+                await finished[index].Task.WaitAsync(TimeSpan.FromSeconds(30));
+                if (index > 0) Assert.IsFalse(pending.IsCompleted, "The first held reader must be joined.");
+            }
+            var outcomes = await pending.WaitAsync(TimeSpan.FromSeconds(30));
+            CollectionAssert.AreEqual(Enumerable.Range(0, bound).ToArray(), outcomes.Select(result => result()).ToArray());
+            CollectionAssert.AreEqual(Enumerable.Range(0, bound).Reverse().ToArray(), order);
+            CollectionAssert.AreEqual(Enumerable.Repeat(1, bound).ToArray(), calls);
+            Assert.AreEqual(0, active);
+        }
+        finally
+        {
+            foreach (var signal in release) signal.TrySetResult();
+            await pending.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    [TestMethod]
+    [DataRow("left", false)]
+    [DataRow("left", true)]
+    [DataRow("right", true)]
+    public async Task ChangeSignaturePreview_AliasDirectory_PreservesPerDocumentFallback(string targetDirectory, bool nullProjectPath)
+    {
+        var fixture = await CreateLateAliasFixtureAsync(diagnostic: false, exchange: false);
+        await using var workspace = fixture.Workspace;
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = original.Projects.Single(p => p.Name == "SampleLib");
+        var target = project.Documents.Single(d => d.FilePath == fixture.TargetPath);
+        var targetPath = Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, targetDirectory, target.Name);
+        var updated = original.WithDocumentFilePath(target.Id, targetPath);
+        if (nullProjectPath) updated = updated.WithProjectFilePath(project.Id, null);
+        foreach (var document in project.Documents)
+        {
+            var root = (Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax)(await document.GetSyntaxRootAsync())!;
+            // Every original source shadows the root alias. The only legal plan is a new
+            // directive-only document, whose directory comes from this caller's descriptor.
+            if (root.Externs.Count > 0)
+            {
+                var scope = root.Members.OfType<Microsoft.CodeAnalysis.CSharp.Syntax.FileScopedNamespaceDeclarationSyntax>().Single();
+                root = root.ReplaceNode(scope, scope.WithExterns(root.Externs)).WithExterns(default);
+            }
+            if (!root.Usings.Any(use => use.Alias?.Name.Identifier.ValueText == "first"))
+                root = root.WithUsings(root.Usings.Add(SyntaxFactory.ParseCompilationUnit("using first = System.String; ").Usings.Single()));
+            updated = updated.WithDocumentSyntaxRoot(document.Id, root);
+        }
+        var fixtureSolution = updated;
+        var targetDocument = fixtureSolution.GetDocument(target.Id)!;
+        var targetRoot = (await targetDocument.GetSyntaxRootAsync())!;
+        var targetModel = (await targetDocument.GetSemanticModelAsync())!;
+        var declaration = targetRoot.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>()
+            .Single(node => node.Identifier.ValueText == "Compute");
+        var method = (IMethodSymbol)targetModel.GetDeclaredSymbol(declaration)!;
+        var preview = await ChangeSignatureAddRemovePreviewBuilder.BuildAsync(fixtureSolution, method,
+            list => list.WithParameters(list.Parameters.RemoveAt(0)),
+            (context, arguments) => context.Remove(arguments, 0), CancellationToken.None);
+        var added = preview.Accumulator.GetChanges(fixtureSolution).GetProjectChanges()
+            .SelectMany(change => change.GetAddedDocuments()).Select(id => preview.Accumulator.GetDocument(id)!).Single();
+        Assert.AreEqual(nullProjectPath ? Path.GetDirectoryName(targetPath) : Path.GetDirectoryName(project.FilePath),
+            Path.GetDirectoryName(added.FilePath));
+        StringAssert.Contains((await added.GetTextAsync()).ToString(), "global using __signatureAssembly = first;");
+        Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        Assert.IsFalse(File.Exists(added.FilePath));
+    }
+
+    [TestMethod]
+    public async Task ChangeSignaturePreview_Restoration_RetainsActualCandidateTreeAndChangedAnnotations()
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = workspace.AddProject("Retention", LanguageNames.CSharp)
+            .AddMetadataReference(MetadataReference.CreateFromFile(typeof(object).Assembly.Location));
+        var retained = project.AddDocument("Retained.cs", "class Retained { object M() => new object(); }");
+        var changed = retained.Project.AddDocument("Changed.cs", "class Changed { int M(int x) => x; }");
+        var original = changed.Project.Solution;
+        var retainedRoot = (await original.GetDocument(retained.Id)!.GetSyntaxRootAsync())!;
+        var retainedTree = (await original.GetDocument(retained.Id)!.GetSyntaxTreeAsync())!;
+        var changedRoot = (await original.GetDocument(changed.Id)!.GetSyntaxRootAsync())!;
+        var annotation = new SyntaxAnnotation("signature-binding");
+        var declarationAnnotation = new SyntaxAnnotation("signature-declaration");
+        var argumentAnnotation = new SyntaxAnnotation("signature-argument");
+        var diagnosticAnnotation = new SyntaxAnnotation("signature-diagnostic");
+        var changedAnnotated = changedRoot.ReplaceToken(changedRoot.GetFirstToken(),
+            changedRoot.GetFirstToken().WithAdditionalAnnotations(diagnosticAnnotation))
+            .WithAdditionalAnnotations(annotation, declarationAnnotation, argumentAnnotation);
+        var candidate = original.WithDocumentSyntaxRoot(retained.Id, retainedRoot.WithAdditionalAnnotations(annotation))
+            .WithDocumentSyntaxRoot(changed.Id, changedAnnotated);
+        var addedIds = new[] { DocumentId.CreateNewId(project.Id), DocumentId.CreateNewId(project.Id) };
+        for (var index = 0; index < addedIds.Length; index++)
+        {
+            var text = Microsoft.CodeAnalysis.Text.SourceText.From("global using Alias" + index + " = System.String;",
+                System.Text.Encoding.UTF8, Microsoft.CodeAnalysis.Text.SourceHashAlgorithm.Sha256);
+            candidate = candidate.AddDocument(addedIds[index], "Alias" + index + ".cs", text,
+                folders: ["Aliases", index.ToString(System.Globalization.CultureInfo.InvariantCulture)],
+                filePath: Path.Combine(TestTempRoot.Current, "Aliases", "Alias" + index + ".cs"));
+        }
+        var changedDocuments = new HashSet<DocumentId>(addedIds) { changed.Id };
+        Assert.AreNotSame(retainedTree, await candidate.GetDocument(retained.Id)!.GetSyntaxTreeAsync());
+        var restore = typeof(ChangeSignatureService).Assembly
+            .GetType("RoslynMcp.Roslyn.Services.ChangeSignatureAddRemovePreviewBuilder")!
+            .GetMethod("RestoreUnchangedDocumentTreesAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.IsNotNull(restore);
+        var restored = await (Task<Solution>)restore.Invoke(null,
+            [original, candidate, new HashSet<ProjectId> { project.Id }, changedDocuments, CancellationToken.None])!;
+        var actual = restored.GetDocument(retained.Id)!;
+        var actualRoot = (await actual.GetSyntaxRootAsync())!;
+        var actualModel = (await actual.GetSemanticModelAsync())!;
+        Assert.AreSame(retainedRoot, actualRoot);
+        Assert.AreSame(retainedTree, actualRoot.SyntaxTree);
+        Assert.AreSame(retainedTree, actualModel.SyntaxTree);
+        var originalConstruction = retainedRoot.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ObjectCreationExpressionSyntax>().Single();
+        Assert.AreSame(originalConstruction.SyntaxTree, actualModel.SyntaxTree);
+        Assert.IsNotNull(actualModel.GetSymbolInfo(originalConstruction).Symbol);
+        var actualChangedRoot = (await restored.GetDocument(changed.Id)!.GetSyntaxRootAsync())!;
+        Assert.IsTrue(actualChangedRoot.HasAnnotation(annotation),
+            "Changed membership must retain annotations even when its text equals the original.");
+        Assert.IsTrue(actualChangedRoot.HasAnnotation(declarationAnnotation));
+        Assert.IsTrue(actualChangedRoot.HasAnnotation(argumentAnnotation));
+        Assert.IsTrue(actualChangedRoot.GetFirstToken().HasAnnotation(diagnosticAnnotation));
+        Assert.AreNotSame(changedRoot.SyntaxTree, await restored.GetDocument(changed.Id)!.GetSyntaxTreeAsync());
+        CollectionAssert.AreEqual(candidate.GetProject(project.Id)!.DocumentIds.ToArray(), restored.GetProject(project.Id)!.DocumentIds.ToArray());
+        Assert.AreSame(candidate.GetProject(project.Id)!.ParseOptions, restored.GetProject(project.Id)!.ParseOptions);
+        foreach (var id in addedIds)
+        {
+            var expectedDocument = candidate.GetDocument(id)!;
+            var actualDocument = restored.GetDocument(id);
+            Assert.IsNotNull(actualDocument);
+            Assert.AreEqual(expectedDocument.Id, actualDocument.Id);
+            Assert.AreEqual(expectedDocument.Project.Id, actualDocument.Project.Id);
+            Assert.AreEqual(expectedDocument.Name, actualDocument.Name);
+            CollectionAssert.AreEqual(expectedDocument.Folders.ToArray(), actualDocument.Folders.ToArray());
+            Assert.AreEqual(expectedDocument.FilePath, actualDocument.FilePath);
+            Assert.AreEqual(expectedDocument.SourceCodeKind, actualDocument.SourceCodeKind);
+            var expectedText = await expectedDocument.GetTextAsync();
+            var actualText = await actualDocument.GetTextAsync();
+            Assert.AreEqual(expectedText.ToString(), actualText.ToString());
+            Assert.AreEqual(expectedText.Encoding, actualText.Encoding);
+            Assert.AreEqual(expectedText.ChecksumAlgorithm, actualText.ChecksumAlgorithm);
+            CollectionAssert.AreEqual(expectedText.GetChecksum().ToArray(), actualText.GetChecksum().ToArray());
+            Assert.AreEqual(await expectedDocument.GetTextVersionAsync(), await actualDocument.GetTextVersionAsync());
+        }
+        var mismatched = candidate.WithDocumentSyntaxRoot(retained.Id, CSharpSyntaxTree.ParseText("class Different { }").GetRoot());
+        var failed = (Task<Solution>)restore.Invoke(null,
+            [original, mismatched, new HashSet<ProjectId> { project.Id }, changedDocuments, CancellationToken.None])!;
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () => await failed);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var cancelled = (Task<Solution>)restore.Invoke(null,
+            [original, candidate, new HashSet<ProjectId> { project.Id }, changedDocuments, cancellation.Token])!;
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await cancelled);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ChangeSignaturePreview_LateGlobalAlias_PreservesInitiallyUnchangedHostEvidence(bool diagnostic)
+    {
+        var fixture = await CreateLateAliasFixtureAsync(diagnostic, exchange: false);
+        await using var workspace = fixture.Workspace;
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = original.Projects.Single(p => p.Name == "SampleLib");
+        var factory = project.Documents.Single(d => d.FilePath == fixture.FactoryPath);
+        var factoryTree = (await factory.GetSyntaxTreeAsync())!;
+        var beforeDiagnostics = (await project.GetCompilationAsync())!.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(diagnostic ? 1 : 0, beforeDiagnostics.Length, string.Join("\n", beforeDiagnostics.Select(d => d.ToString())));
+        if (diagnostic)
+        {
+            Assert.AreEqual("CS0246", beforeDiagnostics.Single().Id);
+            Assert.AreSame(factoryTree, beforeDiagnostics.Single().Location.SourceTree);
+        }
+        await AssertLateAliasFactoryBindingsAsync(original, original, fixture.FactoryPath);
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+            SymbolLocator.BySource(fixture.TargetPath, 3, fixture.Source.Split('\n')[2].IndexOf("Compute", StringComparison.Ordinal) + 1),
+            new ChangeSignatureRequest("remove", Name: "missing"), CancellationToken.None);
+        var stored = Services.PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(stored);
+        var candidate = stored.Value.ModifiedSolution;
+        Assert.AreEqual(1, preview.CallsiteUpdates!.Sum(update => update.CallsiteCount));
+        var updatedFactory = candidate.GetDocument(factory.Id)!;
+        var updatedText = (await updatedFactory.GetTextAsync()).ToString();
+        StringAssert.Contains(updatedText, "global using __signatureAssembly = first;");
+        await AssertLateAliasFactoryBindingsAsync(original, candidate, fixture.FactoryPath);
+        var afterDiagnostics = (await candidate.GetProject(project.Id)!.GetCompilationAsync())!.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(beforeDiagnostics.Length, afterDiagnostics.Length);
+        if (diagnostic)
+        {
+            var before = beforeDiagnostics.Single();
+            var after = afterDiagnostics.Single();
+            Assert.AreEqual(before.Id, after.Id);
+            Assert.AreEqual(before.Severity, after.Severity);
+            Assert.AreEqual(before.GetMessage(System.Globalization.CultureInfo.InvariantCulture), after.GetMessage(System.Globalization.CultureInfo.InvariantCulture));
+            Assert.AreEqual(factory.Id, candidate.GetDocument(after.Location.SourceTree!)!.Id);
+            Assert.AreSame(await updatedFactory.GetSyntaxTreeAsync(), after.Location.SourceTree);
+            Assert.AreEqual(before.Location.SourceSpan.Length, after.Location.SourceSpan.Length);
+            Assert.AreEqual(updatedText.IndexOf("MissingAliasHostType", StringComparison.Ordinal), after.Location.SourceSpan.Start);
+            Assert.IsTrue(after.Location.SourceSpan.Start > before.Location.SourceSpan.Start);
+        }
+        Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        Assert.AreEqual(fixture.Source, await File.ReadAllTextAsync(fixture.TargetPath));
+        Assert.AreEqual(fixture.FactorySource, await File.ReadAllTextAsync(fixture.FactoryPath));
+        if (!diagnostic)
+        {
+            var expected = await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof");
+            Assert.AreEqual(expected, await RunSignatureFixtureAsync(candidate, "SampleLib.SignatureProof"));
+            var applied = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+            Assert.IsTrue(applied.Success, applied.Error);
+            Assert.AreEqual(expected, await RunSignatureFixtureAsync(
+                Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), "SampleLib.SignatureProof"));
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Benchmark")]
+    public Task ChangeSignaturePreview_RepositoryBudget_UnknownType() =>
+        AssertRepositorySignatureBudgetAsync("UnknownType");
+
+    [TestMethod]
+    [TestCategory("Benchmark")]
+    public Task ChangeSignaturePreview_RepositoryBudget_Add() =>
+        AssertRepositorySignatureBudgetAsync("Add");
+
+    [TestMethod]
+    [TestCategory("Benchmark")]
+    public Task ChangeSignaturePreview_RepositoryBudget_Remove() =>
+        AssertRepositorySignatureBudgetAsync("Remove");
+
+    [TestMethod]
+    [TestCategory("Benchmark")]
+    public Task ChangeSignaturePreview_RepositoryBudget_Reorder() =>
+        AssertRepositorySignatureBudgetAsync("Reorder");
+
 
     [TestMethod]
     [DataRow("add-omitted")]
