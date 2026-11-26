@@ -1,3 +1,7 @@
+using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.CodeAnalysis;
@@ -155,6 +159,123 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
         Assert.IsNull(await SymbolHandleSerializer.ResolveHandleAsync(solution, Encode(stale), CancellationToken.None));
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             SymbolHandleSerializer.ResolveHandleAsync(solution, handle, new CancellationToken(true)));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task SameAssemblyIdentityInIndependentProjects_IsAmbiguous(bool reverse) =>
+        AssertProjectIdentityAsync(reverse, sameDeclarations: false, metadataRoot: false);
+
+    [TestMethod]
+    public Task MetadataRootWithDifferentArgumentDefinitions_IsAmbiguous() =>
+        AssertProjectIdentityAsync(reverse: false, sameDeclarations: false, metadataRoot: true);
+
+    [TestMethod]
+    public Task SameDeclarationInSeparateTargetCompilations_Resolves() =>
+        AssertProjectIdentityAsync(reverse: false, sameDeclarations: true, metadataRoot: false);
+
+    private static async Task AssertProjectIdentityAsync(bool reverse, bool sameDeclarations, bool metadataRoot)
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+        var names = reverse ? new[] { "Second", "First" } : new[] { "First", "Second" };
+        foreach (var name in names)
+        {
+            solution = AddProject(solution, name, assemblyName: "Shared");
+            var id = solution.Projects.Last().Id;
+            var source = metadataRoot
+                ? "namespace Collision; public class Local { } public class Usage { public System.Collections.Generic.List<Local> Value; }"
+                : "namespace Collision; public class Generic<T> { } public class Usage { public Generic<int> Value; }";
+            var filePath = sameDeclarations ? "Shared.cs" : name + ".cs";
+            solution = solution.AddDocument(DocumentId.CreateNewId(id), filePath, source, filePath: filePath);
+        }
+        var second = solution.Projects.Single(project => project.Name == "Second");
+        var compilation = await second.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var type = ((IFieldSymbol)compilation.GetTypeByMetadataName("Collision.Usage")!.GetMembers("Value").Single()).Type;
+        var resolved = await SymbolHandleSerializer.ResolveHandleAsync(solution, SymbolHandleSerializer.CreateHandle(type), CancellationToken.None);
+        if (sameDeclarations)
+        {
+            Assert.IsInstanceOfType<INamedTypeSymbol>(resolved);
+            Assert.AreEqual("Shared.cs", resolved.DeclaringSyntaxReferences.Single().SyntaxTree.FilePath);
+        }
+        else
+        {
+            Assert.IsNull(resolved);
+        }
+    }
+
+    [TestMethod]
+    public async Task ProjectReference_ReconstructsTheSameSourceAssembly()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = AddProject(workspace.CurrentSolution, "Producer", "Producer");
+        var producer = solution.ProjectIds.Single();
+        solution = solution.AddDocument(DocumentId.CreateNewId(producer), "Producer.cs",
+            "namespace Fixture; public class Generic<T> { }", filePath: "Producer.cs");
+        solution = AddProject(solution, "Consumer", "Consumer");
+        var consumer = solution.Projects.Single(project => project.Name == "Consumer").Id;
+        solution = solution.AddProjectReference(consumer, new ProjectReference(producer))
+            .AddDocument(DocumentId.CreateNewId(consumer), "Consumer.cs",
+                "namespace Fixture; public class Usage { public Generic<int> Value; }", filePath: "Consumer.cs");
+        var compilation = await solution.GetProject(consumer)!.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var type = ((IFieldSymbol)compilation.GetTypeByMetadataName("Fixture.Usage")!.GetMembers("Value").Single()).Type;
+        var resolved = await SymbolHandleSerializer.ResolveHandleAsync(solution, SymbolHandleSerializer.CreateHandle(type), CancellationToken.None);
+        Assert.IsInstanceOfType<INamedTypeSymbol>(resolved);
+        Assert.AreEqual(producer, solution.GetProject(resolved.ContainingAssembly, CancellationToken.None)?.Id);
+        Assert.AreEqual(SpecialType.System_Int32, ((INamedTypeSymbol)resolved).TypeArguments[0].SpecialType);
+    }
+
+    [TestMethod]
+    public async Task MetadataArrayWithExplicitBounds_UsesTheLegacyPath()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = AddProject(workspace.CurrentSolution, "Consumer", "Consumer");
+        var id = solution.ProjectIds.Single();
+        solution = solution.AddMetadataReference(id, CreateBoundedArrayReference());
+        var compilation = await solution.GetProject(id)!.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var member = (IFieldSymbol)compilation.GetTypeByMetadataName("Fixture.BoundedArray")!.GetMembers("Value").Single();
+        var array = (IArrayTypeSymbol)((INamedTypeSymbol)member.Type).TypeArguments[0];
+        CollectionAssert.AreEqual(new[] { 5 }, array.Sizes.ToArray());
+        CollectionAssert.AreEqual(new[] { 1 }, array.LowerBounds.ToArray());
+        var handle = SymbolHandleSerializer.CreateHandle(member.Type);
+        Assert.IsNull(SymbolHandleSerializer.ParseHandlePayload(handle).ConstructedType);
+    }
+
+    private static Solution AddProject(Solution solution, string name, string assemblyName) =>
+        solution.AddProject(ProjectInfo.Create(ProjectId.CreateNewId(), VersionStamp.Create(), name, assemblyName,
+            LanguageNames.CSharp, compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
+            metadataReferences: [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]));
+
+    private static PortableExecutableReference CreateBoundedArrayReference()
+    {
+        var metadata = new MetadataBuilder();
+        var version = new Version(1, 0, 0, 0);
+        metadata.AddModule(0, metadata.GetOrAddString("BoundedArray.dll"), metadata.GetOrAddGuid(Guid.NewGuid()), default, default);
+        metadata.AddAssembly(metadata.GetOrAddString("BoundedArray"), version, default, default, 0, AssemblyHashAlgorithm.None);
+        var coreIdentity = typeof(object).Assembly.GetName();
+        var core = metadata.AddAssemblyReference(metadata.GetOrAddString(coreIdentity.Name!), coreIdentity.Version!,
+            default, metadata.GetOrAddBlob(coreIdentity.GetPublicKeyToken()!), 0, default);
+        var systemObject = metadata.AddTypeReference(core, metadata.GetOrAddString("System"), metadata.GetOrAddString("Object"));
+        var list = metadata.AddTypeReference(core, metadata.GetOrAddString("System.Collections.Generic"), metadata.GetOrAddString("List`1"));
+        var firstField = MetadataTokens.FieldDefinitionHandle(1);
+        var firstMethod = MetadataTokens.MethodDefinitionHandle(1);
+        metadata.AddTypeDefinition(TypeAttributes.NotPublic, default, metadata.GetOrAddString("<Module>"),
+            default, firstField, firstMethod);
+        metadata.AddTypeDefinition(TypeAttributes.Public, metadata.GetOrAddString("Fixture"), metadata.GetOrAddString("BoundedArray"),
+            systemObject, firstField, firstMethod);
+        var signature = new BlobBuilder();
+        new BlobEncoder(signature).FieldSignature().GenericInstantiation(list, 1, isValueType: false).AddArgument()
+            .Array(element => element.Int32(), shape => shape.Shape(2, [5], [1]));
+        metadata.AddFieldDefinition(FieldAttributes.Public | FieldAttributes.Static, metadata.GetOrAddString("Value"),
+            metadata.GetOrAddBlob(signature));
+        var image = new BlobBuilder();
+        new ManagedPEBuilder(new PEHeaderBuilder(imageCharacteristics: Characteristics.Dll),
+            new MetadataRootBuilder(metadata), new BlobBuilder()).Serialize(image);
+        return MetadataReference.CreateFromImage(image.ToArray());
     }
 
     private static string Encode<T>(T payload) => Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(payload));

@@ -243,7 +243,8 @@ public static class SymbolHandleSerializer
                         : null,
                     NativeInteger = named.IsNativeIntegerType,
                 };
-            case IArrayTypeSymbol array when (array.IsSZArray || array.Rank >= 2) && array.CustomModifiers.IsEmpty:
+            case IArrayTypeSymbol array when (array.IsSZArray || array.Rank >= 2) && array.CustomModifiers.IsEmpty &&
+                    array.Sizes.IsEmpty && array.LowerBounds.IsDefault:
                 var element = EncodeType(array.ElementType, array.ElementNullableAnnotation, depth + 1);
                 return element is null ? null : new ConstructedTypeIdentity(RecipeKind.Array, annotation)
                 {
@@ -321,7 +322,7 @@ public static class SymbolHandleSerializer
         Solution solution, ConstructedTypeIdentity recipe, CancellationToken ct)
     {
         var canonicalRecipe = JsonSerializer.Serialize(recipe);
-        INamedTypeSymbol? result = null;
+        (INamedTypeSymbol Symbol, Compilation Compilation)? result = null;
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
@@ -353,10 +354,96 @@ public static class SymbolHandleSerializer
             {
                 return null;
             }
-            result ??= resolved;
+            if (result is { } previous && !HaveEquivalentDefinitions(previous.Symbol, previous.Compilation, resolved, compilation, ct))
+            {
+                return null;
+            }
+            result ??= (resolved, compilation);
         }
-        return result;
+        return result?.Symbol;
     }
+
+    private static bool HaveEquivalentDefinitions(ITypeSymbol left, Compilation leftCompilation,
+        ITypeSymbol right, Compilation rightCompilation, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        switch (left, right)
+        {
+            case (IArrayTypeSymbol leftArray, IArrayTypeSymbol rightArray):
+                return HaveEquivalentDefinitions(leftArray.ElementType, leftCompilation, rightArray.ElementType, rightCompilation, ct);
+            case (ITypeParameterSymbol { ContainingType: { } leftOwner }, ITypeParameterSymbol { ContainingType: { } rightOwner }):
+                return SameDefinition(leftOwner.OriginalDefinition, leftCompilation, rightOwner.OriginalDefinition, rightCompilation, ct);
+            case (INamedTypeSymbol leftNamed, INamedTypeSymbol rightNamed):
+                if (!SameDefinition(leftNamed.OriginalDefinition, leftCompilation, rightNamed.OriginalDefinition, rightCompilation, ct))
+                {
+                    return false;
+                }
+                if (leftNamed.ContainingType is { } leftContaining && rightNamed.ContainingType is { } rightContaining &&
+                    !HaveEquivalentDefinitions(leftContaining, leftCompilation, rightContaining, rightCompilation, ct))
+                {
+                    return false;
+                }
+                for (var index = 0; index < leftNamed.TypeArguments.Length; index++)
+                {
+                    if (!HaveEquivalentDefinitions(leftNamed.TypeArguments[index], leftCompilation,
+                            rightNamed.TypeArguments[index], rightCompilation, ct))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            case (IDynamicTypeSymbol, IDynamicTypeSymbol):
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool SameDefinition(INamedTypeSymbol left, Compilation leftCompilation,
+        INamedTypeSymbol right, Compilation rightCompilation, CancellationToken ct)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        var leftSource = left.DeclaringSyntaxReferences;
+        var rightSource = right.DeclaringSyntaxReferences;
+        if (!leftSource.IsEmpty || !rightSource.IsEmpty)
+        {
+            // Ordinary project references and target frameworks may expose different Roslyn
+            // symbols for the same source declaration. Independent declarations are ambiguous.
+            return leftSource.Length == rightSource.Length &&
+                OrderDeclarations(leftSource).Zip(OrderDeclarations(rightSource)).All(pair =>
+                    !string.IsNullOrEmpty(pair.First.SyntaxTree.FilePath) &&
+                    pair.First.SyntaxTree.FilePath == pair.Second.SyntaxTree.FilePath &&
+                    pair.First.Span == pair.Second.Span &&
+                    (ReferenceEquals(pair.First.SyntaxTree, pair.Second.SyntaxTree) ||
+                        pair.First.GetSyntax(ct).IsEquivalentTo(pair.Second.GetSyntax(ct))));
+        }
+
+        if (leftCompilation.GetMetadataReference(left.ContainingAssembly) is not PortableExecutableReference leftReference ||
+            rightCompilation.GetMetadataReference(right.ContainingAssembly) is not PortableExecutableReference rightReference)
+        {
+            return false;
+        }
+        if (ReferenceEquals(leftReference, rightReference))
+        {
+            return true;
+        }
+        // Equal CLR assembly names can describe distinct images in different compilations.
+        using var leftMetadata = leftReference.GetMetadata();
+        using var rightMetadata = rightReference.GetMetadata();
+        return leftMetadata is AssemblyMetadata leftAssembly && rightMetadata is AssemblyMetadata rightAssembly
+            && leftAssembly.GetModules().Select(module => module.GetModuleVersionId())
+                .SequenceEqual(rightAssembly.GetModules().Select(module => module.GetModuleVersionId()));
+    }
+
+    private static IEnumerable<SyntaxReference> OrderDeclarations(
+        ImmutableArray<SyntaxReference> declarations) =>
+        declarations.OrderBy(reference => reference.SyntaxTree.FilePath, StringComparer.Ordinal)
+            .ThenBy(reference => reference.Span.Start)
+            .ThenBy(reference => reference.Span.Length);
 
     private static ITypeSymbol? ResolveType(Compilation compilation, Dictionary<string, IAssemblySymbol?> assemblies,
         ConstructedTypeIdentity recipe, CancellationToken ct)
