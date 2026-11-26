@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -13,13 +14,15 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 /// <remarks>
 /// A handle encodes the symbol's metadata name, display name, source location and, for
-/// metadata members, exact assembly and declaration identity as a
+/// metadata members or constructed named types, exact assembly and structural identity as a
 /// base-64-encoded JSON payload. The encoding is reversible and may contain a source path; it is
 /// an API locator, not a confidential or non-disclosing token. Resolution first attempts lookup
-/// by exact member identity, metadata name, then source position.
+/// by exact member or constructed type identity when present, otherwise by metadata name and source position.
 /// </remarks>
 public static class SymbolHandleSerializer
 {
+    private const int MaxConstructedTypeDepth = 8;
+
     /// <summary>
     /// Creates a portable encoded handle for the given symbol that can be passed back to
     /// <see cref="ResolveHandleAsync"/> to recover the symbol.
@@ -44,13 +47,18 @@ public static class SymbolHandleSerializer
                 GetTypeMetadataName(symbol.ContainingType),
                 declarationId);
         }
+        var constructedType = symbol is INamedTypeSymbol { IsUnboundGenericType: false } named
+            && (named.IsTupleType || HasConstructedLevel(named))
+            ? EncodeType(named, named.NullableAnnotation, depth: 1)
+            : null;
         var payload = new SymbolHandlePayload(
             MetadataName: symbol is INamedTypeSymbol namedType ? namedType.ToDisplayString() : null,
             DisplayName: symbol.ToDisplayString(),
             FilePath: lineSpan?.Path,
             Line: lineSpan?.StartLinePosition.Line + 1,
             Column: lineSpan?.StartLinePosition.Character + 1,
-            MemberIdentity: memberIdentity);
+            MemberIdentity: memberIdentity,
+            ConstructedType: constructedType);
 
         var json = JsonSerializer.Serialize(payload);
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
@@ -72,6 +80,11 @@ public static class SymbolHandleSerializer
         if (payload.MemberIdentity is not null)
         {
             return await ResolveMetadataMemberAsync(solution, payload.MemberIdentity, ct).ConfigureAwait(false);
+        }
+
+        if (payload.ConstructedType is { } constructedType)
+        {
+            return await ResolveConstructedTypeAsync(solution, constructedType, ct).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(payload.MetadataName))
@@ -149,10 +162,17 @@ public static class SymbolHandleSerializer
             throw new PublicArgumentException("symbolHandle member identity is incomplete.", nameof(symbolHandle));
         }
 
+        if (payload.ConstructedType is { } constructedType &&
+            (payload.MemberIdentity is not null || constructedType.Kind != RecipeKind.Named ||
+             !IsValidRecipe(constructedType, depth: 1)))
+        {
+            throw new PublicArgumentException("symbolHandle constructed type identity is invalid.", nameof(symbolHandle));
+        }
+
         var hasMetadata = !string.IsNullOrWhiteSpace(payload.MetadataName);
         var hasSource = !string.IsNullOrWhiteSpace(payload.FilePath) && payload.Line.HasValue && payload.Column.HasValue;
         var hasDisplay = !string.IsNullOrWhiteSpace(payload.DisplayName);
-        if (!hasMetadata && !hasSource && !hasDisplay && payload.MemberIdentity is null)
+        if (!hasMetadata && !hasSource && !hasDisplay && payload.MemberIdentity is null && payload.ConstructedType is null)
         {
             throw new PublicArgumentException(
                 "symbolHandle payload must include MetadataName, source location (filePath, line, column), or DisplayName.",
@@ -168,12 +188,267 @@ public static class SymbolHandleSerializer
         string? FilePath,
         int? Line,
         int? Column,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MemberIdentity? MemberIdentity = null);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MemberIdentity? MemberIdentity = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ConstructedTypeIdentity? ConstructedType = null);
 
     internal sealed record MemberIdentity(
         string AssemblyIdentity,
         string ContainingTypeMetadataName,
         string DeclarationId);
+
+    internal enum RecipeKind { Named = 1, Array, Dynamic, TypeParameter }
+
+    internal sealed record ConstructedTypeIdentity(RecipeKind Kind, NullableAnnotation Annotation)
+    {
+        public string? Assembly { get; init; }
+        public TypeLevel[]? Chain { get; init; }
+        public string?[]? TupleNames { get; init; }
+        public bool NativeInteger { get; init; }
+        public ConstructedTypeIdentity? Element { get; init; }
+        public int? Rank { get; init; }
+        public int? Ordinal { get; init; }
+    }
+
+    internal sealed record TypeLevel(string Name, ConstructedTypeIdentity[]? Arguments);
+
+    private static bool HasConstructedLevel(INamedTypeSymbol type)
+    {
+        for (INamedTypeSymbol? level = type; level is not null; level = level.ContainingType)
+        {
+            if (level.Arity > 0 && !SymbolEqualityComparer.IncludeNullability.Equals(level, level.OriginalDefinition))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static ConstructedTypeIdentity? EncodeType(ITypeSymbol type, NullableAnnotation annotation, int depth)
+    {
+        if (depth > MaxConstructedTypeDepth || type.TypeKind == TypeKind.Error)
+        {
+            return null;
+        }
+
+        switch (type)
+        {
+            case INamedTypeSymbol { IsAnonymousType: false, IsUnboundGenericType: false } named:
+                var chain = EncodeTypeChain(named, depth, includeArguments: true);
+                return chain is null ? null : new ConstructedTypeIdentity(RecipeKind.Named, annotation)
+                {
+                    Assembly = named.ContainingAssembly.Identity.ToString(),
+                    Chain = chain,
+                    TupleNames = named.IsTupleType
+                        ? named.TupleElements.Select(element => element.IsExplicitlyNamedTupleElement ? element.Name : null).ToArray()
+                        : null,
+                    NativeInteger = named.IsNativeIntegerType,
+                };
+            case IArrayTypeSymbol array when (array.IsSZArray || array.Rank >= 2) && array.CustomModifiers.IsEmpty:
+                var element = EncodeType(array.ElementType, array.ElementNullableAnnotation, depth + 1);
+                return element is null ? null : new ConstructedTypeIdentity(RecipeKind.Array, annotation)
+                {
+                    Element = element,
+                    Rank = array.Rank,
+                };
+            case IDynamicTypeSymbol:
+                return new(RecipeKind.Dynamic, annotation);
+            case ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type, ContainingType: { } owner } parameter:
+                return new(RecipeKind.TypeParameter, annotation)
+                {
+                    Assembly = owner.ContainingAssembly.Identity.ToString(),
+                    Chain = EncodeTypeChain(owner.OriginalDefinition, depth, includeArguments: false),
+                    Ordinal = parameter.Ordinal,
+                };
+            default:
+                return null;
+        }
+    }
+
+    private static TypeLevel[]? EncodeTypeChain(INamedTypeSymbol type, int depth, bool includeArguments)
+    {
+        var levels = new Stack<TypeLevel>();
+        for (INamedTypeSymbol? level = type; level is not null; level = level.ContainingType)
+        {
+            ConstructedTypeIdentity[]? arguments = null;
+            if (includeArguments && level.Arity > 0 &&
+                !SymbolEqualityComparer.IncludeNullability.Equals(level, level.ConstructedFrom))
+            {
+                arguments = new ConstructedTypeIdentity[level.Arity];
+                for (var index = 0; index < arguments.Length; index++)
+                {
+                    if (!level.GetTypeArgumentCustomModifiers(index).IsEmpty ||
+                        EncodeType(level.TypeArguments[index], level.TypeArgumentNullableAnnotations[index], depth + 1) is not { } argument)
+                    {
+                        return null;
+                    }
+                    arguments[index] = argument;
+                }
+            }
+            levels.Push(new(level.ContainingType is null ? GetTypeMetadataName(level) : level.MetadataName, arguments));
+        }
+        return levels.ToArray();
+    }
+
+    private static bool IsValidRecipe(ConstructedTypeIdentity? recipe, int depth)
+    {
+        if (recipe is null || depth > MaxConstructedTypeDepth || !Enum.IsDefined(recipe.Annotation))
+        {
+            return false;
+        }
+
+        var hasType = !string.IsNullOrWhiteSpace(recipe.Assembly) && recipe.Chain is { Length: > 0 };
+        var noType = recipe.Assembly is null && recipe.Chain is null && recipe.TupleNames is null && !recipe.NativeInteger;
+        var noArray = recipe.Element is null && recipe.Rank is null;
+        return recipe.Kind switch
+        {
+            RecipeKind.Named => hasType && noArray && recipe.Ordinal is null &&
+                (recipe.TupleNames is null || (recipe.TupleNames.Length > 0 && !recipe.NativeInteger &&
+                    recipe.TupleNames.All(name => name is null || !string.IsNullOrWhiteSpace(name)))) &&
+                recipe.Chain is { } levels && levels.All(level =>
+                    !string.IsNullOrWhiteSpace(level?.Name) &&
+                    (level.Arguments is null || (level.Arguments.Length > 0 &&
+                        level.Arguments.All(argument => IsValidRecipe(argument, depth + 1))))),
+            RecipeKind.Array => noType && recipe.Ordinal is null && recipe.Rank is >= 1 && IsValidRecipe(recipe.Element, depth + 1),
+            RecipeKind.Dynamic => noType && noArray && recipe.Ordinal is null,
+            RecipeKind.TypeParameter => hasType && noArray && recipe.Ordinal is >= 0 &&
+                recipe.TupleNames is null && !recipe.NativeInteger && recipe.Chain is { } owner &&
+                owner.All(level => !string.IsNullOrWhiteSpace(level?.Name) && level.Arguments is null),
+            _ => false,
+        };
+    }
+
+    private static async Task<ISymbol?> ResolveConstructedTypeAsync(
+        Solution solution, ConstructedTypeIdentity recipe, CancellationToken ct)
+    {
+        var canonicalRecipe = JsonSerializer.Serialize(recipe);
+        INamedTypeSymbol? result = null;
+        foreach (var project in solution.Projects)
+        {
+            ct.ThrowIfCancellationRequested();
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null)
+            {
+                continue;
+            }
+            var assemblies = new Dictionary<string, IAssemblySymbol?>(StringComparer.Ordinal);
+            foreach (var assembly in compilation.References.Select(compilation.GetAssemblyOrModuleSymbol)
+                .OfType<IAssemblySymbol>().Prepend(compilation.Assembly))
+            {
+                ct.ThrowIfCancellationRequested();
+                var identity = assembly.Identity.ToString();
+                if (!assemblies.TryAdd(identity, assembly) && !SymbolEqualityComparer.Default.Equals(assemblies[identity], assembly))
+                {
+                    assemblies[identity] = null;
+                }
+            }
+
+            if (ResolveType(compilation, assemblies, recipe, ct) is not INamedTypeSymbol resolved)
+            {
+                continue;
+            }
+            // Compare the structural identity, including labels and annotations that display or symbol
+            // equality alone can overlook. Never publish an approximate reconstruction.
+            var encoded = EncodeType(resolved, resolved.NullableAnnotation, depth: 1);
+            if (encoded is null || !string.Equals(JsonSerializer.Serialize(encoded), canonicalRecipe, StringComparison.Ordinal))
+            {
+                return null;
+            }
+            result ??= resolved;
+        }
+        return result;
+    }
+
+    private static ITypeSymbol? ResolveType(Compilation compilation, Dictionary<string, IAssemblySymbol?> assemblies,
+        ConstructedTypeIdentity recipe, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        switch (recipe.Kind)
+        {
+            case RecipeKind.Dynamic:
+                return compilation.DynamicType.WithNullableAnnotation(recipe.Annotation);
+            case RecipeKind.Array when recipe.Element is { } element && recipe.Rank is { } rank:
+                return ResolveType(compilation, assemblies, element, ct) is { } elementType
+                    ? compilation.CreateArrayTypeSymbol(elementType, rank, element.Annotation).WithNullableAnnotation(recipe.Annotation)
+                    : null;
+            case RecipeKind.Named or RecipeKind.TypeParameter when recipe.Assembly is { } assemblyName &&
+                assemblies.TryGetValue(assemblyName, out var assembly) && assembly is not null && recipe.Chain is { } chain:
+                var named = ResolveTypeChain(compilation, assemblies, assembly, chain, ct);
+                if (named is null)
+                {
+                    return null;
+                }
+                if (recipe.Kind == RecipeKind.TypeParameter)
+                {
+                    return recipe.Ordinal is { } ordinal && ordinal < named.TypeParameters.Length
+                        ? named.TypeParameters[ordinal].WithNullableAnnotation(recipe.Annotation)
+                        : null;
+                }
+                if (recipe.NativeInteger)
+                {
+                    if (named.SpecialType is not (SpecialType.System_IntPtr or SpecialType.System_UIntPtr))
+                    {
+                        return null;
+                    }
+                    named = compilation.CreateNativeIntegerTypeSymbol(signed: named.SpecialType == SpecialType.System_IntPtr);
+                }
+                if (recipe.TupleNames is { } names)
+                {
+                    if (!named.IsTupleType || names.Length != named.TupleElements.Length)
+                    {
+                        return null;
+                    }
+                    named = compilation.CreateTupleTypeSymbol(named, names.ToImmutableArray(),
+                        elementLocations: default,
+                        elementNullableAnnotations: named.TupleElements.Select(element => element.NullableAnnotation).ToImmutableArray());
+                }
+                return named.WithNullableAnnotation(recipe.Annotation);
+            default:
+                return null;
+        }
+    }
+
+    private static INamedTypeSymbol? ResolveTypeChain(Compilation compilation, Dictionary<string, IAssemblySymbol?> assemblies,
+        IAssemblySymbol assembly, TypeLevel[] chain, CancellationToken ct)
+    {
+        INamedTypeSymbol? current = null;
+        for (var index = 0; index < chain.Length; index++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var level = chain[index];
+            if (current is null)
+            {
+                current = assembly.GetTypeByMetadataName(level.Name);
+            }
+            else
+            {
+                var matches = current.GetTypeMembers().Where(type => type.MetadataName == level.Name).Take(2).ToArray();
+                current = matches.Length == 1 ? matches[0] : null;
+            }
+            if (current is null)
+            {
+                return null;
+            }
+            if (level.Arguments is not { } arguments)
+            {
+                continue;
+            }
+            if (arguments.Length != current.Arity)
+            {
+                return null;
+            }
+            var types = ImmutableArray.CreateBuilder<ITypeSymbol>(arguments.Length);
+            foreach (var argument in arguments)
+            {
+                if (ResolveType(compilation, assemblies, argument, ct) is not { } type)
+                {
+                    return null;
+                }
+                types.Add(type);
+            }
+            current = current.Construct(types.MoveToImmutable(), arguments.Select(argument => argument.Annotation).ToImmutableArray());
+        }
+        return current;
+    }
 
     private static string GetTypeMetadataName(INamedTypeSymbol type)
     {
