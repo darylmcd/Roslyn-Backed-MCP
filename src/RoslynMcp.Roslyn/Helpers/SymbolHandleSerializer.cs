@@ -48,13 +48,15 @@ public static class SymbolHandleSerializer
                 GetTypeMetadataName(symbol.ContainingType),
                 declarationId);
         }
-        var constructedType = symbol is INamedTypeSymbol { IsUnboundGenericType: false } named
-            && (named.IsTupleType || HasConstructedLevel(named))
-            ? EncodeType(named, named.NullableAnnotation, depth: 1, signatureOwner: null)
-            : null;
+        var candidate = symbol is INamedTypeSymbol { IsUnboundGenericType: false } named &&
+            (named.IsTupleType || HasConstructedLevel(named)) ? named : null;
+        var constructedType = candidate is null
+            ? null
+            : EncodeType(candidate, candidate.NullableAnnotation, depth: 1, signatureOwner: null);
         // A legacy location can select the open type when its parameter and the method
         // parameter have the same name. Older readers must have no locator to fall back to.
-        if (symbol is INamedTypeSymbol candidate && ContainsMethodOwnedParameter(candidate))
+        if (candidate is not null &&
+            (constructedType is null ? ContainsMethodOwnedParameter(candidate) : ContainsMethodOwner(constructedType)))
         {
             var methodPayload = new SymbolHandlePayload(null, symbol.ToDisplayString(), null, null, null,
                 MethodConstructedType: constructedType);
@@ -256,17 +258,51 @@ public static class SymbolHandleSerializer
         return false;
     }
 
-    private static bool ContainsMethodOwnedParameter(ITypeSymbol type) => type switch
+    private static bool ContainsMethodOwnedParameter(ITypeSymbol type)
     {
-        ITypeParameterSymbol parameter => parameter.TypeParameterKind == TypeParameterKind.Method,
-        IArrayTypeSymbol array => ContainsMethodOwnedParameter(array.ElementType),
-        IPointerTypeSymbol pointer => ContainsMethodOwnedParameter(pointer.PointedAtType),
-        IFunctionPointerTypeSymbol pointer => ContainsMethodOwnedParameter(pointer.Signature.ReturnType) ||
-            pointer.Signature.Parameters.Any(parameter => ContainsMethodOwnedParameter(parameter.Type)),
-        INamedTypeSymbol named => named.TypeArguments.Any(ContainsMethodOwnedParameter) ||
-            (named.ContainingType is { } containing && ContainsMethodOwnedParameter(containing)),
-        _ => false,
-    };
+        // Unsupported constructions can exceed the recipe depth limit. Walk each shared
+        // Roslyn symbol once so the fallback does not depend on recursion depth.
+        var visited = new HashSet<ITypeSymbol>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<ITypeSymbol>();
+        pending.Push(type);
+        while (pending.TryPop(out var current))
+        {
+            if (!visited.Add(current))
+            {
+                continue;
+            }
+
+            switch (current)
+            {
+                case ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method }:
+                    return true;
+                case IArrayTypeSymbol array:
+                    pending.Push(array.ElementType);
+                    break;
+                case IPointerTypeSymbol pointer:
+                    pending.Push(pointer.PointedAtType);
+                    break;
+                case IFunctionPointerTypeSymbol pointer:
+                    pending.Push(pointer.Signature.ReturnType);
+                    foreach (var parameter in pointer.Signature.Parameters)
+                    {
+                        pending.Push(parameter.Type);
+                    }
+                    break;
+                case INamedTypeSymbol named:
+                    foreach (var argument in named.TypeArguments)
+                    {
+                        pending.Push(argument);
+                    }
+                    if (named.ContainingType is { } containing)
+                    {
+                        pending.Push(containing);
+                    }
+                    break;
+            }
+        }
+        return false;
+    }
 
     private static bool ContainsMethodOwner(ConstructedTypeIdentity recipe) =>
         recipe.Kind == RecipeKind.MethodTypeParameter ||
@@ -340,7 +376,8 @@ public static class SymbolHandleSerializer
             !SymbolEqualityComparer.Default.Equals(method, method.OriginalDefinition) ||
             !SymbolEqualityComparer.Default.Equals(containing, containing.OriginalDefinition) ||
             !method.ReturnTypeCustomModifiers.IsEmpty || !method.RefCustomModifiers.IsEmpty ||
-            !method.UnmanagedCallingConventionTypes.IsEmpty)
+            !method.UnmanagedCallingConventionTypes.IsEmpty ||
+            EncodeExplicitInterfaces(method, depth) is not { } targets)
         {
             return null;
         }
@@ -361,7 +398,13 @@ public static class SymbolHandleSerializer
         }
         signature[^1] = new(method.RefKind, returnType);
 
-        var explicitInterfaces = new InterfaceMethodIdentity[method.ExplicitInterfaceImplementations.Length];
+        return new(method.MetadataName, method.Arity, method.IsStatic, method.CallingConvention, method.MethodKind, signature,
+            targets.Select(target => target.Identity).ToArray());
+    }
+
+    private static (IMethodSymbol Symbol, InterfaceMethodIdentity Identity)[]? EncodeExplicitInterfaces(IMethodSymbol method, int depth)
+    {
+        var explicitInterfaces = new (IMethodSymbol Symbol, InterfaceMethodIdentity Identity)[method.ExplicitInterfaceImplementations.Length];
         for (var index = 0; index < explicitInterfaces.Length; index++)
         {
             var implemented = method.ExplicitInterfaceImplementations[index];
@@ -371,10 +414,10 @@ public static class SymbolHandleSerializer
             {
                 return null;
             }
-            explicitInterfaces[index] = new(interfaceType, implemented.MetadataName);
+
+            explicitInterfaces[index] = (implemented, new(interfaceType, implemented.MetadataName));
         }
-        return new(method.MetadataName, method.Arity, method.IsStatic, method.CallingConvention, method.MethodKind, signature,
-            explicitInterfaces.OrderBy(identity => JsonSerializer.Serialize(identity), StringComparer.Ordinal).ToArray());
+        return explicitInterfaces.OrderBy(target => JsonSerializer.Serialize(target.Identity), StringComparer.Ordinal).ToArray();
     }
 
     private static TypeLevel[]? EncodeTypeChain(
@@ -485,7 +528,7 @@ public static class SymbolHandleSerializer
             {
                 return null;
             }
-            if (result is { } previous && !HaveEquivalentDefinitions(previous.Symbol, previous.Compilation, resolved, compilation, ct))
+            if (result is { } previous && !HaveEquivalentDefinitions(previous.Symbol, previous.Compilation, resolved, compilation, ct, signatureOwners: null))
             {
                 return null;
             }
@@ -495,21 +538,24 @@ public static class SymbolHandleSerializer
     }
 
     private static bool HaveEquivalentDefinitions(ITypeSymbol left, Compilation leftCompilation,
-        ITypeSymbol right, Compilation rightCompilation, CancellationToken ct)
+        ITypeSymbol right, Compilation rightCompilation, CancellationToken ct,
+        (IMethodSymbol Left, IMethodSymbol Right)? signatureOwners)
     {
         ct.ThrowIfCancellationRequested();
         switch (left, right)
         {
             case (IArrayTypeSymbol leftArray, IArrayTypeSymbol rightArray):
-                return HaveEquivalentDefinitions(leftArray.ElementType, leftCompilation, rightArray.ElementType, rightCompilation, ct);
+                return HaveEquivalentDefinitions(leftArray.ElementType, leftCompilation, rightArray.ElementType, rightCompilation, ct, signatureOwners);
             case (ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method, DeclaringMethod: { } leftMethod } leftParameter,
                   ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method, DeclaringMethod: { } rightMethod } rightParameter):
-                return leftParameter.Ordinal == rightParameter.Ordinal &&
-                    SameDefinition(leftMethod.ContainingType.OriginalDefinition, leftCompilation,
-                        rightMethod.ContainingType.OriginalDefinition, rightCompilation, ct) &&
-                    EncodeMethodOwner(leftMethod, depth: 1) is { } leftIdentity &&
-                    EncodeMethodOwner(rightMethod, depth: 1) is { } rightIdentity &&
-                    string.Equals(JsonSerializer.Serialize(leftIdentity), JsonSerializer.Serialize(rightIdentity), StringComparison.Ordinal);
+                if (leftParameter.Ordinal != rightParameter.Ordinal)
+                {
+                    return false;
+                }
+                return signatureOwners is { } pair
+                    ? SymbolEqualityComparer.Default.Equals(leftMethod, pair.Left) &&
+                        SymbolEqualityComparer.Default.Equals(rightMethod, pair.Right)
+                    : HaveEquivalentMethodOwners(leftMethod, leftCompilation, rightMethod, rightCompilation, ct);
             case (ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type, ContainingType: { } leftOwner },
                   ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type, ContainingType: { } rightOwner }):
                 return SameDefinition(leftOwner.OriginalDefinition, leftCompilation, rightOwner.OriginalDefinition, rightCompilation, ct);
@@ -519,14 +565,14 @@ public static class SymbolHandleSerializer
                     return false;
                 }
                 if (leftNamed.ContainingType is { } leftContaining && rightNamed.ContainingType is { } rightContaining &&
-                    !HaveEquivalentDefinitions(leftContaining, leftCompilation, rightContaining, rightCompilation, ct))
+                    !HaveEquivalentDefinitions(leftContaining, leftCompilation, rightContaining, rightCompilation, ct, signatureOwners))
                 {
                     return false;
                 }
                 for (var index = 0; index < leftNamed.TypeArguments.Length; index++)
                 {
                     if (!HaveEquivalentDefinitions(leftNamed.TypeArguments[index], leftCompilation,
-                            rightNamed.TypeArguments[index], rightCompilation, ct))
+                            rightNamed.TypeArguments[index], rightCompilation, ct, signatureOwners))
                     {
                         return false;
                     }
@@ -537,6 +583,54 @@ public static class SymbolHandleSerializer
             default:
                 return false;
         }
+    }
+
+    private static bool HaveEquivalentMethodOwners(IMethodSymbol left, Compilation leftCompilation,
+        IMethodSymbol right, Compilation rightCompilation, CancellationToken ct)
+    {
+        // Both complete owner recipes already matched the incoming recipe. Now compare the
+        // actual bound definitions, which can differ despite having equal CLR identities.
+        if (!SameDefinition(left.ContainingType.OriginalDefinition, leftCompilation,
+                right.ContainingType.OriginalDefinition, rightCompilation, ct) ||
+            !HaveEquivalentMethodSignatureDefinitions(left, leftCompilation, right, rightCompilation, ct) ||
+            EncodeExplicitInterfaces(left, depth: 1) is not { } leftTargets ||
+            EncodeExplicitInterfaces(right, depth: 1) is not { } rightTargets ||
+            leftTargets.Length != rightTargets.Length)
+        {
+            return false;
+        }
+
+        foreach (var (leftTarget, rightTarget) in leftTargets.Zip(rightTargets))
+        {
+            var leftInterface = leftTarget.Symbol;
+            var rightInterface = rightTarget.Symbol;
+            if (!HaveEquivalentDefinitions(leftInterface.ContainingType, leftCompilation,
+                    rightInterface.ContainingType, rightCompilation, ct, signatureOwners: null))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool HaveEquivalentMethodSignatureDefinitions(IMethodSymbol left, Compilation leftCompilation,
+        IMethodSymbol right, Compilation rightCompilation, CancellationToken ct)
+    {
+        var owners = (left, right);
+        if (left.Parameters.Length != right.Parameters.Length ||
+            !HaveEquivalentDefinitions(left.ReturnType, leftCompilation, right.ReturnType, rightCompilation, ct, owners))
+        {
+            return false;
+        }
+
+        foreach (var (leftParameter, rightParameter) in left.Parameters.Zip(right.Parameters))
+        {
+            if (!HaveEquivalentDefinitions(leftParameter.Type, leftCompilation, rightParameter.Type, rightCompilation, ct, owners))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static bool SameDefinition(INamedTypeSymbol left, Compilation leftCompilation,
@@ -658,6 +752,8 @@ public static class SymbolHandleSerializer
             {
                 return null;
             }
+            // GetMembers returns the definition for a partial method. Both declarations
+            // encode the same slot, so replay uses its definition-owned parameter.
             match = candidate;
         }
         return match?.TypeParameters[recipe.Ordinal!.Value].WithNullableAnnotation(recipe.Annotation);

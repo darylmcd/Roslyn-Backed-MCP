@@ -43,6 +43,8 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
             public Base<nuint>? NativeUnsigned;
             public Base<dynamic>? Dynamic;
             public void Method<TMethod>(System.Collections.Generic.List<TMethod> value) { }
+            public void Mixed<TMethod>(System.Collections.Generic.Dictionary<T, TMethod> value) { }
+            public void NestedMethod<TMethod>(Outer<TMethod>.Inner value) { }
         }
         public partial class MethodOwner
         {
@@ -61,6 +63,14 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
                 { void Sibling<T>(Base<T> value) { } }
                 System.Action action = () => { void LambdaLocal<T>(Base<T> value) { } };
             }
+        }
+        public interface IClosed<TInterface>
+        {
+            void Go<T>(TInterface marker, System.Collections.Generic.List<T> value);
+        }
+        public class ClosedInterfaceImpl : IClosed<int>
+        {
+            void IClosed<int>.Go<T>(int marker, System.Collections.Generic.List<T> value) { }
         }
         public class AliasImplementations : Red::Shared.IAlias, Blue::Shared.IAlias
         {
@@ -135,8 +145,9 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
 
     [TestMethod]
     [DataRow("Fixture.Uses`1", "Method")]
+    [DataRow("Fixture.Uses`1", "Mixed")]
+    [DataRow("Fixture.Uses`1", "NestedMethod")]
     [DataRow("Fixture.MethodOwner", "SameName")]
-    [DataRow("Fixture.MethodOwner", "Partial")]
     [DataRow("Fixture.MethodOwner", "RefMethod")]
     public async Task MethodOwner_RoundTripsExactConstruction(string declaringType, string name)
     {
@@ -187,6 +198,50 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
         var document = solution.Projects.Single().Documents.Single();
         var changed = solution.WithDocumentText(document.Id, SourceText.From(Source.Replace(before, after, StringComparison.Ordinal)));
         Assert.IsNull(await SymbolHandleSerializer.ResolveHandleAsync(changed, handle, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task ExplicitInterfaceOwner_KeepsUnchangedImplementingSlot()
+    {
+        using var workspace = new AdhocWorkspace();
+        var (solution, compilation) = await CreateFixtureAsync(workspace);
+        var method = compilation.GetTypeByMetadataName("Fixture.ClosedInterfaceImpl")!.GetMembers()
+            .OfType<IMethodSymbol>().Single(member => !member.ExplicitInterfaceImplementations.IsEmpty);
+        var handle = SymbolHandleSerializer.CreateHandle(method.Parameters[^1].Type);
+        Assert.IsNotNull(await SymbolHandleSerializer.ResolveHandleAsync(solution, handle, CancellationToken.None));
+        var document = solution.Projects.Single().Documents.Single();
+        var changed = solution.WithDocumentText(document.Id,
+            SourceText.From(Source.Replace("Go<T>(TInterface marker", "Go<T>(int marker", StringComparison.Ordinal)));
+        var resolved = await SymbolHandleSerializer.ResolveHandleAsync(changed, handle, CancellationToken.None);
+        Assert.IsInstanceOfType<INamedTypeSymbol>(resolved);
+        Assert.AreEqual(handle, SymbolHandleSerializer.CreateHandle(resolved));
+    }
+
+    [TestMethod]
+    public async Task PartialMethodDefinitionAndImplementation_ReplayTheSameSlot()
+    {
+        using var workspace = new AdhocWorkspace();
+        var (solution, compilation) = await CreateFixtureAsync(workspace);
+        var tree = compilation.SyntaxTrees.Single();
+        var model = compilation.GetSemanticModel(tree);
+        var declarations = (await tree.GetRootAsync()).DescendantNodes().OfType<MethodDeclarationSyntax>()
+            .Where(syntax => syntax.Identifier.ValueText == "Partial")
+            .ToArray();
+        Assert.HasCount(2, declarations);
+        var definition = model.GetDeclaredSymbol(declarations.Single(syntax => syntax.Body is null))!;
+        var implementation = model.GetDeclaredSymbol(declarations.Single(syntax => syntax.Body is not null))!;
+        Assert.IsTrue(SymbolEqualityComparer.Default.Equals(definition, implementation.PartialDefinitionPart));
+        var definitionArgument = definition.Parameters[0].Type;
+        var implementationArgument = implementation.Parameters[0].Type;
+        var definitionHandle = SymbolHandleSerializer.CreateHandle(definitionArgument);
+        var implementationHandle = SymbolHandleSerializer.CreateHandle(implementationArgument);
+        Assert.AreEqual(definitionHandle, implementationHandle);
+        var resolved = await SymbolHandleSerializer.ResolveHandleAsync(solution, implementationHandle, CancellationToken.None);
+        Assert.IsInstanceOfType<INamedTypeSymbol>(resolved);
+        AssertExactType(definitionArgument, (INamedTypeSymbol)resolved);
+        var replayed = (ITypeParameterSymbol)((INamedTypeSymbol)resolved).TypeArguments[0];
+        Assert.IsTrue(SymbolEqualityComparer.Default.Equals(definition, replayed.DeclaringMethod));
+        Assert.AreEqual(((ITypeParameterSymbol)((INamedTypeSymbol)implementationArgument).TypeArguments[0]).Ordinal, replayed.Ordinal);
     }
 
     [TestMethod]
@@ -244,10 +299,11 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
         if (overBudget)
         {
             var root = compilation.GetTypeByMetadataName("Fixture.Base`1")!;
-            for (var depth = 0; depth < 8; depth++)
+            for (var depth = 0; depth < 32; depth++)
             {
-                value = root.Construct(value);
+                value = compilation.CreateArrayTypeSymbol(value);
             }
+            value = root.Construct(value);
         }
         await AssertDisplayOnlyAsync(solution, value);
     }
@@ -266,11 +322,12 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
         using var workspace = new AdhocWorkspace();
         var (_, compilation) = await CreateFixtureAsync(workspace);
         var generic = compilation.GetTypeByMetadataName("Fixture.Base`1")!;
-        ITypeSymbol deep = compilation.GetSpecialType(SpecialType.System_Int32);
-        for (var level = 0; level < 8; level++)
+        ITypeSymbol argument = generic.TypeParameters[0];
+        for (var depth = 0; depth < 32; depth++)
         {
-            deep = generic.Construct(deep);
+            argument = compilation.CreateArrayTypeSymbol(argument);
         }
+        var deep = generic.Construct(argument);
         var source = deep.Locations.First(location => location.IsInSource).GetLineSpan();
         Assert.AreEqual(Encode(new LegacyPayload(deep.ToDisplayString(), deep.ToDisplayString(), source.Path,
                 source.StartLinePosition.Line + 1, source.StartLinePosition.Character + 1, null)),
@@ -292,14 +349,15 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
     }
 
     [TestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public async Task MethodOwnerEquivalentAndIndependentCompilations(bool sharedDeclaration)
+    [DataRow("Shared")]
+    [DataRow("IndependentOwner")]
+    [DataRow("IndependentSignatureType")]
+    public async Task MethodOwnerEquivalentAndIndependentCompilations(string scenario)
     {
         const string source = """
             public class MethodOwner
             {
-                public void Method<T>(System.Collections.Generic.List<T> argument) { }
+                public void Method<T>(Local marker, System.Collections.Generic.List<T> argument) { }
             }
             """;
         using var workspace = new AdhocWorkspace();
@@ -308,14 +366,17 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
         var second = solution.Projects.Last();
         solution = solution.AddDocument(DocumentId.CreateNewId(first.Id), "First.cs", source, filePath: "Shared.cs")
             .AddDocument(DocumentId.CreateNewId(second.Id), "Second.cs", source,
-                filePath: sharedDeclaration ? "Shared.cs" : "Independent.cs");
+                filePath: scenario == "IndependentOwner" ? "Independent.cs" : "Shared.cs")
+            .AddDocument(DocumentId.CreateNewId(first.Id), "Local.cs", "public sealed class Local { }", filePath: "Local.cs")
+            .AddDocument(DocumentId.CreateNewId(second.Id), "Local.cs", "public sealed class Local { }",
+                filePath: scenario == "IndependentSignatureType" ? "OtherLocal.cs" : "Local.cs");
         var compilation = await solution.GetProject(first.Id)!.GetCompilationAsync();
         Assert.IsNotNull(compilation);
         var method = compilation.GetTypeByMetadataName("MethodOwner")!.GetMembers("Method").OfType<IMethodSymbol>().Single();
-        var expected = method.Parameters[0].Type;
+        var expected = method.Parameters[^1].Type;
         var handle = SymbolHandleSerializer.CreateHandle(expected);
         var resolved = await SymbolHandleSerializer.ResolveHandleAsync(solution, handle, CancellationToken.None);
-        if (sharedDeclaration)
+        if (scenario == "Shared")
         {
             Assert.IsInstanceOfType<INamedTypeSymbol>(resolved);
             AssertExactType(expected, (INamedTypeSymbol)resolved);
