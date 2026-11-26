@@ -46,7 +46,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `change-signature-preview-latency` | High | — | **Qualify Change Signature preview latency against a matched baseline** — require per-case medians within 75% of main and no slower maximum. [type: perf] [source: operator decision 2026-11-26] | M | items/change-signature-preview-latency.md |
 
 ## Medium
 
