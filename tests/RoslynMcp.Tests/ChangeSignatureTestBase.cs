@@ -87,9 +87,8 @@ public abstract class ChangeSignatureTestBase : OwnedRefactoringTestBase
                 .Replace("CanonicalizeDriveRoot(string pathRoot)", "CanonicalizeDriveRoot(string pathRoot, int latencyMarker)", StringComparison.Ordinal)
                 .Replace("CanonicalizeDriveRoot(pathRoot)", "CanonicalizeDriveRoot(pathRoot, 0)", StringComparison.Ordinal));
         }
-        var build = await RunBudgetProcessAsync(fixture, "node",
-            [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "scripts", "validation-gate.mjs"),
-                "--", "dotnet", "build", "RoslynMcp.slnx", "--nologo"]);
+        var build = await RunBudgetProcessAsync(fixture, "dotnet",
+            ["build", "RoslynMcp.slnx", "--nologo", "--disable-build-servers"]);
         await File.WriteAllTextAsync(Path.Combine(output, "fixture-build.log"), build);
         var host = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly.Location;
         string hostSha256;
