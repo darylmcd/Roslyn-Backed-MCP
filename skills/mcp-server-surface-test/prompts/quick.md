@@ -30,7 +30,7 @@ If any phase below would require an apply or a worktree, mark it `skipped-safety
 ## Cross-cutting principles (apply to every call)
 
 1. **Inline severity signal.** Tag each result **PASS** / **FLAG** / **FAIL**.
-2. **Performance (`_meta.elapsedMs`).** Record per call. Quick-tier budget: single-symbol reads ≤5 s, solution scans ≤15 s. Slower than budget = FLAG, not FAIL (writer budgets are not relevant in this tier).
+2. **Performance (`_meta.elapsedMs`).** Record per-call server latency. Use p50 triage references of 5 s for single-symbol reads and 15 s for solution scans. Report count, p50 (median), p90, max, and available fixture, workspace state, server, and input-scale provenance by comparable group, as in the full tier. Record over-reference p50 as a **FLAG** with its scale in *Performance baseline*. Apply the Phase 19 latency findings filter before drafting actionable findings.
 3. **Error message quality.** Rate every observed error **actionable** / **vague** / **unhelpful**.
 4. **Cite, don't summarize.** Every finding must reference a concrete file:line and a tool call.
 5. **Always emit text per turn.** Empty tool-only turns read as silent stalls.
@@ -200,7 +200,7 @@ Quick tier does **not** emit `_latest-promotion-scorecard.json`. Promotion-tier 
 
 ### Phase 19: Finding emission
 
-Identical to the `--full` tier's Phase 19 contract — see `prompts/full.md` *Phase 19: Finding emission (dual-path)*. Quick summary:
+Apply the full tier's **Latency findings filter** in `prompts/phases/output-and-close.md`, Phase 19, before drafting the report's actionable findings and before using any emitter below. Quick summary:
 
 - **Use the shared renderer.** Dot-source `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1` and call `Render-FindingIssue -Finding $f`. Same renderer the maintainer's `/backlog-intake --publish` uses, so the body bytes are identical across both paths.
 - **Required envelope fields:** `id`, `source-repo`, `severity`, `area`, `server-version` (from `server_info.version` at Phase -1), `anchors`, `finding`, `repro`, `proposed-fix`. The `area` enum includes `security` — pick it for any pre-disclosure-relevant finding so the refusal contract triggers regardless of severity.

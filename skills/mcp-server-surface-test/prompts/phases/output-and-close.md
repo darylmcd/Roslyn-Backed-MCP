@@ -147,6 +147,12 @@ Re-test 3–5 previously recorded issues from whichever prior source the audited
 
 ### Phase 19: Finding emission (tri-path: fragments, auto-file, stdout-print)
 
+**Latency findings filter.** Apply this filter once to the latency observations before drafting sections 13 and 14. Use the resulting actionable findings for every emitter (stdout, issue, and fragment).
+
+- Keep a p50 over its triage reference as a **FLAG** with scale and evidence in *Performance baseline* only. Triage references are for audit scoring. Use the server and client deadline contracts and the audited repo's own acceptance criteria for those decisions.
+- A latency **FAIL** and actionable finding requires a demonstrated server request-deadline or cancellation-handling failure (including a witnessed server hang), or a reproducible matched-baseline regression. For the latter, compare paired prior/current server runs with the same tool and comparable input, the same machine, audited revision and fixture state, protocol and warm-up/cache state, and identical timing metric. Record p50 and max for both sides.
+- Record ordinary caller cancellation, a client/harness deadline, or an operator probe cutoff as an incomplete sample unless independent evidence demonstrates a server failure. Exclude incomplete samples from the latency statistics. When a suspected slowdown lacks a matched baseline, record that evidence gap in *Performance baseline*.
+
 For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), render one finding envelope and emit it to **one of three destinations** depending on the `--output-mode` flag and the operator's identity.
 
 **Routing decision (compute once, before iterating findings):**
@@ -262,10 +268,12 @@ The refusal is non-negotiable and applies even when the maintainer is detected o
 6. *Debug log capture* has at least one entry or explicitly states `client did not surface MCP log notifications`.
 7. **Self-check.** For each entry currently marked `exercised`, `exercised-apply`, or `exercised-preview-only` in the ledger, confirm the draft contains at least one tool-call result (or inline evidence line) for that tool name. Any entry lacking call evidence MUST be downgraded to `scoped-but-skipped` with a note citing the missed phase and reason. Entries marked `scoped-but-skipped` score `needs-more-evidence` in the experimental promotion scorecard — identical to `blocked`. This step runs before scorecard computation.
 8. **Compute the experimental promotion scorecard.** For each experimental entry, use this rubric:
-   - **`promote`** — ALL of: exercised end-to-end with ≥1 non-default parameter path; schema matched behaviour on every probe; zero FAIL findings in this run or prior backlog; p50 `elapsedMs` within budget (single-symbol reads ≤5 s, solution scans ≤15 s, writers ≤30 s); preview/apply round-tripped cleanly where applicable; error path actionable on ≥1 negative probe; catalog description matched actual behaviour.
+   - **`promote`** — ALL of: exercised end-to-end with ≥1 non-default parameter path, schema matched behaviour on every probe, zero FAIL findings in this run or prior backlog, latency criterion below met, preview/apply round-tripped cleanly where applicable, error path actionable on ≥1 negative probe, and catalog description matched actual behaviour.
    - **`keep-experimental`** — exercised with pass signal but missing ≥1 promote criterion (typically: writer round-trip not performed, or `--no-worktree` gated the apply, or a non-default path was not probed).
    - **`needs-more-evidence`** — not exercised (`skipped-repo-shape` / `skipped-safety` / `blocked` / `scoped-but-skipped`) OR one exercise too shallow to judge. Default for `blocked` and `scoped-but-skipped` entries.
    - **`deprecate`** — exercised, produced FAIL findings warranting removal. Pair with an *MCP server issues* entry.
+
+   **Latency criterion.** Use all comparable sample groups for the tool's single recommendation. Require no latency FAIL and p50 within its class triage reference in each group. An over-reference group can meet the criterion when the audited repo already documents a validated product-specific latency acceptance at comparable scale and timing metric and matching evidence meets it. Otherwise record the **FLAG** and concrete scale/evidence note and use `keep-experimental` for otherwise promote-eligible entries. An over-reference FLAG alone is ineligible for deprecation.
 9. *Schema vs behaviour drift*, *Error message quality*, *Parameter-path coverage*, *Performance baseline* tables populated. Every exercised tool contributes ≥1 row to *Performance baseline*; the other three can be empty-with-reason.
 10. *Prompt verification* has one row per exercised prompt.
 
@@ -334,7 +342,7 @@ The scorecard lives **next to its source evidence** in the audited repo's own `a
         "phase-12 apply round-trip clean (preview-token honored, post-apply compile_check green)",
         "phase-17 negative probe — stale token rejected with actionable error",
         "phase-8 test_discover finds new test, test_run green",
-        "p50 elapsedMs=1240ms (within writer budget 30s)",
+        "p50 elapsedMs=1240ms (within 30 s writer triage reference)",
         "schema accurate vs. live behavior",
         "no entries in phase-1 debug log",
         "no relevant backlog rows"
@@ -400,7 +408,7 @@ The report is consumed by downstream agents. Dense tables, fixed schemas, one-li
 | 3 | Coverage ledger | One row per live tool/resource/prompt |
 | 4 | Verified tools | Tested-and-working list |
 | 5 | Phase 6 refactor summary | Applied product changes (or N/A + reason) |
-| 6 | Performance baseline | `_meta.elapsedMs` per exercised tool |
+| 6 | Performance baseline | Per-tool comparable groups of `_meta.elapsedMs`, with count, p50/p90/max, input scale, and provenance |
 | 7 | Schema vs behaviour drift | Principle #2 output |
 | 8 | Error message quality | Principle #4 output |
 | 9 | Parameter-path coverage | Principle #6 output |
@@ -468,8 +476,8 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 - **Teardown outcome:** see header *Teardown* row; expand here if `partial` / `failed`
 
 ## 6. Performance baseline (`_meta.elapsedMs`)
-| Tool | Tier | Category | Calls | p50_ms | p90_ms | max_ms | Input scale | Budget | Notes |
-|------|------|----------|-------|--------|--------|--------|-------------|--------|-------|
+| Tool | Tier | Category | Samples | p50_ms (median) | p90_ms | max_ms | Input scale | Fixture and environment | Triage reference | Scale / evidence note |
+|------|------|----------|---------|-----------------|--------|--------|-------------|-------------------------|------------------|-----------------------|
 
 ## 7. Schema vs behaviour drift
 | Tool | Mismatch kind | Expected | Actual | Severity | Notes |
