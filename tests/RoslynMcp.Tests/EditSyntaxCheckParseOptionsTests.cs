@@ -51,6 +51,8 @@ public sealed class EditSyntaxCheckParseOptionsTests : IsolatedWorkspaceTestBase
             case "batch":
                 var batch = await NewEditService().ApplyMultiFileTextEditsAsync(
                     workspace.WorkspaceId, [new(target, _strayBraceEdit)], "apply_multi_file_edit", CancellationToken.None);
+                Assert.IsFalse(batch.Success);
+                Assert.AreEqual(0, batch.FilesModified);
                 Assert.AreEqual(0, batch.Files.Single().EditsApplied);
                 break;
             default:
@@ -88,6 +90,8 @@ public sealed class EditSyntaxCheckParseOptionsTests : IsolatedWorkspaceTestBase
             case "batch":
                 var batch = await NewEditService().ApplyMultiFileTextEditsAsync(
                     workspace.WorkspaceId, [new(target, _strayBraceEdit)], "apply_multi_file_edit", CancellationToken.None);
+                Assert.IsTrue(batch.Success);
+                Assert.AreEqual(1, batch.FilesModified);
                 Assert.AreEqual(1, batch.Files.Single().EditsApplied);
                 break;
             default:
@@ -176,6 +180,8 @@ public sealed class EditSyntaxCheckParseOptionsTests : IsolatedWorkspaceTestBase
             case "batch":
                 var batch = await NewEditService().ApplyMultiFileTextEditsAsync(
                     workspaceId, [new(target, _strayBraceEdit)], "apply_multi_file_edit", CancellationToken.None);
+                Assert.IsFalse(batch.Success);
+                Assert.AreEqual(0, batch.FilesModified);
                 Assert.AreEqual(0, batch.Files.Single().EditsApplied);
                 break;
             default:
