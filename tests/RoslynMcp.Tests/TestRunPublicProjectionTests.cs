@@ -20,6 +20,55 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class TestRunPublicProjectionTests
 {
+    [TestMethod]
+    [DataRow("C:/work/secret/file.cs", "C:/work", "secret", "******/file.cs")]
+    [DataRow("C:/work/a/../secret/file.cs", "C:/work", "secret", "******/file.cs")]
+    [DataRow("//server/share/work/a/../secret/file.cs", "//server/share/work", "secret", "******/file.cs")]
+    [DataRow("/work/a/../secret/file.cs", "/work", "secret", "******/file.cs")]
+    [DataRow("C:/work/secret/file.cs", "C:/work", "C:/work/secret/file.cs", "******/*******")]
+    [DataRow("C:/work/secret/file.cs", "C:/work", "/", "secret/file.cs")]
+    [DataRow("C:/private/secret.cs", "C:/work", "C", "<external-path>")]
+    [DataRow("/private/secret.cs", "/work", "/", "<external-path>")]
+    [DataRow("//server/private/secret.cs", "//server/share/work", "/", "<external-path>")]
+    public async Task NativeFilters_PreserveRawPathRecognitionAndExactSurvivingSourceMasks(
+        string source, string workingDirectory, string filter, string expected)
+    {
+        var execution = new CommandExecutionDto("dotnet", ["test", "--treenode-filter", filter], workingDirectory, "Fixture.csproj", 1, false, 42, source, source);
+        var result = new TestRunResultDto(execution, 1, 0, 1, 0,
+            [new TestFailureDto("ordinary", "Tests.Ordinary", source, source)],
+            new TestRunFailureEnvelopeDto("Unknown", false, source, source, source));
+        foreach (var compact in new[] { false, true })
+        {
+            var json = await ValidationTools.RunTests(new PassthroughGate(), new FixedTestRunnerService(result), "projection-fixture", compact: compact, progress: null, ct: CancellationToken.None);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            Assert.AreEqual(expected, root.GetProperty("failures")[0].GetProperty("message").GetString());
+            Assert.AreEqual(expected, root.GetProperty("failureEnvelope").GetProperty("stdOutTail").GetString());
+            Assert.AreEqual(1, root.GetProperty("failuresTotal").GetInt32());
+            Assert.AreEqual(1, root.GetProperty("failed").GetInt32());
+            if (!compact) Assert.AreEqual(expected, root.GetProperty("execution").GetProperty("stdOut").GetString());
+        }
+        using var embedded = JsonDocument.Parse(JsonSerializer.Serialize(new { testRunResult = result }, JsonDefaults.Indented));
+        Assert.AreEqual(expected, embedded.RootElement.GetProperty("testRunResult").GetProperty("execution").GetProperty("stdOut").GetString());
+        Assert.AreEqual(source, execution.StdOut);
+        Assert.AreEqual(source, result.Failures[0].Message);
+        Assert.IsFalse(embedded.RootElement.GetRawText().Contains("publicStd", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    [DataRow("C:/work/unique.cs", "prefixC:/work/UNIQUE.CS", "unique.cs", "prefix*********")]
+    [DataRow("C:/work/unique.cs", "prefixC:\\work\\unique.cs", "C:/work/unique.cs", "prefixunique.cs")]
+    [DataRow("C:\\work\\unique.cs", "prefixC:/work/unique.cs", "C:\\work\\unique.cs", "prefixunique.cs")]
+    [DataRow("C:/work/unique.cs", "prefixC:/work/unique.cs prefixC:\\work\\unique.cs", "C:/work/unique.cs", "prefix********* prefixunique.cs")]
+    public void TargetReplacement_UsesEachActualOccurrenceMaskInsteadOfMetadataMask(string target, string source, string filter, string expected)
+    {
+        var execution = new CommandExecutionDto("dotnet", ["test", target.Replace('/', '\\'), "--filter", filter], "C:/work", target, 1, false, 1, source, source);
+        var projected = TestRunPublicProjection.CreateExecution(execution);
+        Assert.AreEqual(expected, projected.StdOut);
+        Assert.AreEqual(expected, projected.StdErr);
+        Assert.AreEqual(source, execution.StdOut);
+    }
+
     private const string _sensitiveFilter = "FullyQualifiedName~PRIVATE-FILTER-SENTINEL";
 
     private static readonly string _sensitiveWorkingDirectory = Path.GetFullPath(

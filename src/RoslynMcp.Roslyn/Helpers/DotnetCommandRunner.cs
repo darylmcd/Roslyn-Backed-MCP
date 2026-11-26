@@ -151,8 +151,11 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var exitTask = process.WaitForExitAsync(ct);
             Func<bool> hasExited = () => exitTask.IsCompletedSuccessfully;
-            var stdOutTask = PumpAsync(process.StandardOutput, earlyKill, hasExited, pumpCts.Token);
-            var stdErrTask = PumpAsync(process.StandardError, earlyKill, hasExited, pumpCts.Token);
+            var filters = new TestFilterRedaction(arguments);
+            var publicStdOut = filters.HasFilters ? filters.CreateCollector(_outputLimit) : null;
+            var publicStdErr = filters.HasFilters ? filters.CreateCollector(_outputLimit) : null;
+            var stdOutTask = PumpAsync(process.StandardOutput, earlyKill, publicStdOut, hasExited, pumpCts.Token);
+            var stdErrTask = PumpAsync(process.StandardError, earlyKill, publicStdErr, hasExited, pumpCts.Token);
 
             string stdOut;
             string stdErr;
@@ -185,7 +188,11 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
                 DurationMs: stopwatch.ElapsedMilliseconds,
                 StdOut: stdOut,
                 StdErr: stdErr,
-                EarlyKillReason: earlyKill?.KillReason);
+                EarlyKillReason: earlyKill?.KillReason)
+            {
+                PublicStdOut = publicStdOut?.Complete(),
+                PublicStdErr = publicStdErr?.Complete(),
+            };
         }
         catch (OperationCanceledException)
         {
@@ -272,6 +279,7 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
     private Task<string> PumpAsync(
         StreamReader redirectedOutput,
         EarlyKillCoordinator? earlyKill,
+        TestFilterRedaction.Collector? collector,
         Func<bool> hasExited,
         CancellationToken cancellationToken)
         => ProcessOutputPump.ReadAsync(
@@ -280,7 +288,11 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             _outputLimit,
             // Item 4: scan only the fresh chunk (not the whole bounded buffer) to keep the match
             // cost per read O(patterns × chunk-length), regardless of how much output accumulated.
-            earlyKill is null ? null : earlyKill.ScanAndMaybeKill,
+            earlyKill is null && collector is null ? null : chunk =>
+            {
+                earlyKill?.ScanAndMaybeKill(chunk);
+                collector?.Append(chunk);
+            },
             hasExited,
             PostExitDrainGracePeriod,
             ProcessOutputPump.DefaultPollInterval,

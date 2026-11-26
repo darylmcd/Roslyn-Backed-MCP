@@ -18,4 +18,10 @@ public sealed record CommandExecutionDto(
     long DurationMs,
     string StdOut,
     string StdErr,
-    string? EarlyKillReason = null);
+    string? EarlyKillReason = null)
+{
+    // Publication companions preserve masks discovered before bounded capture cuts. Internal
+    // record state is copied by with and participates in equality; raw diagnostics stay intact.
+    internal string? PublicStdOut { get; init; }
+    internal string? PublicStdErr { get; init; }
+}

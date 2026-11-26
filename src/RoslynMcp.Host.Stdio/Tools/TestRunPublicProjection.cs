@@ -1,7 +1,9 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -31,14 +33,16 @@ internal static partial class TestRunPublicProjection
             : result.FailureEnvelope with
             {
                 Summary = redactor.RedactText(result.FailureEnvelope.Summary),
-                StdOutTail = redactor.RedactOptionalText(result.FailureEnvelope.StdOutTail),
-                StdErrTail = redactor.RedactOptionalText(result.FailureEnvelope.StdErrTail),
+                StdOutTail = redactor.RedactOptionalText(result.FailureEnvelope.StdOutTail, result.FailureEnvelope.PublicStdOutTail),
+                StdErrTail = redactor.RedactOptionalText(result.FailureEnvelope.StdErrTail, result.FailureEnvelope.PublicStdErrTail),
             };
         var failures = result.Failures
             .Select(failure => failure with
             {
-                Message = redactor.RedactText(failure.Message),
-                StackTrace = redactor.RedactOptionalText(failure.StackTrace),
+                DisplayName = redactor.RedactText(failure.DisplayName, failure.PublicDisplayName),
+                FullyQualifiedName = redactor.RedactOptionalText(failure.FullyQualifiedName),
+                Message = redactor.RedactText(failure.Message, failure.PublicMessage),
+                StackTrace = redactor.RedactOptionalText(failure.StackTrace, failure.PublicStackTrace),
             })
             .ToArray();
 
@@ -50,61 +54,68 @@ internal static partial class TestRunPublicProjection
             result.Skipped,
             failures,
             failureEnvelope,
-            result.Warnings,
+            result.Warnings?.Select(value => redactor.RedactText(value)).ToArray(),
             result.CommandDurationMs);
     }
+
+    private readonly record struct TextPair(string Raw, string Safe);
 
     private sealed class ExecutionRedactor
     {
         private readonly CommandExecutionDto _execution;
-        private readonly List<(string Value, string Replacement)> _replacements = [];
+        private readonly TestFilterRedaction _filters;
+        private readonly List<(string Value, string Replacement, int SourceStart)> _replacements = [];
         private readonly string[] _publicArguments;
         private readonly string _publicWorkingDirectory;
         private readonly string _publicTargetPath;
 
         public ExecutionRedactor(CommandExecutionDto execution)
         {
-            _execution = execution ?? throw new ArgumentNullException(nameof(execution));
-            _publicTargetPath = ProjectTargetPath(execution.TargetPath);
+            _execution = execution;
+            _filters = new TestFilterRedaction(execution.Arguments);
+            _publicTargetPath = ProjectOwnTarget(execution.TargetPath);
             _publicWorkingDirectory = IsFullyQualifiedPath(execution.WorkingDirectory)
-                ? "."
-                : execution.WorkingDirectory;
+                ? "." : _filters.Mask(execution.WorkingDirectory);
             _publicArguments = ProjectArguments(execution.Arguments);
-
-            AddPathReplacement(execution.TargetPath, _publicTargetPath);
-            AddPathReplacement(execution.WorkingDirectory, _publicWorkingDirectory);
+            var target = ProjectTargetPath(execution.TargetPath);
+            AddPathReplacement(execution.TargetPath, target.Value, target.Start);
+            AddPathReplacement(execution.WorkingDirectory, IsFullyQualifiedPath(execution.WorkingDirectory) ? "." : execution.WorkingDirectory, -1);
             _replacements.Sort(static (left, right) => right.Value.Length.CompareTo(left.Value.Length));
         }
 
         public PublicCommandExecutionDto CreatePublicExecution() =>
-            new(
-                _execution.Command,
-                _publicArguments,
-                _publicWorkingDirectory,
-                _publicTargetPath,
-                _execution.ExitCode,
-                _execution.Succeeded,
-                _execution.DurationMs,
-                RedactText(_execution.StdOut),
-                RedactText(_execution.StdErr),
+            new(_execution.Command, _publicArguments, _publicWorkingDirectory, _publicTargetPath,
+                _execution.ExitCode, _execution.Succeeded, _execution.DurationMs,
+                RedactText(_execution.StdOut, _execution.PublicStdOut),
+                RedactText(_execution.StdErr, _execution.PublicStdErr),
                 RedactOptionalText(_execution.EarlyKillReason));
 
-        public string RedactText(string value)
+        public string RedactText(string value, string? safe = null)
         {
-            var redacted = DiagnosticPathProjector.Project(value, _execution.WorkingDirectory);
-            foreach (var (sensitiveValue, replacement) in _replacements)
+            var pair = DiagnosticPathProjector.Project(new TextPair(value, safe ?? _filters.Mask(value)), _execution.WorkingDirectory);
+            foreach (var (key, replacement, sourceStart) in _replacements)
             {
-                redacted = redacted.Replace(
-                    sensitiveValue,
-                    replacement,
-                    StringComparison.OrdinalIgnoreCase);
+                var raw = new StringBuilder();
+                var masked = new StringBuilder();
+                var consumed = 0;
+                while (consumed <= pair.Raw.Length - key.Length)
+                {
+                    var match = pair.Raw.IndexOf(key, consumed, StringComparison.OrdinalIgnoreCase);
+                    if (match < 0) break;
+                    raw.Append(pair.Raw.AsSpan(consumed, match - consumed));
+                    masked.Append(pair.Safe.AsSpan(consumed, match - consumed));
+                    raw.Append(replacement);
+                    masked.Append(sourceStart < 0 ? replacement : TransportMask(replacement, pair.Safe.AsSpan(match + sourceStart, replacement.Length)));
+                    consumed = match + key.Length;
+                }
+                raw.Append(pair.Raw.AsSpan(consumed));
+                masked.Append(pair.Safe.AsSpan(consumed));
+                pair = new TextPair(raw.ToString(), masked.ToString());
             }
-
-            return redacted;
+            return pair.Safe;
         }
 
-        public string? RedactOptionalText(string? value) =>
-            value is null ? null : RedactText(value);
+        public string? RedactOptionalText(string? value, string? safe = null) => value is null ? null : RedactText(value, safe);
 
         private string[] ProjectArguments(IReadOnlyList<string> arguments)
         {
@@ -112,134 +123,86 @@ internal static partial class TestRunPublicProjection
             for (var index = 0; index < arguments.Count; index++)
             {
                 var argument = arguments[index];
-                if (IsOption(argument, "--filter") && index + 1 < arguments.Count)
+                if (TestFilterRedaction.TryGetOption(argument, out var inlineFilter))
                 {
-                    var filter = arguments[++index];
-                    projected[index] = RedactedValue;
-                    AddLiteralReplacement(
-                        filter,
-                        ProjectSensitiveTextValue(filter),
-                        minimumLength: 1);
+                    if (inlineFilter is not null)
+                        projected[index] = argument[..(argument.IndexOf('=') + 1)] + RedactedValue;
+                    else if (index + 1 < arguments.Count)
+                        projected[++index] = RedactedValue;
                     continue;
                 }
-
-                if (TryGetOptionValue(argument, "--filter", out var inlineFilter))
+                if (string.Equals(argument, "--results-directory", StringComparison.OrdinalIgnoreCase) && index + 1 < arguments.Count)
                 {
-                    projected[index] = argument[..(argument.IndexOf('=') + 1)] + RedactedValue;
-                    AddLiteralReplacement(
-                        inlineFilter,
-                        ProjectSensitiveTextValue(inlineFilter),
-                        minimumLength: 1);
-                    continue;
-                }
-
-                if (IsOption(argument, "--results-directory") && index + 1 < arguments.Count)
-                {
-                    var resultsDirectory = arguments[++index];
+                    var directory = arguments[++index];
                     projected[index] = RedactedResultsDirectory;
-                    AddPathReplacement(resultsDirectory, RedactedResultsDirectory);
+                    AddPathReplacement(directory, RedactedResultsDirectory, -1);
                     continue;
                 }
-
-                if (TryGetOptionValue(argument, "--results-directory", out var inlineResultsDirectory))
+                if (argument.StartsWith("--results-directory=", StringComparison.OrdinalIgnoreCase))
                 {
                     projected[index] = argument[..(argument.IndexOf('=') + 1)] + RedactedResultsDirectory;
-                    AddPathReplacement(inlineResultsDirectory, RedactedResultsDirectory);
+                    AddPathReplacement(argument[(argument.IndexOf('=') + 1)..], RedactedResultsDirectory, -1);
                     continue;
                 }
-
                 if (PathsEqual(argument, _execution.TargetPath))
                 {
-                    projected[index] = _publicTargetPath;
+                    var recipe = ProjectTargetPath(argument);
+                    var canonical = ProjectTargetPath(_execution.TargetPath).Value;
+                    projected[index] = recipe.Start < 0 ? canonical : TransportMask(canonical, _filters.Mask(argument).AsSpan(recipe.Start, canonical.Length));
                     continue;
                 }
-
                 if (IsFullyQualifiedPath(argument))
                 {
                     projected[index] = "<path>";
-                    AddPathReplacement(argument, projected[index]);
+                    AddPathReplacement(argument, projected[index], -1);
                 }
             }
-
             return projected;
         }
 
-        private void AddPathReplacement(string value, string replacement)
+        private string ProjectOwnTarget(string target)
         {
-            if (!IsFullyQualifiedPath(value))
-                return;
-
-            AddLiteralReplacement(value, replacement, minimumLength: 2);
-            AddLiteralReplacement(value.Replace('\\', '/'), replacement, minimumLength: 2);
-            AddLiteralReplacement(value.Replace('/', '\\'), replacement, minimumLength: 2);
+            var recipe = ProjectTargetPath(target);
+            return recipe.Start < 0 ? recipe.Value : TransportMask(recipe.Value, _filters.Mask(target).AsSpan(recipe.Start, recipe.Value.Length));
         }
 
-        private void AddLiteralReplacement(string value, string replacement, int minimumLength)
+        private static string TransportMask(string canonical, ReadOnlySpan<char> safe)
         {
-            if (string.IsNullOrEmpty(value) || value.Length < minimumLength || value == replacement)
-                return;
-
-            if (_replacements.Any(existing =>
-                    string.Equals(existing.Value, value, StringComparison.OrdinalIgnoreCase)))
-            {
-                return;
-            }
-
-            _replacements.Add((value, replacement));
+            var result = canonical.ToCharArray();
+            for (var index = 0; index < result.Length; index++)
+                if (safe[index] == '*') result[index] = '*';
+            return new string(result);
         }
 
-        private static bool IsOption(string argument, string option) =>
-            string.Equals(argument, option, StringComparison.OrdinalIgnoreCase);
-
-        private static string ProjectSensitiveTextValue(string value) =>
-            value.Length < RedactedValue.Length
-                ? new string('*', value.Length)
-                : RedactedValue;
-
-        private static bool TryGetOptionValue(string argument, string option, out string value)
+        private void AddPathReplacement(string value, string replacement, int sourceStart)
         {
-            var prefix = option + "=";
-            if (argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            if (!IsFullyQualifiedPath(value)) return;
+            Add(value);
+            Add(value.Replace('\\', '/'));
+            Add(value.Replace('/', '\\'));
+            void Add(string key)
             {
-                value = argument[prefix.Length..];
-                return true;
+                if (key.Length < 2 || key == replacement || _replacements.Any(entry => string.Equals(entry.Value, key, StringComparison.OrdinalIgnoreCase))) return;
+                _replacements.Add((key, replacement, sourceStart));
             }
-
-            value = string.Empty;
-            return false;
         }
 
         private static bool PathsEqual(string left, string right) =>
-            string.Equals(
-                left.Replace('\\', '/'),
-                right.Replace('\\', '/'),
-                StringComparison.OrdinalIgnoreCase);
+            string.Equals(left.Replace('\\', '/'), right.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
-        private static string ProjectTargetPath(string targetPath)
+        private static (string Value, int Start) ProjectTargetPath(string target)
         {
-            if (!IsFullyQualifiedPath(targetPath))
-                return targetPath;
-
-            var normalized = targetPath.TrimEnd('/', '\\').Replace('\\', '/');
+            if (!IsFullyQualifiedPath(target)) return (target, 0);
+            var normalized = target.TrimEnd('/', '\\').Replace('\\', '/');
             var separator = normalized.LastIndexOf('/');
-            return separator >= 0 && separator + 1 < normalized.Length
-                ? normalized[(separator + 1)..]
-                : "<target>";
+            return separator >= 0 && separator + 1 < normalized.Length ? (normalized[(separator + 1)..], separator + 1) : ("<target>", -1);
         }
 
         private static bool IsFullyQualifiedPath(string value)
         {
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-
-            if (Path.IsPathFullyQualified(value))
-                return true;
-
-            return value[0] == '/'
-                || (value.Length >= 3
-                    && char.IsAsciiLetter(value[0])
-                    && value[1] == ':'
-                    && value[2] is '/' or '\\');
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            return Path.IsPathFullyQualified(value) || value[0] == '/'
+                || (value.Length >= 3 && char.IsAsciiLetter(value[0]) && value[1] == ':' && value[2] is '/' or '\\');
         }
     }
 
@@ -249,11 +212,9 @@ internal static partial class TestRunPublicProjection
     /// </summary>
     private static partial class DiagnosticPathProjector
     {
-        public static string Project(string value, string workspaceRoot)
+        public static TextPair Project(TextPair value, string workspaceRoot)
         {
-            if (string.IsNullOrEmpty(value))
-                return value;
-
+            if (value.Raw.Length == 0) return value;
             var projected = ProjectMatches(CompilerLocationPathRegex(), value, workspaceRoot);
             projected = ProjectMatches(StackTracePathRegex(), projected, workspaceRoot);
             projected = ProjectMatches(DoubleQuotedPathRegex(), projected, workspaceRoot);
@@ -261,105 +222,103 @@ internal static partial class TestRunPublicProjection
             return ProjectMatches(BarePathRegex(), projected, workspaceRoot);
         }
 
-        private static string ProjectMatches(Regex regex, string value, string workspaceRoot) =>
-            regex.Replace(value, match => ProjectMatch(match, workspaceRoot));
-
-        private static string ProjectMatch(Match match, string workspaceRoot)
+        private static TextPair ProjectMatches(Regex regex, TextPair value, string workspaceRoot)
         {
-            var group = match.Groups["path"];
-            var path = group.Value;
-            var pathLength = path.Length;
-            while (pathLength > 0 && IsTrailingPunctuation(path[pathLength - 1]))
-                pathLength--;
-
-            var candidate = path[..pathLength].TrimEnd();
-            if (!TryParseAbsolutePath(candidate, out var parsedPath))
-                return match.Value;
-
-            var replacement = TryParseAbsolutePath(workspaceRoot, out var parsedWorkspace)
-                && parsedPath.TryMakeRelativeTo(parsedWorkspace, out var relativePath)
-                    ? relativePath
-                    : RedactedExternalPath;
-            var pathOffset = group.Index - match.Index;
-            return string.Concat(
-                match.Value.AsSpan(0, pathOffset),
-                replacement,
-                match.Value.AsSpan(pathOffset + candidate.Length));
+            var raw = new StringBuilder();
+            var safe = new StringBuilder();
+            var consumed = 0;
+            foreach (Match match in regex.Matches(value.Raw))
+            {
+                var group = match.Groups["path"];
+                var length = group.Length;
+                while (length > 0 && IsTrailingPunctuation(group.Value[length - 1])) length--;
+                var candidate = group.Value[..length].TrimEnd();
+                if (!TryParseAbsolutePath(candidate, out var path)) continue;
+                var replacement = TryParseAbsolutePath(workspaceRoot, out var workspace)
+                    && path.TryMakeRelativeTo(workspace, out var relativeSegments)
+                        ? new TextPair(relativeSegments.Length == 0 ? "." : string.Join('/', relativeSegments.Select(segment => segment.Text)),
+                            relativeSegments.Length == 0 ? "." : string.Join('/', relativeSegments.Select(segment => value.Safe.Substring(group.Index + segment.Start, segment.Length))))
+                        : new TextPair(RedactedExternalPath, RedactedExternalPath);
+                raw.Append(value.Raw.AsSpan(consumed, group.Index - consumed));
+                safe.Append(value.Safe.AsSpan(consumed, group.Index - consumed));
+                raw.Append(replacement.Raw);
+                safe.Append(replacement.Safe);
+                consumed = group.Index + candidate.Length;
+            }
+            raw.Append(value.Raw.AsSpan(consumed));
+            safe.Append(value.Safe.AsSpan(consumed));
+            return new TextPair(raw.ToString(), safe.ToString());
         }
 
         private static bool TryParseAbsolutePath(string value, out ParsedAbsolutePath path)
         {
             path = default;
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-
+            if (string.IsNullOrWhiteSpace(value)) return false;
             var normalized = value.Replace('\\', '/');
             string root;
-            string remainder;
+            int remainderStart;
             bool ignoreCase;
-
-            if (normalized.Length >= 3
-                && char.IsAsciiLetter(normalized[0])
-                && normalized[1] == ':'
-                && normalized[2] == '/')
+            if (normalized.Length >= 3 && char.IsAsciiLetter(normalized[0]) && normalized[1] == ':' && normalized[2] == '/')
             {
                 root = normalized[..3];
-                remainder = normalized[3..];
+                remainderStart = 3;
                 ignoreCase = true;
             }
             else if (normalized.StartsWith("//", StringComparison.Ordinal))
             {
-                var rootSegments = normalized[2..]
-                    .Split('/', StringSplitOptions.RemoveEmptyEntries);
-                if (rootSegments.Length < 2)
-                    return false;
-
-                root = $"//{rootSegments[0]}/{rootSegments[1]}";
-                remainder = string.Join('/', rootSegments.Skip(2));
+                var roots = Tokenize(normalized, 2).ToArray();
+                if (roots.Length < 2) return false;
+                root = "//" + roots[0].Text + "/" + roots[1].Text;
+                remainderStart = roots[1].Start + roots[1].Length;
                 ignoreCase = true;
             }
             else if (normalized[0] == '/')
             {
                 root = "/";
-                remainder = normalized[1..];
+                remainderStart = 1;
                 ignoreCase = false;
             }
-            else
+            else return false;
+            var segments = new List<PathSegment>();
+            foreach (var segment in Tokenize(normalized, remainderStart))
             {
-                return false;
-            }
-
-            var segments = new List<string>();
-            foreach (var segment in remainder.Split('/', StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (segment == ".")
-                    continue;
-                if (segment == "..")
+                if (segment.Text == ".") continue;
+                if (segment.Text == "..")
                 {
-                    if (segments.Count == 0)
-                        return false;
+                    if (segments.Count == 0) return false;
                     segments.RemoveAt(segments.Count - 1);
-                    continue;
                 }
-
-                segments.Add(segment);
+                else segments.Add(segment);
             }
-
             path = new ParsedAbsolutePath(root, segments.ToArray(), ignoreCase);
             return true;
         }
+
+        private static IEnumerable<PathSegment> Tokenize(string value, int start)
+        {
+            while (start < value.Length)
+            {
+                if (value[start] == '/') { start++; continue; }
+                var end = value.IndexOf('/', start);
+                if (end < 0) end = value.Length;
+                yield return new PathSegment(value[start..end], start, end - start);
+                start = end;
+            }
+        }
+
+        private readonly record struct PathSegment(string Text, int Start, int Length);
 
         private static bool IsTrailingPunctuation(char value) =>
             value is '.' or ',' or ';' or ':' or ')' or ']' or '}';
 
         private readonly record struct ParsedAbsolutePath(
             string Root,
-            string[] Segments,
+            PathSegment[] Segments,
             bool IgnoreCase)
         {
-            public bool TryMakeRelativeTo(ParsedAbsolutePath workspace, out string relativePath)
+            public bool TryMakeRelativeTo(ParsedAbsolutePath workspace, out PathSegment[] relativePath)
             {
-                relativePath = string.Empty;
+                relativePath = [];
                 if (IgnoreCase != workspace.IgnoreCase)
                     return false;
 
@@ -374,13 +333,11 @@ internal static partial class TestRunPublicProjection
 
                 for (var index = 0; index < workspace.Segments.Length; index++)
                 {
-                    if (!string.Equals(Segments[index], workspace.Segments[index], comparison))
+                    if (!string.Equals(Segments[index].Text, workspace.Segments[index].Text, comparison))
                         return false;
                 }
 
-                relativePath = Segments.Length == workspace.Segments.Length
-                    ? "."
-                    : string.Join('/', Segments.Skip(workspace.Segments.Length));
+                relativePath = Segments[workspace.Segments.Length..];
                 return true;
             }
         }
