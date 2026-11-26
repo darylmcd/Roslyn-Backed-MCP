@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -314,6 +315,51 @@ public sealed class ConstructedNamedTypeSymbolHandleTests
         var resolved = await SymbolHandleSerializer.ResolveHandleAsync(solution, handle, CancellationToken.None);
         Assert.IsNull(resolved, "Unsupported method constructions must not select the open declaration.");
         Assert.AreEqual(Encode(new LegacyPayload(null, symbol.ToDisplayString(), null, null, null, null)), handle);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task MethodOwnerFallback_ClassifiesWithoutRecursiveStackGrowth(bool methodOwned)
+    {
+        using var workspace = new AdhocWorkspace();
+        var (_, compilation) = await CreateFixtureAsync(workspace);
+        var containing = compilation.GetTypeByMetadataName("Fixture.Uses`1")!;
+        var method = containing.GetMembers("Method").OfType<IMethodSymbol>().Single();
+        ITypeSymbol symbol = methodOwned ? method.TypeParameters[0] : containing.TypeParameters[0];
+        const string classifierName = "ContainsMethodOwnedParameter";
+        var activeFrames = 0;
+        var observedNodes = 0;
+        for (var index = 0; index < 32; index++)
+        {
+            var element = symbol;
+            var array = DispatchProxy.Create<IArrayTypeSymbol, ObservedArraySymbol>();
+            ((ObservedArraySymbol)(object)array).ReadElement = () =>
+            {
+                observedNodes++;
+                activeFrames = Math.Max(activeFrames, new StackTrace().GetFrames().Count(frame =>
+                    frame.GetMethod() is { } caller && caller.DeclaringType == typeof(SymbolHandleSerializer) &&
+                    caller.Name == classifierName));
+                return element;
+            };
+            symbol = array;
+        }
+
+        var classifier = typeof(SymbolHandleSerializer).GetMethod(classifierName, BindingFlags.NonPublic | BindingFlags.Static)!;
+        Assert.AreEqual(methodOwned, (bool)classifier.Invoke(null, [symbol])!);
+        Assert.AreEqual(32, observedNodes);
+        Assert.AreEqual(1, activeFrames, "The full-depth walk must use one classifier frame.");
+    }
+
+    public class ObservedArraySymbol : DispatchProxy
+    {
+        public Func<ITypeSymbol> ReadElement { get; set; } = null!;
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert.AreEqual("get_ElementType", targetMethod?.Name);
+            return ReadElement();
+        }
     }
 
     [TestMethod]
