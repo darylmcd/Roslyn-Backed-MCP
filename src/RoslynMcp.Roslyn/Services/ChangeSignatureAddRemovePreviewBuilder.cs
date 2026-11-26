@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -225,9 +226,141 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     }
 
 
+    private sealed record ReadOutcome<T>(T? Value, ExceptionDispatchInfo? Failure)
+    {
+        public T? GetResult()
+        {
+            Failure?.Throw();
+            return Value;
+        }
+    }
+
+    private static async Task<ReadOutcome<TResult>[]> ReadBatchAsync<TInput, TResult>(
+        IReadOnlyList<TInput> inputs, Func<TInput, Task<TResult>> read)
+    {
+        var inputCount = inputs.Count;
+        var bound = Math.Max(1, Math.Min(4, Environment.ProcessorCount));
+        var tasks = new Task<TResult>?[bound];
+        var indexes = new int[bound];
+        var outcomes = new ReadOutcome<TResult>[inputCount];
+        var count = 0;
+        var active = 0;
+        var stopped = false;
+        ExceptionDispatchInfo? coordinatorFailure = null;
+
+        async Task<bool> CollectAsync(int slot)
+        {
+            var task = tasks[slot];
+            if (task is null) return true;
+            try
+            {
+                outcomes[indexes[slot]] = new ReadOutcome<TResult>(await task.ConfigureAwait(false), null);
+                return true;
+            }
+            catch (Exception error)
+            {
+                outcomes[indexes[slot]] = new ReadOutcome<TResult>(default, ExceptionDispatchInfo.Capture(error));
+                return false;
+            }
+            finally
+            {
+                tasks[slot] = null;
+                active--;
+            }
+        }
+
+        try
+        {
+            while (active > 0 || (!stopped && count < inputCount))
+            {
+                if (active > 0)
+                {
+                    var completed = Enumerable.Range(0, bound)
+                        .Where(slot => tasks[slot]?.IsCompleted == true)
+                        .OrderBy(slot => indexes[slot]).ToArray();
+                    if (completed.Length == 0)
+                    {
+                        await Task.WhenAny(tasks.OfType<Task<TResult>>()).ConfigureAwait(false);
+                        continue;
+                    }
+                    // Observe every completed sibling before admitting any replacement.
+                    foreach (var slot in completed)
+                        if (!await CollectAsync(slot).ConfigureAwait(false)) stopped = true;
+                }
+                for (var slot = 0; !stopped && slot < bound && count < inputCount; slot++)
+                {
+                    if (tasks[slot] is not null) continue;
+                    var index = count++;
+                    try
+                    {
+                        var input = inputs[index];
+                        indexes[slot] = index;
+                        // Reader cancellation is indexed data; scheduling never cancels ownership.
+                        tasks[slot] = Task.Run(() => read(input), CancellationToken.None);
+                        active++;
+                    }
+                    catch (Exception error)
+                    {
+                        outcomes[index] = new ReadOutcome<TResult>(default, ExceptionDispatchInfo.Capture(error));
+                        stopped = true;
+                    }
+                }
+            }
+        }
+        catch (Exception error)
+        {
+            coordinatorFailure = ExceptionDispatchInfo.Capture(error);
+        }
+        finally
+        {
+            // Every owned handle joins, including after an unexpected coordinator failure.
+            foreach (var slot in Enumerable.Range(0, bound).Where(slot => tasks[slot] is not null)
+                .OrderBy(slot => indexes[slot]))
+                await CollectAsync(slot).ConfigureAwait(false);
+        }
+        coordinatorFailure?.Throw();
+        return count == inputCount ? outcomes : outcomes[..count];
+    }
+
+    private static void ConsumeReadOutcomes<T>(ReadOutcome<T>[] outcomes, Action<T?> consume, CancellationToken ct)
+    {
+        var bound = Math.Max(1, Math.Min(4, Environment.ProcessorCount));
+        try
+        {
+            for (var index = 0; index < outcomes.Length; index++)
+            {
+                try
+                {
+                    if (index > 0 && index % bound == 0) ct.ThrowIfCancellationRequested();
+                    consume(outcomes[index].GetResult());
+                }
+                finally
+                {
+                    Array.Clear(outcomes, index, 1);
+                }
+            }
+        }
+        finally
+        {
+            Array.Clear(outcomes);
+        }
+    }
+
+    private sealed record DocumentScan(
+        Document Document, SyntaxNode Root, SemanticModel Model,
+        Dictionary<SyntaxToken, List<SyntaxAnnotation>> DiagnosticAnnotations,
+        Dictionary<SyntaxNode, List<SyntaxAnnotation>> Annotations,
+        Dictionary<SyntaxNode, BoundCallContext> Calls, HashSet<string> RequiredAliases,
+        string[] SourceAliases, string ProjectAlias,
+        Dictionary<SyntaxAnnotation, (ITypeSymbol? Type, int Position)> ConditionalTypes,
+        HashSet<SyntaxAnnotation> DiscardedConditionals,
+        Dictionary<SyntaxNode, List<SyntaxAnnotation>> ConditionalCalls,
+        List<BindingEvidence> Evidence, List<DiagnosticEvidence> Diagnostics);
+
     private sealed record DiagnosticEvidence(
         DiagnosticSeverity Severity, string Id, string Message, DocumentId? Document,
-        SyntaxAnnotation? Start, SyntaxAnnotation? End, int StartOffset, int EndOffset, string? ExternalIdentity);
+        SyntaxAnnotation? Start, SyntaxAnnotation? End, int StartOffset, int EndOffset, string? ExternalIdentity,
+        SyntaxTree? SourceTree, Microsoft.CodeAnalysis.Text.TextSpan SourceSpan);
 
     private sealed record BindingEvidence(
         SyntaxAnnotation Annotation, string Target, string TypeArguments,
@@ -300,7 +433,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             diagnosticEvidence[projectId] = diagnostics
                 .Where(d => !d.Location.IsInSource || solution.GetDocument(d.Location.SourceTree!) is null)
                 .Select(d => new DiagnosticEvidence(d.Severity, d.Id, d.GetMessage(CultureInfo.InvariantCulture),
-                    null, null, null, 0, 0, ExternalDiagnosticIdentity(d))).ToList();
+                    null, null, null, 0, 0, ExternalDiagnosticIdentity(d), null, default)).ToList();
         }
 
         var candidate = solution;
@@ -308,228 +441,261 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var changedDocuments = new HashSet<DocumentId>();
         var callCounts = new Dictionary<DocumentId, int>();
         var globalAliases = new HashSet<string>(StringComparer.Ordinal);
+        async Task<DocumentScan?> ReadDocumentScanAsync(Document document, string[] sourceAliases, string? projectAlias)
+        {
+            ct.ThrowIfCancellationRequested();
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (root is null || model is null) return null;
+
+            Func<IMethodSymbol, string> getSymbolIdentity = new DocumentMethodIdentities().Get;
+            var documentDiagnostics = new List<DiagnosticEvidence>();
+            var diagnosticAnnotations = new Dictionary<SyntaxToken, List<SyntaxAnnotation>>();
+            foreach (var diagnostic in originalDiagnostics[document.Project.Id].Where(d => d.Location.SourceTree == model.SyntaxTree))
+            {
+                var span = diagnostic.Location.SourceSpan;
+                var first = root.FindToken(span.Start, findInsideTrivia: true);
+                var last = root.FindToken(span.Length == 0 ? span.Start : span.End - 1, findInsideTrivia: true);
+                var start = new SyntaxAnnotation(DiagnosticTag);
+                var end = new SyntaxAnnotation(DiagnosticTag);
+                AddTokenAnnotation(diagnosticAnnotations, first, start);
+                AddTokenAnnotation(diagnosticAnnotations, last, end);
+                documentDiagnostics.Add(new DiagnosticEvidence(diagnostic.Severity, diagnostic.Id,
+                    diagnostic.GetMessage(CultureInfo.InvariantCulture), document.Id, start, end,
+                    span.Start - first.SpanStart, span.End - last.SpanStart, null, model.SyntaxTree, span));
+            }
+
+            var annotations = new Dictionary<SyntaxNode, List<SyntaxAnnotation>>();
+            foreach (var scope in root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>())
+                AddAnnotation(annotations, scope, new SyntaxAnnotation(AliasScopeTag, scope.SpanStart.ToString(CultureInfo.InvariantCulture)));
+            var calls = new Dictionary<SyntaxNode, BoundCallContext>();
+            // Context constructors only store this owned set; serial apply fills it before use.
+            var requiredAliases = new HashSet<string>(StringComparer.Ordinal);
+            var localProjectAlias = projectAlias ?? "@project|" + document.Project.Id.Id.ToString("N") + "|"
+                + EncodeAliasPath(Path.GetDirectoryName(document.FilePath)!);
+            var conditionalTypes = new Dictionary<SyntaxAnnotation, (ITypeSymbol? Type, int Position)>();
+            var discardedConditionals = new HashSet<SyntaxAnnotation>();
+            var conditionalCalls = new Dictionary<SyntaxNode, List<SyntaxAnnotation>>();
+            var documentEvidence = new List<BindingEvidence>();
+            if (declarations.TryGetValue(document.Id, out var ownDeclarations))
+                foreach (var (node, annotation) in ownDeclarations) AddAnnotation(annotations, node, annotation);
+            if (constructionOwners.TryGetValue(document.Id, out var ownConstructionOwners))
+            {
+                foreach (var (node, plan) in ownConstructionOwners) AddAnnotation(annotations, node, plan.Annotation);
+                foreach (var selector in ownConstructionOwners.Values.Distinct().SelectMany(plan => plan.OriginalOnlyAttributes)
+                    .Where(attribute => attribute.SyntaxTree == root.SyntaxTree))
+                    AddAnnotation(annotations, selector, new SyntaxAnnotation(ChangeSignatureStructConstruction.OriginalOnlyAttributeTag));
+            }
+
+            // Bound scans cover constructors and primary-base calls that FindCallers omits.
+            foreach (var node in root.DescendantNodes())
+            {
+                if (GetArguments(node) is not { } list)
+                {
+                    if (node is ExpressionSyntax referenceExpression
+                        && model.GetSymbolInfo(referenceExpression, ct).Symbol is IMethodSymbol referenceTarget)
+                    {
+                        var referenceAnnotation = new SyntaxAnnotation(BindingTag);
+                        AddAnnotation(annotations, node, referenceAnnotation);
+                        var referenceEvidence = CreateEvidence(referenceAnnotation, referenceTarget, node, model, declarationKeys, getSymbolIdentity);
+                        documentEvidence.Add(referenceEvidence);
+                    }
+                    continue;
+                }
+                var symbolInfo = model.GetSymbolInfo(node, ct);
+                var target = symbolInfo.Symbol as IMethodSymbol;
+                var originalOperation = model.GetOperation(node, ct);
+                if (originalOperation is IDynamicInvocationOperation
+                    && node is InvocationExpressionSyntax dynamicCall)
+                {
+                    var name = dynamicCall.Expression switch
+                    {
+                        MemberAccessExpressionSyntax dynamicMember => dynamicMember.Name.Identifier.ValueText,
+                        MemberBindingExpressionSyntax dynamicMember => dynamicMember.Name.Identifier.ValueText,
+                        SimpleNameSyntax simple => simple.Identifier.ValueText,
+                        _ => null,
+                    };
+                    var receiver = dynamicCall.Expression is MemberAccessExpressionSyntax access
+                        ? model.GetTypeInfo(access.Expression, ct).Type : null;
+                    var possible = related.Any(m => m.Name == name);
+                    if (possible && receiver is { TypeKind: not TypeKind.Dynamic })
+                        possible = model.LookupSymbols(node.SpanStart, receiver, name)
+                            .OfType<IMethodSymbol>().Any(m => declarationKeys.ContainsKey(getSymbolIdentity(CanonicalDefinition(m))));
+                    if (possible && dynamicCall.Expression is SimpleNameSyntax)
+                        possible = model.LookupSymbols(node.SpanStart, name: name).OfType<IMethodSymbol>()
+                            .Any(m => declarationKeys.ContainsKey(getSymbolIdentity(CanonicalDefinition(m))));
+                    if (possible)
+                        throw Refuse("A dynamic invocation may bind to the edited member at runtime. Use a statically bound call before changing this signature.");
+                }
+                if (originalOperation is IDynamicObjectCreationOperation dynamicCreation
+                    && related.Any(m => m.MethodKind == MethodKind.Constructor
+                        && SymbolEqualityComparer.Default.Equals(m.ContainingType.OriginalDefinition,
+                            (dynamicCreation.Type as INamedTypeSymbol)?.OriginalDefinition)))
+                    throw Refuse("A dynamic constructor invocation may bind to the edited constructor at runtime. Use a statically bound construction before changing this signature.");
+                if (target is null)
+                {
+                    if (symbolInfo.CandidateSymbols.OfType<IMethodSymbol>()
+                        .Any(m => declarationKeys.ContainsKey(getSymbolIdentity(CanonicalDefinition(m)))))
+                        throw Refuse("An unresolved invocation may bind to the edited member. Resolve its binding errors before changing this signature.");
+                    continue;
+                }
+                var annotation = new SyntaxAnnotation(BindingTag);
+                AddAnnotation(annotations, node, annotation);
+                var binding = CreateEvidence(annotation, target, node, model, declarationKeys, getSymbolIdentity);
+                var operation = originalOperation;
+                var arguments = ArgumentsOf(operation);
+                if (!declarationKeys.ContainsKey(getSymbolIdentity(CanonicalDefinition(target))))
+                {
+                    // Unrelated calls are never rewritten here. Their binding stays verified, and their
+                    // compiler-supplied caller-info values are recorded so drift can be frozen afterwards.
+                    var callerInfo = CallerInfoValues(arguments);
+                    documentEvidence.Add(callerInfo.IsDefaultOrEmpty ? binding : binding with { CallerInfo = callerInfo });
+                    continue;
+                }
+                documentEvidence.Add(binding);
+                var operationTarget = operation is IInvocationOperation boundInvocation
+                    ? boundInvocation.TargetMethod : target;
+                calls[node] = new BoundCallContext(operationTarget, arguments, model, list.Arguments, node.SpanStart, requiredAliases);
+                foreach (var conditional in node.Ancestors().OfType<ConditionalAccessExpressionSyntax>())
+                {
+                    var tag = annotations.TryGetValue(conditional, out var existing)
+                        ? existing.FirstOrDefault(a => a.Kind == ConditionalTag) : null;
+                    if (tag is null)
+                    {
+                        tag = new SyntaxAnnotation(ConditionalTag);
+                        AddAnnotation(annotations, conditional, tag);
+                        conditionalTypes[tag] = (model.GetTypeInfo(conditional, ct).Type, conditional.SpanStart);
+                        if (conditional.Parent is LambdaExpressionSyntax lambda
+                            && model.GetTypeInfo(lambda, ct).ConvertedType is INamedTypeSymbol { DelegateInvokeMethod.ReturnsVoid: true })
+                            discardedConditionals.Add(tag);
+                    }
+                    if (!conditionalCalls.TryGetValue(node, out var tags)) conditionalCalls[node] = tags = [];
+                    tags.Add(tag);
+                }
+                if (target.ReducedFrom is not null && node is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member })
+                {
+                    var receiverAnnotation = new SyntaxAnnotation(ArgumentTag);
+                    AddAnnotation(annotations, member.Expression, receiverAnnotation);
+                    documentEvidence.Add(CreateEvidence(receiverAnnotation, operationTarget, member.Expression, model, declarationKeys, getSymbolIdentity)
+                        with
+                    { Parameter = operationTarget.Parameters[0].Name });
+                }
+                foreach (var argument in list.Arguments)
+                {
+                    var argAnnotation = new SyntaxAnnotation(ArgumentTag);
+                    AddAnnotation(annotations, argument.Expression, argAnnotation);
+                    var owner = ArgumentOperationResolver.Resolve(model, argument.Expression, ct);
+                    documentEvidence.Add(CreateEvidence(argAnnotation, operationTarget, argument.Expression, model,
+                        declarationKeys, getSymbolIdentity) with
+                    { Parameter = owner?.Parameter?.Name });
+                }
+            }
+            return new DocumentScan(document, root, model, diagnosticAnnotations, annotations, calls, requiredAliases,
+                sourceAliases, localProjectAlias, conditionalTypes, discardedConditionals, conditionalCalls,
+                documentEvidence, documentDiagnostics);
+        }
+
+        void ApplyDocumentScan(DocumentScan scan)
+        {
+            var (document, root, model, diagnosticAnnotations, annotations, calls, requiredAliases,
+                sourceAliases, localProjectAlias, conditionalTypes, discardedConditionals, conditionalCalls,
+                documentEvidence, documentDiagnostics) = scan;
+            diagnosticEvidence[document.Project.Id].AddRange(documentDiagnostics);
+            requiredAliases.UnionWith(globalAliases);
+            requiredAliases.UnionWith(sourceAliases);
+            requiredAliases.Add(localProjectAlias);
+            if (annotations.Count == 0 && diagnosticAnnotations.Count == 0) return;
+            var marked = AttachAnnotations(root, annotations, diagnosticAnnotations);
+            var replacements = new Dictionary<SyntaxAnnotation, BoundCallContext>();
+            foreach (var (node, context) in calls)
+                replacements[annotations[node].Single(a => a.Kind == BindingTag)] = context;
+            var rewriteNodes = marked.GetAnnotatedNodes(DeclarationTag)
+                .Concat(marked.GetAnnotatedNodes(ChangeSignatureStructConstruction.OwnerTag))
+                .Concat(marked.GetAnnotatedNodes(BindingTag).Where(n => n.GetAnnotations(BindingTag).Any(replacements.ContainsKey)))
+                .Distinct()
+                .ToArray();
+            var affectedConditionals = new HashSet<SyntaxAnnotation>();
+            var count = 0;
+            var rewrittenRoot = marked.ReplaceNodes(rewriteNodes, (original, rewritten) =>
+            {
+                if (original.HasAnnotations(DeclarationTag))
+                {
+                    rewritten = rewritten switch
+                    {
+                        ConstructorDeclarationSyntax declaration when original.GetAnnotations(DeclarationTag).FirstOrDefault()?.Data is { } key
+                            && constructionDeclarations.TryGetValue(key, out var plan)
+                            => plan.RewriteConstructor(declaration, updateDeclaration(declaration.ParameterList)),
+                        BaseMethodDeclarationSyntax declaration => declaration.WithParameterList(updateDeclaration(declaration.ParameterList)),
+                        TypeDeclarationSyntax { ParameterList: { } primaryList } declaration
+                            when constructionOwners.TryGetValue(document.Id, out var owners)
+                                && owners.Values.SingleOrDefault(plan => original.HasAnnotation(plan.Annotation)) is { } plan
+                            => plan.RewritePrimary(declaration, primaryList, updateDeclaration(primaryList), DeclarationTag),
+                        TypeDeclarationSyntax { ParameterList: { } primaryList } declaration => declaration.WithParameterList(updateDeclaration(primaryList)),
+                        _ => rewritten,
+                    };
+                }
+                var callAnnotation = original.GetAnnotations(BindingTag).FirstOrDefault(replacements.ContainsKey);
+                if (callAnnotation is not null && GetArguments(rewritten) is { } list)
+                {
+                    var context = replacements[callAnnotation];
+                    var updated = updateCallsite(context, list.Arguments);
+                    if (constructionPlans.TryGetValue(context.TargetIdentity, out var construction))
+                        updated = construction.Arguments(updated, context.ContainingTypeName());
+                    if (!updated.Equals(list.Arguments)) count++;
+                    rewritten = WithArguments(rewritten, list.WithArguments(updated));
+                    if (rewritten is InvocationExpressionSyntax genericInvocation)
+                        rewritten = genericInvocation.WithExpression(context.RetainTypeSubstitution(genericInvocation.Expression));
+                    if (context.RemovesExtensionReceiver && rewritten is InvocationExpressionSyntax invocation)
+                    {
+                        rewritten = invocation.WithExpression(context.StaticExtensionTarget(invocation.Expression));
+                        var sourceCall = calls.Keys.Single(n => annotations[n].Contains(callAnnotation));
+                        if (conditionalCalls.TryGetValue(sourceCall, out var tags)) affectedConditionals.UnionWith(tags);
+                    }
+                }
+                if (rewritten is TypeDeclarationSyntax owner
+                    && constructionOwners.TryGetValue(document.Id, out var plans)
+                    && plans.Values.SingleOrDefault(plan => original.HasAnnotation(plan.Annotation)) is { } constructionPlan)
+                    rewritten = constructionPlan.Complete(owner, DeclarationTag);
+                return rewritten;
+            });
+            if (affectedConditionals.Count > 0)
+                rewrittenRoot = new ConditionalReceiverRewriter(affectedConditionals, conditionalTypes, discardedConditionals, root, model, requiredAliases).Visit(rewrittenRoot)!;
+            var requestedAliases = requiredAliases.Where(alias => !alias.StartsWith("@source|", StringComparison.Ordinal)
+                && !alias.StartsWith("@project|", StringComparison.Ordinal)).ToArray();
+            globalAliases.UnionWith(requestedAliases.Where(a => a.StartsWith("@global|", StringComparison.Ordinal) || a.StartsWith("@newglobal|", StringComparison.Ordinal)));
+            if (requestedAliases.Length > 0) rewrittenRoot = AddAliasDirectives(rewrittenRoot, requestedAliases);
+            documentEvidence = documentEvidence.Select(entry => entry with
+            {
+                ContainingArguments = entry.OriginalNode.AncestorsAndSelf()
+                    .SelectMany(node => annotations.TryGetValue(node, out var values) ? values : [])
+                    .Where(a => a.Kind == ArgumentTag).ToImmutableArray(),
+            }).ToList();
+            var textChanged = !string.Equals(root.ToFullString(), rewrittenRoot.ToFullString(), StringComparison.Ordinal);
+            // Keep annotations until both late alias passes have finished. Only real edits
+            // require reparsing; an initially untouched alias host may still be edited later.
+            if (textChanged) rewrittenRoot = RoundTripRoot(rewrittenRoot, document, ct);
+            candidate = candidate.WithDocumentSyntaxRoot(document.Id, rewrittenRoot);
+            evidence[document.Id] = documentEvidence;
+            if (textChanged)
+                changedDocuments.Add(document.Id);
+            if (count > 0) callCounts[document.Id] = count;
+        }
+
         foreach (var project in solution.Projects.Where(p => affectedProjects.Contains(p.Id)))
         {
-            foreach (var document in project.Documents)
+            var sourceAliases = project.Documents.Where(document => document.FilePath is not null)
+                .Select(document => "@source|" + document.Id.Id.ToString("N") + "|" + EncodeAliasPath(document.FilePath!)).ToArray();
+            var projectAlias = project.FilePath is null ? null
+                : "@project|" + project.Id.Id.ToString("N") + "|" + EncodeAliasPath(Path.GetDirectoryName(project.FilePath)!);
+            var documents = project.Documents.ToArray();
+            if (documents.Length == 0) continue;
+            ct.ThrowIfCancellationRequested();
+            var outcomes = await ReadBatchAsync(documents,
+                document => ReadDocumentScanAsync(document, sourceAliases, projectAlias)).ConfigureAwait(false);
+            ConsumeReadOutcomes(outcomes, scan =>
             {
-                ct.ThrowIfCancellationRequested();
-                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (root is null || model is null) continue;
-
-                var diagnosticAnnotations = new Dictionary<SyntaxToken, List<SyntaxAnnotation>>();
-                foreach (var diagnostic in originalDiagnostics[project.Id].Where(d => d.Location.SourceTree == model.SyntaxTree))
-                {
-                    var span = diagnostic.Location.SourceSpan;
-                    var first = root.FindToken(span.Start, findInsideTrivia: true);
-                    var last = root.FindToken(span.Length == 0 ? span.Start : span.End - 1, findInsideTrivia: true);
-                    var start = new SyntaxAnnotation(DiagnosticTag);
-                    var end = new SyntaxAnnotation(DiagnosticTag);
-                    AddTokenAnnotation(diagnosticAnnotations, first, start);
-                    AddTokenAnnotation(diagnosticAnnotations, last, end);
-                    diagnosticEvidence[project.Id].Add(new DiagnosticEvidence(diagnostic.Severity, diagnostic.Id,
-                        diagnostic.GetMessage(CultureInfo.InvariantCulture), document.Id, start, end,
-                        span.Start - first.SpanStart, span.End - last.SpanStart, null));
-                }
-
-                var annotations = new Dictionary<SyntaxNode, List<SyntaxAnnotation>>();
-                foreach (var scope in root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>())
-                    AddAnnotation(annotations, scope, new SyntaxAnnotation(AliasScopeTag, scope.SpanStart.ToString(CultureInfo.InvariantCulture)));
-                var calls = new Dictionary<SyntaxNode, BoundCallContext>();
-                var requiredAliases = new HashSet<string>(globalAliases.Concat(project.Documents
-                    .Where(d => d.FilePath is not null).Select(d => "@source|" + d.Id.Id.ToString("N") + "|" + EncodeAliasPath(d.FilePath!)))
-                    .Append("@project|" + project.Id.Id.ToString("N") + "|" + EncodeAliasPath(Path.GetDirectoryName(project.FilePath ?? document.FilePath)!)), StringComparer.Ordinal);
-                var conditionalTypes = new Dictionary<SyntaxAnnotation, (ITypeSymbol? Type, int Position)>();
-                var discardedConditionals = new HashSet<SyntaxAnnotation>();
-                var conditionalCalls = new Dictionary<SyntaxNode, List<SyntaxAnnotation>>();
-                var documentEvidence = new List<BindingEvidence>();
-                if (declarations.TryGetValue(document.Id, out var ownDeclarations))
-                    foreach (var (node, annotation) in ownDeclarations) AddAnnotation(annotations, node, annotation);
-                if (constructionOwners.TryGetValue(document.Id, out var ownConstructionOwners))
-                {
-                    foreach (var (node, plan) in ownConstructionOwners) AddAnnotation(annotations, node, plan.Annotation);
-                    foreach (var selector in ownConstructionOwners.Values.Distinct().SelectMany(plan => plan.OriginalOnlyAttributes)
-                        .Where(attribute => attribute.SyntaxTree == root.SyntaxTree))
-                        AddAnnotation(annotations, selector, new SyntaxAnnotation(ChangeSignatureStructConstruction.OriginalOnlyAttributeTag));
-                }
-
-                // Bound scans cover constructors and primary-base calls that FindCallers omits.
-                foreach (var node in root.DescendantNodes())
-                {
-                    if (GetArguments(node) is not { } list)
-                    {
-                        if (node is ExpressionSyntax referenceExpression
-                            && model.GetSymbolInfo(referenceExpression, ct).Symbol is IMethodSymbol referenceTarget)
-                        {
-                            var referenceAnnotation = new SyntaxAnnotation(BindingTag);
-                            AddAnnotation(annotations, node, referenceAnnotation);
-                            var referenceEvidence = CreateEvidence(referenceAnnotation, referenceTarget, node, model, declarationKeys);
-                            documentEvidence.Add(referenceEvidence);
-                        }
-                        continue;
-                    }
-                    var symbolInfo = model.GetSymbolInfo(node, ct);
-                    var target = symbolInfo.Symbol as IMethodSymbol;
-                    var originalOperation = model.GetOperation(node, ct);
-                    if (originalOperation is IDynamicInvocationOperation
-                        && node is InvocationExpressionSyntax dynamicCall)
-                    {
-                        var name = dynamicCall.Expression switch
-                        {
-                            MemberAccessExpressionSyntax dynamicMember => dynamicMember.Name.Identifier.ValueText,
-                            MemberBindingExpressionSyntax dynamicMember => dynamicMember.Name.Identifier.ValueText,
-                            SimpleNameSyntax simple => simple.Identifier.ValueText,
-                            _ => null,
-                        };
-                        var receiver = dynamicCall.Expression is MemberAccessExpressionSyntax access
-                            ? model.GetTypeInfo(access.Expression, ct).Type : null;
-                        var possible = related.Any(m => m.Name == name);
-                        if (possible && receiver is { TypeKind: not TypeKind.Dynamic })
-                            possible = model.LookupSymbols(node.SpanStart, receiver, name)
-                                .OfType<IMethodSymbol>().Any(m => declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(m))));
-                        if (possible && dynamicCall.Expression is SimpleNameSyntax)
-                            possible = model.LookupSymbols(node.SpanStart, name: name).OfType<IMethodSymbol>()
-                                .Any(m => declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(m))));
-                        if (possible)
-                            throw Refuse("A dynamic invocation may bind to the edited member at runtime. Use a statically bound call before changing this signature.");
-                    }
-                    if (originalOperation is IDynamicObjectCreationOperation dynamicCreation
-                        && related.Any(m => m.MethodKind == MethodKind.Constructor
-                            && SymbolEqualityComparer.Default.Equals(m.ContainingType.OriginalDefinition,
-                                (dynamicCreation.Type as INamedTypeSymbol)?.OriginalDefinition)))
-                        throw Refuse("A dynamic constructor invocation may bind to the edited constructor at runtime. Use a statically bound construction before changing this signature.");
-                    if (target is null)
-                    {
-                        if (symbolInfo.CandidateSymbols.OfType<IMethodSymbol>()
-                            .Any(m => declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(m)))))
-                            throw Refuse("An unresolved invocation may bind to the edited member. Resolve its binding errors before changing this signature.");
-                        continue;
-                    }
-                    var annotation = new SyntaxAnnotation(BindingTag);
-                    AddAnnotation(annotations, node, annotation);
-                    var binding = CreateEvidence(annotation, target, node, model, declarationKeys);
-                    var operation = originalOperation;
-                    var arguments = ArgumentsOf(operation);
-                    if (!declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(target))))
-                    {
-                        // Unrelated calls are never rewritten here. Their binding stays verified, and their
-                        // compiler-supplied caller-info values are recorded so drift can be frozen afterwards.
-                        var callerInfo = CallerInfoValues(arguments);
-                        documentEvidence.Add(callerInfo.IsDefaultOrEmpty ? binding : binding with { CallerInfo = callerInfo });
-                        continue;
-                    }
-                    documentEvidence.Add(binding);
-                    var operationTarget = operation is IInvocationOperation boundInvocation
-                        ? boundInvocation.TargetMethod : target;
-                    calls[node] = new BoundCallContext(operationTarget, arguments, model, list.Arguments, node.SpanStart, requiredAliases);
-                    foreach (var conditional in node.Ancestors().OfType<ConditionalAccessExpressionSyntax>())
-                    {
-                        var tag = annotations.TryGetValue(conditional, out var existing)
-                            ? existing.FirstOrDefault(a => a.Kind == ConditionalTag) : null;
-                        if (tag is null)
-                        {
-                            tag = new SyntaxAnnotation(ConditionalTag);
-                            AddAnnotation(annotations, conditional, tag);
-                            conditionalTypes[tag] = (model.GetTypeInfo(conditional, ct).Type, conditional.SpanStart);
-                            if (conditional.Parent is LambdaExpressionSyntax lambda
-                                && model.GetTypeInfo(lambda, ct).ConvertedType is INamedTypeSymbol { DelegateInvokeMethod.ReturnsVoid: true })
-                                discardedConditionals.Add(tag);
-                        }
-                        if (!conditionalCalls.TryGetValue(node, out var tags)) conditionalCalls[node] = tags = [];
-                        tags.Add(tag);
-                    }
-                    if (target.ReducedFrom is not null && node is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member })
-                    {
-                        var receiverAnnotation = new SyntaxAnnotation(ArgumentTag);
-                        AddAnnotation(annotations, member.Expression, receiverAnnotation);
-                        documentEvidence.Add(CreateEvidence(receiverAnnotation, operationTarget, member.Expression, model, declarationKeys)
-                            with
-                        { Parameter = operationTarget.Parameters[0].Name });
-                    }
-                    foreach (var argument in list.Arguments)
-                    {
-                        var argAnnotation = new SyntaxAnnotation(ArgumentTag);
-                        AddAnnotation(annotations, argument.Expression, argAnnotation);
-                        var owner = ArgumentOperationResolver.Resolve(model, argument.Expression, ct);
-                        documentEvidence.Add(CreateEvidence(argAnnotation, operationTarget, argument.Expression, model,
-                            declarationKeys) with
-                        { Parameter = owner?.Parameter?.Name });
-                    }
-                }
-                if (annotations.Count == 0 && diagnosticAnnotations.Count == 0) continue;
-                var marked = root.ReplaceSyntax(annotations.Keys,
-                    (original, rewritten) => rewritten.WithAdditionalAnnotations(annotations[original].ToArray()),
-                    diagnosticAnnotations.Keys, (original, rewritten) => rewritten.WithAdditionalAnnotations(diagnosticAnnotations[original].ToArray()),
-                    [], (original, rewritten) => rewritten);
-                var replacements = new Dictionary<SyntaxAnnotation, BoundCallContext>();
-                foreach (var (node, context) in calls)
-                    replacements[annotations[node].Single(a => a.Kind == BindingTag)] = context;
-                var rewriteNodes = marked.GetAnnotatedNodes(DeclarationTag)
-                    .Concat(marked.GetAnnotatedNodes(ChangeSignatureStructConstruction.OwnerTag))
-                    .Concat(marked.GetAnnotatedNodes(BindingTag).Where(n => n.GetAnnotations(BindingTag).Any(replacements.ContainsKey)))
-                    .Distinct()
-                    .ToArray();
-                var affectedConditionals = new HashSet<SyntaxAnnotation>();
-                var count = 0;
-                var rewrittenRoot = marked.ReplaceNodes(rewriteNodes, (original, rewritten) =>
-                {
-                    if (original.HasAnnotations(DeclarationTag))
-                    {
-                        rewritten = rewritten switch
-                        {
-                            ConstructorDeclarationSyntax declaration when original.GetAnnotations(DeclarationTag).FirstOrDefault()?.Data is { } key
-                                && constructionDeclarations.TryGetValue(key, out var plan)
-                                => plan.RewriteConstructor(declaration, updateDeclaration(declaration.ParameterList)),
-                            BaseMethodDeclarationSyntax declaration => declaration.WithParameterList(updateDeclaration(declaration.ParameterList)),
-                            TypeDeclarationSyntax { ParameterList: { } primaryList } declaration
-                                when constructionOwners.TryGetValue(document.Id, out var owners)
-                                    && owners.Values.SingleOrDefault(plan => original.HasAnnotation(plan.Annotation)) is { } plan
-                                => plan.RewritePrimary(declaration, primaryList, updateDeclaration(primaryList), DeclarationTag),
-                            TypeDeclarationSyntax { ParameterList: { } primaryList } declaration => declaration.WithParameterList(updateDeclaration(primaryList)),
-                            _ => rewritten,
-                        };
-                    }
-                    var callAnnotation = original.GetAnnotations(BindingTag).FirstOrDefault(replacements.ContainsKey);
-                    if (callAnnotation is not null && GetArguments(rewritten) is { } list)
-                    {
-                        var context = replacements[callAnnotation];
-                        var updated = updateCallsite(context, list.Arguments);
-                        if (constructionPlans.TryGetValue(context.TargetIdentity, out var construction))
-                            updated = construction.Arguments(updated, context.ContainingTypeName());
-                        if (!updated.Equals(list.Arguments)) count++;
-                        rewritten = WithArguments(rewritten, list.WithArguments(updated));
-                        if (rewritten is InvocationExpressionSyntax genericInvocation)
-                            rewritten = genericInvocation.WithExpression(context.RetainTypeSubstitution(genericInvocation.Expression));
-                        if (context.RemovesExtensionReceiver && rewritten is InvocationExpressionSyntax invocation)
-                        {
-                            rewritten = invocation.WithExpression(context.StaticExtensionTarget(invocation.Expression));
-                            var sourceCall = calls.Keys.Single(n => annotations[n].Contains(callAnnotation));
-                            if (conditionalCalls.TryGetValue(sourceCall, out var tags)) affectedConditionals.UnionWith(tags);
-                        }
-                    }
-                    if (rewritten is TypeDeclarationSyntax owner
-                        && constructionOwners.TryGetValue(document.Id, out var plans)
-                        && plans.Values.SingleOrDefault(plan => original.HasAnnotation(plan.Annotation)) is { } constructionPlan)
-                        rewritten = constructionPlan.Complete(owner, DeclarationTag);
-                    return rewritten;
-                });
-                if (affectedConditionals.Count > 0)
-                    rewrittenRoot = new ConditionalReceiverRewriter(affectedConditionals, conditionalTypes, discardedConditionals, root, model, requiredAliases).Visit(rewrittenRoot)!;
-                globalAliases.UnionWith(requiredAliases.Where(a => a.StartsWith("@global|", StringComparison.Ordinal) || a.StartsWith("@newglobal|", StringComparison.Ordinal)));
-                if (requiredAliases.Count > 0) rewrittenRoot = AddAliasDirectives(rewrittenRoot, requiredAliases);
-                documentEvidence = documentEvidence.Select(entry => entry with
-                {
-                    ContainingArguments = entry.OriginalNode.AncestorsAndSelf()
-                        .SelectMany(node => annotations.TryGetValue(node, out var values) ? values : [])
-                        .Where(a => a.Kind == ArgumentTag).ToImmutableArray(),
-                }).ToList();
-                rewrittenRoot = RoundTripRoot(rewrittenRoot, document, ct);
-                candidate = candidate.WithDocumentSyntaxRoot(document.Id, rewrittenRoot);
-                evidence[document.Id] = documentEvidence;
-                if (!string.Equals(root.ToFullString(), rewrittenRoot.ToFullString(), StringComparison.Ordinal))
-                    changedDocuments.Add(document.Id);
-                if (count > 0) callCounts[document.Id] = count;
-            }
+                if (scan is not null) ApplyDocumentScan(scan);
+            }, ct);
         }
 
         foreach (var group in globalAliases.Where(a => a.StartsWith("@global|", StringComparison.Ordinal)).GroupBy(a => a.Split('|')[1], StringComparer.Ordinal))
@@ -560,6 +726,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             changedDocuments.Add(documentId);
         }
 
+        candidate = await RestoreUnchangedDocumentTreesAsync(solution, candidate, affectedProjects, changedDocuments, ct).ConfigureAwait(false);
         candidate = await FreezeDriftedCallerInfoAsync(candidate, evidence, changedDocuments, ct).ConfigureAwait(false);
         var warnings = await ValidateCandidateAsync(solution, candidate, affectedProjects, evidence, declarationKeys, diagnosticEvidence, ct).ConfigureAwait(false);
         // Drop verification-only annotations and unchanged document versions from the public preview.
@@ -800,15 +967,50 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     internal static ConstructorDeclarationSyntax PrepareGeneratedConstructor(ConstructorDeclarationSyntax constructor)
     {
         var identity = constructor.GetAnnotations(DeclarationTag).ToArray();
-        var cleaned = constructor.ReplaceSyntax(constructor.DescendantNodesAndSelf(),
-            (_, rewritten) => rewritten.WithoutAnnotations(new[] { DeclarationTag, BindingTag, ArgumentTag,
-                ConditionalTag, AliasScopeTag, ChangeSignatureStructConstruction.OwnerTag,
-                ChangeSignatureStructConstruction.OriginalOnlyAttributeTag }
-                .SelectMany(kind => rewritten.GetAnnotations(kind)).ToArray()),
-            constructor.DescendantTokens(), (_, rewritten) => rewritten.WithoutAnnotations(DiagnosticTag).WithoutTrivia(),
-            [], (_, rewritten) => rewritten);
+        var visited = (ConstructorDeclarationSyntax)new GeneratedConstructorCleanupRewriter().Visit(constructor)!;
+        var cleaned = constructor.ReplaceNode(constructor, visited);
         return cleaned.WithAdditionalAnnotations(identity).NormalizeWhitespace(eol: " ")
             .WithLeadingTrivia(SyntaxFactory.Space).WithTrailingTrivia(SyntaxFactory.Space);
+    }
+
+    private static async Task<Solution> RestoreUnchangedDocumentTreesAsync(
+        Solution original, Solution candidate, HashSet<ProjectId> affectedProjects,
+        HashSet<DocumentId> changedDocuments, CancellationToken ct)
+    {
+        foreach (var document in original.Projects.Where(project => affectedProjects.Contains(project.Id)).SelectMany(project => project.Documents))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (changedDocuments.Contains(document.Id)) continue;
+            var originalRoot = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            var candidateRoot = await candidate.GetDocument(document.Id)!.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            if (originalRoot is null || candidateRoot is null) continue;
+            if (!string.Equals(originalRoot.ToFullString(), candidateRoot.ToFullString(), StringComparison.Ordinal))
+                throw Refuse("The candidate text does not preserve its verified syntax identities.");
+        }
+        // Root replacement creates another SyntaxTree even with PreserveIdentity. Begin
+        // with the immutable original document states, then overlay only actual edits in
+        // candidate order so new alias documents retain their order as well as their data.
+        var restored = original;
+        foreach (var document in candidate.Projects.SelectMany(project => project.Documents))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!changedDocuments.Contains(document.Id)) continue;
+            if (original.GetDocument(document.Id) is not null)
+            {
+                var root = (await document.GetSyntaxRootAsync(ct).ConfigureAwait(false))!;
+                restored = restored.WithDocumentSyntaxRoot(document.Id, root);
+            }
+            else
+            {
+                var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+                var version = await document.GetTextVersionAsync(ct).ConfigureAwait(false);
+                restored = restored.AddDocument(DocumentInfo.Create(document.Id, document.Name,
+                    folders: document.Folders, sourceCodeKind: document.SourceCodeKind,
+                    loader: TextLoader.From(TextAndVersion.Create(text, version, document.FilePath)),
+                    filePath: document.FilePath));
+            }
+        }
+        return restored;
     }
 
     private static SyntaxNode RoundTripRoot(SyntaxNode root, Document document, CancellationToken ct)
@@ -826,11 +1028,51 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var tokens = TokenIdentityKeys(parsed).Where(pair => tokenAnnotations.ContainsKey(pair.Key)).ToArray();
         if (nodes.Length != annotations.Count || tokens.Length != tokenAnnotations.Count)
             throw Refuse("The candidate text does not preserve its verified syntax identities.");
-        var tokenMap = tokens.ToDictionary(pair => pair.Token, pair => tokenAnnotations[pair.Key]);
-        return parsed.ReplaceSyntax(nodes, (original, rewritten) =>
-                rewritten.WithAdditionalAnnotations(annotations[(original.RawKind, original.Span)]),
-            tokenMap.Keys, (original, rewritten) => rewritten.WithAdditionalAnnotations(tokenMap[original]),
-            [], (original, rewritten) => rewritten);
+        var nodeMap = nodes.ToDictionary(node => node, node => annotations[(node.RawKind, node.Span)].ToList());
+        var tokenMap = tokens.ToDictionary(pair => pair.Token, pair => tokenAnnotations[pair.Key].ToList());
+        return AttachAnnotations(parsed, nodeMap, tokenMap);
+    }
+
+    private static SyntaxNode AttachAnnotations(SyntaxNode root,
+        Dictionary<SyntaxNode, List<SyntaxAnnotation>> nodes, Dictionary<SyntaxToken, List<SyntaxAnnotation>> tokens)
+    {
+        var visited = new AnnotationAttachmentRewriter(nodes, tokens).Visit(root)!;
+        // ReplaceCore supplies the original tree's options even for a non-compilation-unit root.
+        return root.ReplaceNode(root, visited);
+    }
+
+    private sealed class AnnotationAttachmentRewriter(
+        Dictionary<SyntaxNode, List<SyntaxAnnotation>> nodes,
+        Dictionary<SyntaxToken, List<SyntaxAnnotation>> tokens) : CSharpSyntaxRewriter(visitIntoStructuredTrivia: true)
+    {
+        public override SyntaxNode? Visit(SyntaxNode? node)
+        {
+            var rewritten = base.Visit(node);
+            return node is not null && rewritten is not null && nodes.TryGetValue(node, out var annotations)
+                ? rewritten.WithAdditionalAnnotations(annotations.ToArray()) : rewritten;
+        }
+
+        public override SyntaxToken VisitToken(SyntaxToken token)
+        {
+            var rewritten = base.VisitToken(token);
+            return tokens.TryGetValue(token, out var annotations)
+                ? rewritten.WithAdditionalAnnotations(annotations.ToArray()) : rewritten;
+        }
+    }
+
+    private sealed class GeneratedConstructorCleanupRewriter : CSharpSyntaxRewriter
+    {
+        public override SyntaxNode? Visit(SyntaxNode? node)
+        {
+            var rewritten = base.Visit(node);
+            return rewritten?.WithoutAnnotations(new[] { DeclarationTag, BindingTag, ArgumentTag,
+                ConditionalTag, AliasScopeTag, ChangeSignatureStructConstruction.OwnerTag,
+                ChangeSignatureStructConstruction.OriginalOnlyAttributeTag }
+                .SelectMany(kind => rewritten.GetAnnotations(kind)).ToArray());
+        }
+
+        public override SyntaxToken VisitToken(SyntaxToken token) =>
+            base.VisitToken(token).WithoutAnnotations(DiagnosticTag).WithoutTrivia();
     }
 
     private static IEnumerable<((int Kind, Microsoft.CodeAnalysis.Text.TextSpan Span, int Occurrence) Key, SyntaxToken Token)> TokenIdentityKeys(SyntaxNode root)
@@ -1010,10 +1252,10 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             SyntaxFactory.ParenthesizedExpression(SyntaxFactory.ParseExpression(literal)));
     }
 
-    private static SyntaxNode AddAliasDirectives(SyntaxNode root, HashSet<string> aliases)
+    private static SyntaxNode AddAliasDirectives(SyntaxNode root, IEnumerable<string> aliases)
     {
-        var scopes = aliases.Where(a => !a.StartsWith("@global|", StringComparison.Ordinal) && !a.StartsWith("@newglobal|", StringComparison.Ordinal)
-            && !a.StartsWith("@source|", StringComparison.Ordinal) && !a.StartsWith("@project|", StringComparison.Ordinal)).GroupBy(a => a[..a.IndexOf(':')])
+        var scopes = aliases.Where(a => !a.StartsWith("@global|", StringComparison.Ordinal) && !a.StartsWith("@newglobal|", StringComparison.Ordinal))
+            .GroupBy(a => a[..a.IndexOf(':')])
             .ToDictionary(g => g.Key, g => g.Select(a => a[(a.IndexOf(':') + 1)..]).ToArray(), StringComparer.Ordinal);
         var namespaces = root.GetAnnotatedNodes(AliasScopeTag).OfType<BaseNamespaceDeclarationSyntax>()
             .Where(n => scopes.ContainsKey(n.GetAnnotations(AliasScopeTag).Single().Data!)).ToArray();
@@ -1178,26 +1420,26 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         return fresh;
     }
 
-    private static string AssemblyTypeIdentity(ITypeSymbol type) => TypeIdentity(type, null)!;
+    private static string AssemblyTypeIdentity(ITypeSymbol type) => TypeIdentity(type, null, SymbolIdentity)!;
 
-    private static string? TypeIdentity(ITypeSymbol? type, Dictionary<string, string>? originals)
+    private static string? TypeIdentity(ITypeSymbol? type, Dictionary<string, string>? originals, Func<IMethodSymbol, string> getSymbolIdentity)
     {
         if (type is null) return null;
         var identity = type switch
         {
-            IArrayTypeSymbol array => "array:" + array.Rank + ":" + TypeIdentity(array.ElementType, originals),
-            IPointerTypeSymbol pointer => "pointer:" + TypeIdentity(pointer.PointedAtType, originals),
+            IArrayTypeSymbol array => "array:" + array.Rank + ":" + TypeIdentity(array.ElementType, originals, getSymbolIdentity),
+            IPointerTypeSymbol pointer => "pointer:" + TypeIdentity(pointer.PointedAtType, originals, getSymbolIdentity),
             IFunctionPointerTypeSymbol pointer => "function:" + pointer.Signature.CallingConvention + ":"
-                + string.Join(",", pointer.Signature.UnmanagedCallingConventionTypes.Select(t => TypeIdentity(t, originals))) + ":"
-                + pointer.Signature.RefKind + ":" + TypeIdentity(pointer.Signature.ReturnType, originals) + ":"
-                + string.Join(",", pointer.Signature.Parameters.Select(p => p.RefKind + ":" + TypeIdentity(p.Type, originals))),
+                + string.Join(",", pointer.Signature.UnmanagedCallingConventionTypes.Select(t => TypeIdentity(t, originals, getSymbolIdentity))) + ":"
+                + pointer.Signature.RefKind + ":" + TypeIdentity(pointer.Signature.ReturnType, originals, getSymbolIdentity) + ":"
+                + string.Join(",", pointer.Signature.Parameters.Select(p => p.RefKind + ":" + TypeIdentity(p.Type, originals, getSymbolIdentity))),
             INamedTypeSymbol named => named.ContainingAssembly?.Identity + ":"
                 + named.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ":"
-                + (named.ContainingType is null ? "" : TypeIdentity(named.ContainingType, originals))
-                + "<" + string.Join(",", named.TypeArguments.Select(t => TypeIdentity(t, originals))) + ">",
+                + (named.ContainingType is null ? "" : TypeIdentity(named.ContainingType, originals, getSymbolIdentity))
+                + "<" + string.Join(",", named.TypeArguments.Select(t => TypeIdentity(t, originals, getSymbolIdentity))) + ">",
             ITypeParameterSymbol parameter => parameter.Ordinal + ":" + (parameter.ContainingSymbol is IMethodSymbol owner
                 ? originals is null ? owner.ContainingAssembly.Identity + ":" + owner.ContainingType.ToDisplayString() + ":" + owner.Name + ":" + owner.Arity
-                    : TargetIdentity(owner, originals)
+                    : TargetIdentity(owner, originals, getSymbolIdentity)
                 : parameter.ContainingSymbol.ContainingAssembly?.Identity + ":" + parameter.ContainingSymbol.ToDisplayString()),
             _ => type.ContainingAssembly?.Identity.ToString(),
         };
@@ -1209,34 +1451,57 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     private static IMethodSymbol CanonicalDefinition(IMethodSymbol method) =>
         (method.ReducedFrom ?? method).OriginalDefinition;
 
+    private sealed class DocumentMethodIdentities
+    {
+        private readonly Dictionary<IMethodSymbol, string> _identities = new(ReferenceEqualityComparer.Instance);
+
+        internal string Get(IMethodSymbol method)
+        {
+            if (_identities.TryGetValue(method, out var identity))
+            {
+                return identity;
+            }
+
+            identity = SymbolIdentity(method);
+            _identities.Add(method, identity);
+            return identity;
+        }
+    }
+
     private static string SymbolIdentity(IMethodSymbol method) =>
         method.ContainingAssembly.Identity + ":" + method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ":" + method.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
             + ":" + string.Join(",", method.Parameters.Select(p => p.RefKind + " " + AssemblyTypeIdentity(p.Type)));
 
-    private static string TargetIdentity(IMethodSymbol method, Dictionary<string, string> originals)
+    private static string TargetIdentity(IMethodSymbol method, Dictionary<string, string> originals, Func<IMethodSymbol, string> getSymbolIdentity)
     {
-        foreach (var reference in CanonicalDefinition(method).DeclaringSyntaxReferences)
+        var canonical = CanonicalDefinition(method);
+        foreach (var reference in canonical.DeclaringSyntaxReferences)
         {
             var annotation = reference.GetSyntax().GetAnnotations(DeclarationTag).FirstOrDefault();
             if (annotation?.Data is { } key) return key;
         }
-        return originals.TryGetValue(SymbolIdentity(CanonicalDefinition(method)), out var original) ? original : SymbolIdentity(method);
+        var canonicalIdentity = getSymbolIdentity(canonical);
+        if (originals.TryGetValue(canonicalIdentity, out var original)) return original;
+        return ReferenceEquals(method, canonical) ? canonicalIdentity : getSymbolIdentity(method);
     }
 
     private static BindingEvidence CreateEvidence(SyntaxAnnotation annotation, IMethodSymbol target,
-        SyntaxNode node, SemanticModel model, Dictionary<string, string> originals)
+        SyntaxNode node, SemanticModel model, Dictionary<string, string> originals, Func<IMethodSymbol, string> getSymbolIdentity)
     {
         var types = node is ExpressionSyntax expression ? model.GetTypeInfo(expression) : default;
-        return new BindingEvidence(annotation, TargetIdentity(target, originals),
-            string.Join(",", target.TypeArguments.Concat(target.ContainingType.TypeArguments)
-                .Select(t => TypeIdentity(t, originals))),
-            TypeIdentity(types.Type, originals),
-            TypeIdentity(types.ConvertedType, originals),
-            node is ExpressionSyntax e ? ConversionIdentity(model.GetConversion(e), originals) : string.Empty, null, node, []);
+        var targetIdentity = TargetIdentity(target, originals, getSymbolIdentity);
+        var typeArguments = string.Join(",", target.TypeArguments.Concat(target.ContainingType.TypeArguments)
+            .Select(t => TypeIdentity(t, originals, getSymbolIdentity)));
+        var typeIdentity = TypeIdentity(types.Type, originals, getSymbolIdentity);
+        var convertedTypeIdentity = ReferenceEquals(types.Type, types.ConvertedType)
+            ? typeIdentity : TypeIdentity(types.ConvertedType, originals, getSymbolIdentity);
+        var conversionIdentity = node is ExpressionSyntax e ? ConversionIdentity(model.GetConversion(e), originals, getSymbolIdentity) : string.Empty;
+        return new BindingEvidence(annotation, targetIdentity, typeArguments,
+            typeIdentity, convertedTypeIdentity, conversionIdentity, null, node, []);
     }
 
-    private static string ConversionIdentity(Conversion conversion, Dictionary<string, string> originals) =>
-        conversion.ToString() + ":" + (conversion.MethodSymbol is { } method ? TargetIdentity(method, originals) : string.Empty);
+    private static string ConversionIdentity(Conversion conversion, Dictionary<string, string> originals, Func<IMethodSymbol, string> getSymbolIdentity) =>
+        conversion.ToString() + ":" + (conversion.MethodSymbol is { } method ? TargetIdentity(method, originals, getSymbolIdentity) : string.Empty);
 
     private static async Task<List<string>> ValidateCandidateAsync(
         Solution original, Solution candidate, HashSet<ProjectId> projects,
@@ -1248,8 +1513,8 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var diagnosticTokens = new Dictionary<DocumentId, Dictionary<SyntaxAnnotation, SyntaxToken>>();
         foreach (var projectId in projects)
         {
-            // The candidate is parsed from its exact serialized text; original diagnostic
-            // occurrences match only surviving token identities, never a file-wide count.
+            // Edited trees are parsed from exact serialized text; retained originals match
+            // their exact tree/span. Changed occurrences require surviving token identities.
             var after = await candidate.GetProject(projectId)!.GetCompilationAsync(ct).ConfigureAwait(false);
             if (after is null) throw Refuse("A dependent project cannot be compiled for candidate verification.");
             var remaining = diagnosticEvidence[projectId].ToList();
@@ -1275,7 +1540,10 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     if (entry.Severity != diagnostic.Severity || entry.Id != diagnostic.Id || entry.Message != message) return false;
                     if (entry.Document is null)
                         return document is null && entry.ExternalIdentity == ExternalDiagnosticIdentity(diagnostic);
-                    return entry.Document == document?.Id && tokens is not null
+                    if (entry.Document != document?.Id) return false;
+                    if (ReferenceEquals(entry.SourceTree, diagnostic.Location.SourceTree))
+                        return entry.SourceSpan == diagnostic.Location.SourceSpan;
+                    return tokens is not null
                         && tokens.TryGetValue(entry.Start!, out var start) && tokens.TryGetValue(entry.End!, out var end)
                         && start.SpanStart + entry.StartOffset == diagnostic.Location.SourceSpan.Start
                         && end.SpanStart + entry.EndOffset == diagnostic.Location.SourceSpan.End;
@@ -1294,38 +1562,53 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     ". Retain declaration grammar, parameter dependencies, and valid constructor initialization.");
             }
         }
-        foreach (var (documentId, entries) in evidence)
+        var entries = evidence.ToArray();
+        if (entries.Length > 0)
         {
-            var document = candidate.GetDocument(documentId)!;
-            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-            if (root is null || model is null) throw Refuse("The candidate semantic model is unavailable.");
-            var annotatedNodes = root.DescendantNodesAndSelf()
-                .SelectMany(node => node.GetAnnotations(DeclarationTag).Concat(node.GetAnnotations(BindingTag))
-                    .Concat(node.GetAnnotations(ArgumentTag)).Select(annotation => (annotation, node)))
-                .ToDictionary(pair => pair.annotation, pair => pair.node);
-            foreach (var entry in entries)
+            ct.ThrowIfCancellationRequested();
+            var outcomes = await ReadBatchAsync(entries, async entry =>
             {
-                var node = annotatedNodes.GetValueOrDefault(entry.Annotation);
-                // An argument intentionally removed by identity has no surviving annotation.
-                if (node is null && (entry.Annotation.Kind == ArgumentTag
-                    || entry.ContainingArguments.Any(a => !annotatedNodes.ContainsKey(a)))) continue;
-                if (node is null) throw Refuse("A retained call lost its verification identity.");
-                var target = entry.Annotation.Kind == ArgumentTag
-                    ? ResolveArgument(model, node, ct)?.Parameter?.ContainingSymbol as IMethodSymbol
-                    : model.GetSymbolInfo(node, ct).Symbol as IMethodSymbol;
-                if (target is null) throw Refuse("A retained call or argument no longer has its original binding.");
-                var current = CreateEvidence(entry.Annotation, target, node, model, originals);
-                if (entry.Target != current.Target || entry.TypeArguments != current.TypeArguments
-                    || entry.Type != current.Type || entry.ConvertedType != current.ConvertedType
-                    || entry.Conversion != current.Conversion)
-                    throw Refuse("The requested signature change changes a retained target, type substitution, or contextual conversion.");
-                if (entry.Parameter is not null
-                    && ResolveArgument(model, node, ct)?.Parameter?.Name != entry.Parameter)
-                    throw Refuse("The requested signature change changes a retained argument's parameter binding.");
-            }
+                await ValidateDocumentBindingsAsync(candidate.GetDocument(entry.Key)!, entry.Value, originals, ct).ConfigureAwait(false);
+                return true;
+            }).ConfigureAwait(false);
+            ConsumeReadOutcomes(outcomes, _ => { }, ct);
         }
         return warnings.OrderBy(w => w, StringComparer.Ordinal).ToList();
+    }
+
+    private static async Task ValidateDocumentBindingsAsync(
+        Document document, List<BindingEvidence> entries, Dictionary<string, string> originals, CancellationToken ct)
+    {
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+        var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        if (root is null || model is null) throw Refuse("The candidate semantic model is unavailable.");
+        var annotatedNodes = root.DescendantNodesAndSelf()
+            .SelectMany(node => node.GetAnnotations(DeclarationTag).Concat(node.GetAnnotations(BindingTag))
+                .Concat(node.GetAnnotations(ArgumentTag)).Select(annotation => (annotation, node)))
+            .ToDictionary(pair => pair.annotation, pair => pair.node);
+        Func<IMethodSymbol, string> getSymbolIdentity = new DocumentMethodIdentities().Get;
+        foreach (var entry in entries)
+        {
+            var retained = ReferenceEquals(entry.OriginalNode.SyntaxTree, root.SyntaxTree)
+                && ReferenceEquals(root.SyntaxTree, model.SyntaxTree);
+            var node = retained ? entry.OriginalNode : annotatedNodes.GetValueOrDefault(entry.Annotation);
+            // An argument intentionally removed by identity has no surviving annotation.
+            if (node is null && (entry.Annotation.Kind == ArgumentTag
+                || entry.ContainingArguments.Any(a => !annotatedNodes.ContainsKey(a)))) continue;
+            if (node is null) throw Refuse("A retained call lost its verification identity.");
+            var target = entry.Annotation.Kind == ArgumentTag
+                ? ResolveArgument(model, node, ct)?.Parameter?.ContainingSymbol as IMethodSymbol
+                : model.GetSymbolInfo(node, ct).Symbol as IMethodSymbol;
+            if (target is null) throw Refuse("A retained call or argument no longer has its original binding.");
+            var current = CreateEvidence(entry.Annotation, target, node, model, originals, getSymbolIdentity);
+            if (entry.Target != current.Target || entry.TypeArguments != current.TypeArguments
+                || entry.Type != current.Type || entry.ConvertedType != current.ConvertedType
+                || entry.Conversion != current.Conversion)
+                throw Refuse("The requested signature change changes a retained target, type substitution, or contextual conversion.");
+            if (entry.Parameter is not null
+                && ResolveArgument(model, node, ct)?.Parameter?.Name != entry.Parameter)
+                throw Refuse("The requested signature change changes a retained argument's parameter binding.");
+        }
     }
 
     private static PublicInvalidOperationException Refuse(string message) => new(message);
