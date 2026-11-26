@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Xml.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,6 +13,7 @@ using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -67,6 +69,106 @@ public sealed class TestRunPublicProjectionTests
         Assert.AreEqual(expected, projected.StdOut);
         Assert.AreEqual(expected, projected.StdErr);
         Assert.AreEqual(source, execution.StdOut);
+    }
+
+    [TestMethod]
+    [DataRow(false, "test")]
+    [DataRow(true, "test")]
+    [DataRow(false, "workspace")]
+    [DataRow(true, "workspace")]
+    public async Task GeneratedWarnings_PreserveActualProducerValues(bool native, string filter)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.ClearProviders());
+        services.AddRoslynMcpHostServices(new WorkspaceManagerOptions(), new ValidationServiceOptions(),
+            new PreviewStoreOptions(), new ExecutionGateOptions(), new SecurityOptions(), new ScriptingServiceOptions());
+        services.AddSingleton<IGatedCommandExecutor>(new EmptySuccessfulExecutor());
+        using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<ITestRunnerService>();
+        var plan = new TestRunPlan("warning-fixture", null, filter, "Fixture.csproj",
+            RequiresMtpNative: native, TreeNodeFilter: native ? filter : null);
+        var original = await service.RunTestCommandAsync(plan, CancellationToken.None);
+        const string zeroTests = "The supplied filter reported zero tests. Check the filter using test_discover before treating this run as verification.";
+        CollectionAssert.AreEqual(new[] { zeroTests }, original.Warnings!.ToArray());
+        CollectionAssert.Contains(original.Execution.Arguments.ToArray(), native ? "--treenode-filter" : "--filter");
+        CollectionAssert.Contains(original.Execution.Arguments.ToArray(), filter);
+        var changed = service.CompleteTestRunWithoutWorkspace(original);
+        var expected = new[] { zeroTests, "workspaceChangedDuringRun" };
+        CollectionAssert.AreEqual(expected, changed.Warnings!.ToArray());
+        Assert.AreSame(changed, TestRunWarnings.WithWorkspaceChanged(changed));
+        Assert.AreSame(changed, ((ITestRunnerService)new FixedTestRunnerService(changed)).CompleteTestRunWithoutWorkspace(changed));
+        CollectionAssert.AreEqual(new[] { zeroTests }, original.Warnings!.ToArray());
+        foreach (var result in new[] { original, changed })
+        {
+            foreach (var published in await PublicationVariantsAsync(result))
+            {
+                CollectionAssert.AreEqual(result.Warnings!.ToArray(),
+                    published.GetProperty("warnings").EnumerateArray().Select(static item => item.GetString()).ToArray());
+            }
+        }
+    }
+
+    [TestMethod]
+    [DataRow(null, "C:/Private/Case", "C:/Private/Case.Method")]
+    [DataRow("never", "C:/Private/Case", "C:/Private/Case.Method")]
+    [DataRow("Case", "C:/Private/****", "C:/Private/****.Method")]
+    [DataRow("C:/Private/Case", "***************", "***************.Method")]
+    public async Task PathShapedLabels_UseOnlyExactFilterMasks(string? filter, string expectedLabel, string expectedFqn)
+    {
+        const string label = "C:/Private/Case";
+        const string id = "1a94a541-9c12-4b1c-9aa7-1c8f5b6ca2e3";
+        var directory = Path.Combine(TestTempRoot.Current, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "label.trx");
+        new XDocument(new XElement("TestRun",
+            new XElement("Results", new XElement("UnitTestResult", new XAttribute("testId", id),
+                new XAttribute("testName", label), new XAttribute("outcome", "Failed"),
+                new XElement("Output", new XElement("ErrorInfo", new XElement("Message", label))))),
+            new XElement("TestDefinitions", new XElement("UnitTest", new XAttribute("id", id),
+                new XElement("TestMethod", new XAttribute("className", label), new XAttribute("name", "Method")))),
+            new XElement("ResultSummary", new XAttribute("outcome", "Failed"),
+                new XElement("Counters", new XAttribute("total", 1), new XAttribute("passed", 0), new XAttribute("failed", 1))))).Save(path);
+        var execution = new CommandExecutionDto("dotnet",
+            filter is null ? ["test"] : ["test", "--treenode-filter", filter], "C:/work", "Fixture.csproj", 1, false, 1, "", "");
+        var result = DotnetOutputParser.ParseTestRun(execution, [path]);
+        Assert.AreEqual(label, result.Failures.Single().DisplayName);
+        Assert.AreEqual(label + ".Method", result.Failures.Single().FullyQualifiedName);
+        Assert.AreEqual(label, result.Failures.Single().Message);
+        foreach (var published in await PublicationVariantsAsync(result))
+        {
+            var failure = published.GetProperty("failures")[0];
+            Assert.AreEqual(expectedLabel, failure.GetProperty("displayName").GetString());
+            Assert.AreEqual(expectedFqn, failure.GetProperty("fullyQualifiedName").GetString());
+            Assert.AreEqual("<external-path>", failure.GetProperty("message").GetString());
+        }
+        var withoutIdentity = result with { Failures = [result.Failures.Single() with { FullyQualifiedName = null }] };
+        foreach (var published in await PublicationVariantsAsync(withoutIdentity))
+            Assert.AreEqual(JsonValueKind.Null, published.GetProperty("failures")[0].GetProperty("fullyQualifiedName").ValueKind);
+        Assert.AreEqual(label, result.Failures.Single().DisplayName);
+    }
+
+    private static async Task<JsonElement[]> PublicationVariantsAsync(TestRunResultDto result)
+    {
+        var variants = new List<JsonElement>();
+        foreach (var compact in new[] { false, true })
+        {
+            var json = await ValidationTools.RunTests(new PassthroughGate(), new FixedTestRunnerService(result),
+                "publication-fixture", compact: compact, progress: null, ct: CancellationToken.None);
+            using var document = JsonDocument.Parse(json);
+            variants.Add(document.RootElement.Clone());
+        }
+        using var embedded = JsonDocument.Parse(JsonSerializer.Serialize(new { testRunResult = result }, JsonDefaults.Indented));
+        variants.Add(embedded.RootElement.GetProperty("testRunResult").Clone());
+        return variants.ToArray();
+    }
+
+    private sealed class EmptySuccessfulExecutor : IGatedCommandExecutor
+    {
+        public Task<CommandExecutionDto> ExecuteAsync(string workspaceId, string targetPath,
+            IReadOnlyList<string> arguments, TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct) =>
+            Task.FromResult(new CommandExecutionDto("dotnet", arguments, ".", targetPath, 0, true, 1, "", ""));
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) => throw new NotSupportedException();
+        public void Dispose() { }
     }
 
     private const string _sensitiveFilter = "FullyQualifiedName~PRIVATE-FILTER-SENTINEL";

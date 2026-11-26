@@ -39,8 +39,8 @@ internal static partial class TestRunPublicProjection
         var failures = result.Failures
             .Select(failure => failure with
             {
-                DisplayName = redactor.RedactText(failure.DisplayName, failure.PublicDisplayName),
-                FullyQualifiedName = redactor.RedactOptionalText(failure.FullyQualifiedName),
+                DisplayName = redactor.MaskFilter(failure.DisplayName, failure.PublicDisplayName),
+                FullyQualifiedName = failure.FullyQualifiedName is null ? null : redactor.MaskFilter(failure.FullyQualifiedName),
                 Message = redactor.RedactText(failure.Message, failure.PublicMessage),
                 StackTrace = redactor.RedactOptionalText(failure.StackTrace, failure.PublicStackTrace),
             })
@@ -54,7 +54,7 @@ internal static partial class TestRunPublicProjection
             result.Skipped,
             failures,
             failureEnvelope,
-            result.Warnings?.Select(value => redactor.RedactText(value)).ToArray(),
+            result.Warnings,
             result.CommandDurationMs);
     }
 
@@ -89,6 +89,8 @@ internal static partial class TestRunPublicProjection
                 RedactText(_execution.StdOut, _execution.PublicStdOut),
                 RedactText(_execution.StdErr, _execution.PublicStdErr),
                 RedactOptionalText(_execution.EarlyKillReason));
+
+        public string MaskFilter(string value, string? safe = null) => safe ?? _filters.Mask(value);
 
         public string RedactText(string value, string? safe = null)
         {

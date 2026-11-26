@@ -68,7 +68,7 @@ public sealed class NativeFilterRetentionTests
         Assert.AreEqual(message[..500] + "... [truncated]", raw.Message);
         Assert.AreEqual(stack[..1500] + "... [truncated]", raw.StackTrace);
         var projected = TestRunPublicProjection.Create(result).Failures.Single();
-        Assert.AreEqual(withId ? "<external-path>" : new string('*', raw.DisplayName.Length), projected.DisplayName);
+        Assert.AreEqual(new string('*', raw.DisplayName.Length), projected.DisplayName);
         Assert.AreEqual(new string('m', 496) + "****... [truncated]", projected.Message);
         Assert.AreEqual(new string('s', 1496) + "****... [truncated]", projected.StackTrace);
     }
