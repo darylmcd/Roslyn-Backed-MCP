@@ -1,6 +1,6 @@
 # symbol-handle-local-function-owner-roundtrip — Preserve local-function ownership in constructed handles
 
-**row:** `symbol-handle-local-function-owner-roundtrip` · **pri:** `Medium` · **size:** `M` · **verified:** `7b4882c08d94db9906e78d3de4ed4449af8509bb` · **deps:** `symbol-handle-method-type-parameter-roundtrip`
+**row:** `symbol-handle-local-function-owner-roundtrip` · **pri:** `Medium` · **size:** `M` · **verified:** `7b4882c08d94db9906e78d3de4ed4449af8509bb`
 
 ## Anchors
 
