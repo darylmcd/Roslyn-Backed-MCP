@@ -46,7 +46,7 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `change-signature-preview-latency` | High | — | **Bring change_signature_preview under 30 s** — measure and reduce the shared pipeline on RoslynMcp.slnx without dropping correctness checks. [type: perf] [source: remediation 2026-11-21] | M | items/change-signature-preview-latency.md |
+| `change-signature-preview-latency` | High | — | **Qualify Change Signature preview latency against a matched baseline** — require per-case medians within 75% of main and no slower maximum. [type: perf] [source: operator decision 2026-11-26] | M | items/change-signature-preview-latency.md |
 
 ## Medium
 
@@ -265,6 +265,7 @@
 | `move-type-to-project-source-dependency-gap` | Medium | — | **move_type_to_project_preview: a moved type referencing a type left in the source project does not compile** — the move path adds no source reference and does not refuse; same for classes, enums, delegates. [type: bug] [source: remediation run 2026-11-21] | M | items/move-type-to-project-source-dependency-gap.md |
 | `workspace-load-abstract-lane-internal-error` | Medium | — | **Diagnose the abstract-lane load error** — identify the cause of the captured valid workspace_load InternalError and prove a regression without changing public errors. [type: bug] [source: remediation 2026-11-25] | M | items/workspace-load-abstract-lane-internal-error.md |
 | `symbol-handle-method-type-parameter-roundtrip` | Medium | — | **Round-trip method-owned type parameters in constructed named-type handles** — preserve exact owner identity and ordinal. [type: bug] [source: operator decision 2026-11-26] | M | items/symbol-handle-method-type-parameter-roundtrip.md |
+| `surface-test-latency-rubric` | Medium | — | **Redesign the surface-test latency scoring heuristic** — calibrate corpus-aware scoring independently from product thresholds. [type: docs] [source: operator decision 2026-11-26] | S | items/surface-test-latency-rubric.md |
 
 ## Low
 
