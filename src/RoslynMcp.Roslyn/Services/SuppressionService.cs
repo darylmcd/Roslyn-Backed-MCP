@@ -134,7 +134,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
         try
         {
             var existingText = await ReadSourceTextAsync(filePath, ct).ConfigureAwait(false);
-            var existingTree = CSharpSyntaxTree.ParseText(existingText, path: filePath, cancellationToken: ct);
+            var existingTree = CSharpSyntaxTree.ParseText(existingText, GetParseOptions(workspaceId, filePath), path: filePath, cancellationToken: ct);
             var existingRoot = await existingTree.GetRootAsync(ct).ConfigureAwait(false);
             var existingPair = FindEnclosingPragmaPair(existingRoot, normalizedId, line);
             // Covered when Verify's predicate says so (line strictly inside an active span), OR
@@ -188,7 +188,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
         ValidateVerifyWidenArgs(filePath, line, diagnosticId);
         var normalizedId = diagnosticId.Trim();
         var sourceText = await ReadSourceTextAsync(filePath, ct).ConfigureAwait(false);
-        var tree = CSharpSyntaxTree.ParseText(sourceText, path: filePath, cancellationToken: ct);
+        var tree = CSharpSyntaxTree.ParseText(sourceText, GetParseOptions(workspaceId, filePath), path: filePath, cancellationToken: ct);
         var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
 
         var pair = FindEnclosingPragmaPair(root, normalizedId, line);
@@ -275,7 +275,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
         var normalizedId = diagnosticId.Trim();
         var fullPath = Path.GetFullPath(filePath);
         var sourceText = await ReadSourceTextAsync(filePath, ct).ConfigureAwait(false);
-        var tree = CSharpSyntaxTree.ParseText(sourceText, path: filePath, cancellationToken: ct);
+        var tree = CSharpSyntaxTree.ParseText(sourceText, GetParseOptions(workspaceId, filePath), path: filePath, cancellationToken: ct);
         var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
 
         var pair = FindEnclosingPragmaPair(root, normalizedId, line);
@@ -483,8 +483,19 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
         return Environment.NewLine;
     }
 
+    private CSharpParseOptions GetParseOptions(string workspaceId, string filePath)
+    {
+        if (_workspace is null || !_workspace.ContainsWorkspace(workspaceId))
+        {
+            return CSharpParseOptions.Default;
+        }
+
+        var document = SymbolResolver.FindDocument(_workspace.GetCurrentSolution(workspaceId), filePath);
+        return document?.Project.ParseOptions as CSharpParseOptions ?? CSharpParseOptions.Default;
+    }
+
     /// <summary>
-    /// Walks the directive trivia list for the file, collects all <c>#pragma warning</c>
+    /// Walks the directive trivia list for the file, collects active <c>#pragma warning</c>
     /// directives that mention <paramref name="diagnosticId"/>, and finds the enclosing
     /// pair (most-recent <c>disable</c> at or before <paramref name="line"/>, matching
     /// <c>restore</c> after it). A dangling disable (no matching restore) returns
@@ -542,7 +553,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
                                       .Select(t => t.GetStructure())
                                       .OfType<PragmaWarningDirectiveTriviaSyntax>())
         {
-            if (!DirectiveMentionsId(directive, diagnosticId))
+            if (!directive.IsActive || !DirectiveMentionsId(directive, diagnosticId))
             {
                 continue;
             }
@@ -611,7 +622,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
                     // This is the restore we are about to relocate — ignore.
                     continue;
                 case PragmaWarningDirectiveTriviaSyntax pragma
-                    when pragma.DisableOrRestoreKeyword.IsKind(SyntaxKind.DisableKeyword)
+                    when pragma.IsActive && pragma.DisableOrRestoreKeyword.IsKind(SyntaxKind.DisableKeyword)
                          && DirectiveMentionsId(pragma, diagnosticId):
                     return $"Widening would nest into another '#pragma warning disable {diagnosticId}' at line {line}.";
             }

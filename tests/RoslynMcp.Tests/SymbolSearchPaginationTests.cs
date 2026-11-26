@@ -379,4 +379,32 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
                 null, null, null));
         ParameterValidationTests.AssertPublicEnvelope(exception, "filePath", "filePath, a symbolHandle, or a metadataName");
     }
+    [TestMethod]
+    [DataRow("Foo.class", false)]
+    [DataRow("Foo.@class", false)]
+    [DataRow("global::Foo.@class", false)]
+    [DataRow("Foo.class", true)]
+    [DataRow("Foo.@class", true)]
+    [DataRow("global::Foo.@class", true)]
+    public async Task SymbolSearch_NamespaceFilterUsesIdentifierIdentity(string filter, bool qualifiedQuery)
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        await using var workspace = new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(
+            Path.GetDirectoryName(solutionPath)!, solutionPath, WorkspaceManager);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "KeywordNamespaces.cs"),
+            "namespace Foo.@class { public class KeywordTarget { } } namespace Ordinary { public class OrdinaryTarget { } }");
+        var id = await workspace.LoadAsync(CancellationToken.None);
+        var query = qualifiedQuery ? "Foo.class.KeywordTarget" : "KeywordTarget";
+        var results = await SymbolSearchService.SearchSymbolsAsync(id, query, null, "Class", filter, 50, CancellationToken.None);
+        Assert.AreEqual(1, results.Count);
+        Assert.AreEqual("KeywordTarget", results.Single().Name);
+        var ordinary = await SymbolSearchService.SearchSymbolsAsync(id, "OrdinaryTarget", null, "Class", "Ordinary", 50, CancellationToken.None);
+        Assert.AreEqual(1, ordinary.Count);
+        var absent = await SymbolSearchService.SearchSymbolsAsync(id, query, null, "Class", "Other", 50, CancellationToken.None);
+        Assert.AreEqual(0, absent.Count);
+        var wrongCase = await SymbolSearchService.SearchSymbolsAsync(id, query, null, "Class", "foo.class", 50, CancellationToken.None);
+        Assert.AreEqual(0, wrongCase.Count);
+        var unfiltered = await SymbolSearchService.SearchSymbolsAsync(id, query, null, "Class", null, 50, CancellationToken.None);
+        Assert.AreEqual(1, unfiltered.Count);
+    }
 }

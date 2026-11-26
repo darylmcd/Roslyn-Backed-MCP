@@ -39,6 +39,14 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         var typeDeclaration = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
             .FirstOrDefault(candidate => string.Equals(candidate.Identifier.ValueText, typeName, StringComparison.Ordinal))
             ?? throw new InvalidOperationException($"Type '{typeName}' was not found in '{filePath}'.");
+        var description = $"Split class '{typeName}' into partial file '{newFileName}'";
+        var containingTypes = typeDeclaration.Ancestors().OfType<TypeDeclarationSyntax>().ToArray();
+        if (typeDeclaration.AncestorsAndSelf().OfType<TypeDeclarationSyntax>()
+            .Any(type => type.Modifiers.Any(SyntaxKind.FileKeyword)))
+        {
+            return new RefactoringPreviewDto(string.Empty, description, [], null,
+                GuidanceMessage: "A file-local type or a type with a file-local ancestor cannot be split: its identity belongs to one physical file.");
+        }
 
         var selectedMembers = typeDeclaration.Members
             .Where(member => GetMemberName(member) is string name && memberNames.Contains(name, StringComparer.Ordinal))
@@ -60,7 +68,14 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         var partialAfterRemoval = typeDeclaration.RemoveNodes(selectedMembers, SyntaxRemoveOptions.KeepExteriorTrivia)
             ?? throw new InvalidOperationException("Failed to remove the selected members from the original type.");
         var partialOriginal = EnsurePartial(TriviaNormalizationHelper.RemoveOrphanIndentTrivia(partialAfterRemoval));
-        var updatedRoot = root.ReplaceNode(typeDeclaration, partialOriginal);
+        TypeDeclarationSyntax originalChild = typeDeclaration;
+        var rewrittenChild = partialOriginal;
+        foreach (var containingType in containingTypes)
+        {
+            rewrittenChild = EnsurePartial(containingType.ReplaceNode(originalChild, rewrittenChild));
+            originalChild = containingType;
+        }
+        var updatedRoot = root.ReplaceNode(originalChild, rewrittenChild);
 
         // FORMAT-BUG-006 (dr-9-11-format-bug-006-duplicates-leading-trivia-into-b):
         // The original type declaration's leading trivia (XML doc comments, license headers,
@@ -69,10 +84,21 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         // minimal leading trivia (a leading newline so the partial sits below the namespace
         // header) and no attribute lists. Attributes on a partial class are merged by the
         // compiler, so leaving them on the original is sufficient.
-        var partialNewType = EnsurePartial(typeDeclaration
-            .WithAttributeLists(SyntaxFactory.List<AttributeListSyntax>())
-            .WithMembers(SyntaxFactory.List(selectedMembers))
-            .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed)));
+        var partialNewType = CreatePartialPart(typeDeclaration, SyntaxFactory.List(selectedMembers));
+        foreach (var containingType in containingTypes)
+        {
+            partialNewType = CreatePartialPart(containingType, SyntaxFactory.SingletonList<MemberDeclarationSyntax>(partialNewType))
+                .WithoutLeadingTrivia().WithoutTrailingTrivia();
+        }
+        // New parts need real separators and braces after primary-constructor/semicolon
+        // headers are removed. Normalize only generated text, never the original tree.
+        partialNewType = partialNewType.NormalizeWhitespace()
+            .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed);
+        if (!partialNewType.GetTrailingTrivia().LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia))
+        {
+            partialNewType = partialNewType.WithTrailingTrivia(
+                partialNewType.GetTrailingTrivia().Add(SyntaxFactory.CarriageReturnLineFeed));
+        }
         var namespaceName = NamespaceMemberClassifier.GetContainingNamespaceName(typeDeclaration);
         var receivingOptions = ReceivingNamespaceFactory.RequireCSharpOptions(document.Project.ParseOptions);
         var partialCompilationUnit = CreateCompilationUnit(root, partialNewType, namespaceName, receivingOptions);
@@ -93,7 +119,6 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
             new(newFilePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, newFileContent, newFilePath))
         };
 
-        var description = $"Split class '{typeName}' into partial file '{newFileName}'";
         var token = _compositePreviewStore.Store(workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -117,6 +142,28 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
 
         var partialToken = SyntaxFactory.Token(SyntaxKind.PartialKeyword).WithTrailingTrivia(SyntaxFactory.ElasticSpace);
         return declaration.WithModifiers(declaration.Modifiers.Add(partialToken));
+    }
+
+    private static TypeDeclarationSyntax CreatePartialPart(TypeDeclarationSyntax declaration, SyntaxList<MemberDeclarationSyntax> members)
+    {
+        var typeParameters = declaration.TypeParameterList;
+        if (typeParameters is not null)
+        {
+            typeParameters = typeParameters.WithParameters(SyntaxFactory.SeparatedList(
+                typeParameters.Parameters.Select(parameter => parameter.WithAttributeLists(default))));
+        }
+        return EnsurePartial(declaration
+            .WithAttributeLists(default)
+            .WithBaseList(null)
+            .WithParameterList(null)
+            .WithTypeParameterList(typeParameters)
+            .WithMembers(members)
+            .WithOpenBraceToken(declaration.OpenBraceToken.IsKind(SyntaxKind.OpenBraceToken)
+                ? declaration.OpenBraceToken : SyntaxFactory.Token(SyntaxKind.OpenBraceToken))
+            .WithCloseBraceToken(declaration.CloseBraceToken.IsKind(SyntaxKind.CloseBraceToken)
+                ? declaration.CloseBraceToken : SyntaxFactory.Token(SyntaxKind.CloseBraceToken))
+            .WithSemicolonToken(default)
+            .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed));
     }
 
     private static CompilationUnitSyntax CreateCompilationUnit(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax declaration,
