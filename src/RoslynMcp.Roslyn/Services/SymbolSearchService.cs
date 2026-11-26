@@ -189,7 +189,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
         if (kindFilter is not null && !MatchesKind(symbol, kindFilter))
             return true;
 
-        if (namespaceFilter is not null && symbol.ContainingNamespace?.ToDisplayString() != namespaceFilter)
+        if (namespaceFilter is not null && NamespaceNameIdentity.Of(symbol.ContainingNamespace) != NamespaceNameIdentity.Of(namespaceFilter))
             return true;
 
         if (allowedProjectPaths is not null)

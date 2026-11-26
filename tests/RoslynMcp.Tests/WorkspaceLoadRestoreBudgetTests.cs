@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Models;
@@ -26,7 +27,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
-    public async Task Restore_WithoutAmbientDeadline_UsesRestoreTimeoutAlone()
+    public async Task Restore_WithoutAmbientDeadline_UsesRemainingRestorePhaseBudget()
     {
         await WithRestoreRequiredWorkspace(async (manager, status) =>
         {
@@ -37,7 +38,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
                 executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
             Assert.AreEqual(1, executor.Timeouts.Count);
-            AssertBudgetNear(TimeSpan.FromSeconds(90), executor.Timeouts[0]);
+            AssertBudgetWithinObservedPhase(options.RestoreTimeout, null, executor.ElapsedAtEntry[0], executor.Timeouts[0]);
         });
     }
 
@@ -59,12 +60,12 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
                 executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
-            AssertBudgetNear(TimeSpan.FromSeconds(60), executor.Timeouts.Single());
+            AssertBudgetWithinObservedPhase(options.RestoreTimeout, TimeSpan.FromSeconds(60), executor.ElapsedAtEntry.Single(), executor.Timeouts.Single());
         });
     }
 
     [TestMethod]
-    public async Task Restore_AmbientDeadlineLooserThanRestoreTimeout_KeepsRestoreTimeout()
+    public async Task Restore_AmbientDeadlineLooserThanRestoreTimeout_UsesRemainingRestorePhaseBudget()
     {
         await WithRestoreRequiredWorkspace(async (manager, status) =>
         {
@@ -75,7 +76,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
                 executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
-            AssertBudgetNear(TimeSpan.FromSeconds(45), executor.Timeouts.Single());
+            AssertBudgetWithinObservedPhase(options.RestoreTimeout, TimeSpan.FromSeconds(570), executor.ElapsedAtEntry.Single(), executor.Timeouts.Single());
         });
     }
 
@@ -160,16 +161,126 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
                     return 0;
                 }, outerCt, applyStalenessPolicy: false), CancellationToken.None);
 
-            AssertBudgetNear(TimeSpan.FromSeconds(40), executor.Timeouts.Single());
+            AssertBudgetWithinObservedPhase(options.RestoreTimeout, TimeSpan.FromSeconds(40), executor.ElapsedAtEntry.Single(), executor.Timeouts.Single());
         });
     }
 
-    private static void AssertBudgetNear(TimeSpan expected, TimeSpan actual)
+    [TestMethod]
+    [DataRow(45, 570, 6, 39)]
+    [DataRow(90, 60, 6, 60)]
+    public void BudgetObservation_ValidPhaseElapsed_Passes(int timeoutSeconds, int ambientSeconds, int elapsedSeconds, int actualSeconds)
     {
-        // The phase clock is a real Stopwatch, so allow a little elapsed wall time.
+        AssertBudgetWithinObservedPhase(
+            TimeSpan.FromSeconds(timeoutSeconds), TimeSpan.FromSeconds(ambientSeconds),
+            TimeSpan.FromSeconds(elapsedSeconds), TimeSpan.FromSeconds(actualSeconds));
+    }
+
+    [TestMethod]
+    [DataRow(45, 570, 6, 38)]
+    [DataRow(45, 570, 6, 46)]
+    [DataRow(45, 570, 6, 0)]
+    [DataRow(45, 570, 6, -1)]
+    [DataRow(90, 60, 6, 59)]
+    [DataRow(90, 60, 6, 61)]
+    public void BudgetObservation_OutsideMeasuredBounds_Fails(int timeoutSeconds, int ambientSeconds, int elapsedSeconds, int actualSeconds)
+    {
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertBudgetWithinObservedPhase(
+            TimeSpan.FromSeconds(timeoutSeconds), TimeSpan.FromSeconds(ambientSeconds),
+            TimeSpan.FromSeconds(elapsedSeconds), TimeSpan.FromSeconds(actualSeconds)));
+    }
+
+    [TestMethod]
+    public void BudgetObservation_WithoutAmbientDeadline_AllowsMeasuredPhaseElapsed()
+    {
+        AssertBudgetWithinObservedPhase(
+            TimeSpan.FromSeconds(45), null, TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(39));
+    }
+
+    [TestMethod]
+    public void RemainingBudget_WithoutAmbientDeadline_SubtractsPhaseElapsed()
+    {
+        var actual = RestoreInvocationPlanner.RemainingBudget(
+            TimeSpan.FromSeconds(45), TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(30), "budget exhausted");
+
+        Assert.AreEqual(TimeSpan.FromSeconds(39), actual);
+    }
+
+    [TestMethod]
+    [DataRow(45, 6, 600, 0, 39)]
+    [DataRow(90, 6, 100, 10, 60)]
+    [DataRow(90, 31, 100, 10, 59)]
+    public void RemainingBudget_WithAmbientDeadline_UsesTighterRemainingBudget(
+        int timeoutSeconds, int elapsedSeconds, int requestSeconds, int requestElapsedSeconds, int expectedSeconds)
+    {
+        var clock = new FakeTimeProvider();
+        using var deadline = RequestDeadline.Begin(clock, TimeSpan.FromSeconds(requestSeconds));
+        clock.Advance(TimeSpan.FromSeconds(requestElapsedSeconds));
+
+        var actual = RestoreInvocationPlanner.RemainingBudget(
+            TimeSpan.FromSeconds(timeoutSeconds), TimeSpan.FromSeconds(elapsedSeconds),
+            TimeSpan.FromSeconds(30), "budget exhausted");
+
+        Assert.AreEqual(TimeSpan.FromSeconds(expectedSeconds), actual);
+    }
+
+    [TestMethod]
+    public void RemainingBudget_NestedDeadline_HonorsEarlierEnclosingDeadline()
+    {
+        var clock = new FakeTimeProvider();
+        using var outer = RequestDeadline.Begin(clock, TimeSpan.FromSeconds(120));
+        clock.Advance(TimeSpan.FromSeconds(50));
+        using var inner = RequestDeadline.Begin(clock, TimeSpan.FromSeconds(120));
+
+        var actual = RestoreInvocationPlanner.RemainingBudget(
+            TimeSpan.FromSeconds(600), TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(30), "budget exhausted");
+
+        Assert.AreEqual(TimeSpan.FromSeconds(40), actual);
+    }
+
+    [TestMethod]
+    [DataRow(45, 45)]
+    [DataRow(45, 46)]
+    public void RemainingBudget_ExhaustedPhase_ThrowsSuppliedTimeout(int timeoutSeconds, int elapsedSeconds)
+    {
+        const string message = "phase budget exhausted";
+
+        var thrown = Assert.ThrowsExactly<TimeoutException>(() => RestoreInvocationPlanner.RemainingBudget(
+            TimeSpan.FromSeconds(timeoutSeconds), TimeSpan.FromSeconds(elapsedSeconds), TimeSpan.FromSeconds(30), message));
+
+        Assert.AreEqual(message, thrown.Message);
+    }
+
+    [TestMethod]
+    [DataRow(20)]
+    [DataRow(30)]
+    public void RemainingBudget_ExhaustedAmbientAfterReserve_ThrowsSuppliedTimeout(int requestSeconds)
+    {
+        const string message = "ambient budget exhausted";
+        using var deadline = RequestDeadline.Begin(new FakeTimeProvider(), TimeSpan.FromSeconds(requestSeconds));
+
+        var thrown = Assert.ThrowsExactly<TimeoutException>(() => RestoreInvocationPlanner.RemainingBudget(
+            TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(30), message));
+
+        Assert.AreEqual(message, thrown.Message);
+    }
+
+    private static void AssertBudgetWithinObservedPhase(
+        TimeSpan restoreTimeout, TimeSpan? ambientLimit, TimeSpan elapsedUpperBound, TimeSpan actual)
+    {
+        // The recorder starts before the production phase and samples at executor entry, so its
+        // elapsed time encloses all phase work charged to this invocation's timeout.
+        var minimum = restoreTimeout - elapsedUpperBound;
+        var maximum = restoreTimeout;
+        if (ambientLimit is { } ambient)
+        {
+            minimum = ambient < minimum ? ambient : minimum;
+            maximum = ambient < maximum ? ambient : maximum;
+        }
+
+        Assert.IsTrue(actual > TimeSpan.Zero, $"Expected a positive restore budget, got {actual}.");
         Assert.IsTrue(
-            actual <= expected && actual >= expected - TimeSpan.FromSeconds(5),
-            $"Expected a budget just under {expected}, got {actual}.");
+            actual >= minimum && actual <= maximum,
+            $"Expected a restore budget in [{minimum}, {maximum}] for observed elapsed {elapsedUpperBound}, got {actual}.");
     }
 
     private async Task WithRestoreRequiredWorkspace(Func<WorkspaceManager, WorkspaceStatusDto, Task> body)
@@ -195,7 +306,10 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
     /// <summary>Records each invocation's timeout and succeeds; honors a cancelled token like the real executor.</summary>
     private sealed class RecordingExecutor : IGatedCommandExecutor
     {
+        private readonly Stopwatch _elapsed = Stopwatch.StartNew();
+
         public List<TimeSpan> Timeouts { get; } = [];
+        public List<TimeSpan> ElapsedAtEntry { get; } = [];
 
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,
@@ -205,6 +319,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
+            ElapsedAtEntry.Add(_elapsed.Elapsed);
             ct.ThrowIfCancellationRequested();
             Timeouts.Add(timeout);
             return Task.FromResult(new CommandExecutionDto(

@@ -105,12 +105,33 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
         if (nodesToReplace.Count == 0) return (solution, 0);
 
+        var model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        var namespaceKey = NamespaceNameIdentity.Of(newTypeSymbol.ContainingNamespace);
+        var needsImport = model is null || nodesToReplace.Keys.Any(node => !IsNamespaceInScope(node, model, namespaceKey));
+
         root = root.ReplaceNodes(nodesToReplace.Keys, (original, _) =>
             nodesToReplace.TryGetValue(original, out var replacement) ? replacement : original);
 
-        root = EnsureUsingDirective(root, newTypeSymbol.ContainingNamespace?.ToDisplayString());
+        if (needsImport)
+            root = EnsureUsingDirective(root, newTypeSymbol.ContainingNamespace?.ToDisplayString());
 
         return (solution.WithDocumentSyntaxRoot(docId, root), nodesToReplace.Count);
+    }
+
+    private static bool IsNamespaceInScope(SyntaxNode node, SemanticModel model, string namespaceKey)
+    {
+        for (var current = model.GetEnclosingSymbol(node.SpanStart)?.ContainingNamespace;
+             current is not null; current = current.ContainingNamespace)
+        {
+            if (NamespaceNameIdentity.Of(current) == namespaceKey)
+                return true;
+        }
+        return node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
+            .Any(declaration => declaration.Usings.Any(directive =>
+                NamespaceNameIdentity.IsPlainImport(directive)
+                && directive.Name is { } name
+                && model.GetSymbolInfo(name).Symbol is INamespaceSymbol importedNamespace
+                && NamespaceNameIdentity.Of(importedNamespace) == namespaceKey));
     }
 
     private static SyntaxNode EnsureUsingDirective(SyntaxNode root, string? namespaceName)

@@ -197,7 +197,10 @@ public sealed class SemanticGrepService : ISemanticGrepService
             {
                 continue;
             }
-            TryAddMatch(t.ToString(), t.GetLocation(), filePath, "comment", regex, hits);
+            if (t.SyntaxTree is not { } tree)
+                continue;
+            var source = tree.GetText();
+            TryAddMatch(source.ToString(t.FullSpan), Location.Create(tree, t.FullSpan), filePath, "comment", regex, hits);
         }
     }
 
@@ -213,9 +216,11 @@ public sealed class SemanticGrepService : ISemanticGrepService
         {
             return;
         }
+        Match match;
         try
         {
-            if (!regex.IsMatch(text))
+            match = regex.Match(text);
+            if (!match.Success)
             {
                 return;
             }
@@ -224,6 +229,13 @@ public sealed class SemanticGrepService : ISemanticGrepService
         {
             // Skip pathological inputs rather than fail the whole sweep.
             return;
+        }
+
+        if (tokenKind == "comment" && location.SourceTree is { } sourceTree)
+        {
+            location = Location.Create(sourceTree,
+                new Microsoft.CodeAnalysis.Text.TextSpan(location.SourceSpan.Start + match.Index, match.Length));
+            text = text[match.Index..];
         }
 
         var lineSpan = location.GetLineSpan();

@@ -257,4 +257,70 @@ public sealed class TestReferenceMapServiceTests : SharedWorkspaceTestBase
         }
         return warnings;
     }
+    [TestMethod]
+    public async Task BuildAsync_ExcludesSynthesizedMembersFromBothCoverageSets()
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        await using var workspace = new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(
+            Path.GetDirectoryName(solutionPath)!, solutionPath, WorkspaceManager);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "SynthesisFixture.cs"), """
+            namespace SynthesisFixture;
+            public record AnimalRecord(int Value)
+            {
+                public AnimalRecord() : this(0) { }
+                public string Explicit() => Value.ToString();
+            }
+            public class ImplicitClass { }
+            public class ExplicitClass
+            {
+                public ExplicitClass() { }
+                public void M() { }
+                public class Nested { public void Work() { } }
+            }
+            public interface IExplicit { void Contract(); }
+            """);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib.Tests", "SynthesisReferences.cs"), """
+            namespace SynthesisReferences;
+            public class Checks
+            {
+                public void References()
+                {
+                    var animal = new SynthesisFixture.AnimalRecord(1);
+                    _ = animal.Equals(new SynthesisFixture.AnimalRecord(1));
+                    new SynthesisFixture.ExplicitClass().M();
+                }
+            }
+            """);
+        var id = await workspace.LoadAsync(CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(id);
+        var project = solution.Projects.Single(p => p.Name == "SampleLib");
+        var compilation = await project.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var record = compilation.GetTypeByMetadataName("SynthesisFixture.AnimalRecord")!;
+        var primary = record.InstanceConstructors.Single(c => c.Parameters.Length == 1 && c.Parameters[0].Type.SpecialType == Microsoft.CodeAnalysis.SpecialType.System_Int32);
+        Assert.IsFalse(primary.IsImplicitlyDeclared, "The source primary constructor must remain productive.");
+        var types = new[] { record, compilation.GetTypeByMetadataName("SynthesisFixture.ImplicitClass")!,
+            compilation.GetTypeByMetadataName("SynthesisFixture.ExplicitClass")!, compilation.GetTypeByMetadataName("SynthesisFixture.ExplicitClass+Nested")! };
+        var generated = types.SelectMany(t => t.GetMembers().OfType<Microsoft.CodeAnalysis.IMethodSymbol>())
+            .Where(m => m.IsImplicitlyDeclared).Select(m => m.ToDisplayString()).ToArray();
+        Assert.IsTrue(generated.Length > 0);
+        var result = await Service.BuildAsync(id, "SampleLib", 0, 500, DefaultMaxMockDriftWarnings, CancellationToken.None);
+        var covered = result.CoveredSymbols.Select(s => s.SymbolDisplay).ToArray();
+        var all = covered.Concat(result.UncoveredSymbols).ToArray();
+        Assert.AreEqual(0, all.Intersect(generated, StringComparer.Ordinal).Count(), string.Join(Environment.NewLine, all.Intersect(generated)));
+        var fixtureSymbols = all.Where(s => s.StartsWith("SynthesisFixture.", StringComparison.Ordinal)).ToArray();
+        Assert.AreEqual(7, fixtureSymbols.Length, string.Join(Environment.NewLine, fixtureSymbols));
+        CollectionAssert.Contains(fixtureSymbols, primary.ToDisplayString());
+        CollectionAssert.Contains(fixtureSymbols, "SynthesisFixture.AnimalRecord.AnimalRecord()");
+        CollectionAssert.Contains(fixtureSymbols, "SynthesisFixture.AnimalRecord.Explicit()");
+        CollectionAssert.Contains(fixtureSymbols, "SynthesisFixture.ExplicitClass.ExplicitClass()");
+        CollectionAssert.Contains(fixtureSymbols, "SynthesisFixture.ExplicitClass.M()");
+        CollectionAssert.Contains(fixtureSymbols, "SynthesisFixture.ExplicitClass.Nested.Work()");
+        CollectionAssert.Contains(fixtureSymbols, "SynthesisFixture.IExplicit.Contract()");
+        CollectionAssert.Contains(covered, "SynthesisFixture.ExplicitClass.M()");
+        Assert.IsFalse(covered.Any(s => s.StartsWith("SynthesisFixture.AnimalRecord.Equals", StringComparison.Ordinal)));
+        Assert.IsFalse(result.HasMore);
+        Assert.AreEqual(result.TotalCoveredCount + result.TotalUncoveredCount, all.Length);
+        Assert.AreEqual(Math.Round(result.TotalCoveredCount * 100.0 / all.Length, 1), result.CoveragePercent);
+    }
 }
