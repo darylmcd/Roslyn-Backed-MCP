@@ -1,6 +1,6 @@
 # symbol-handle-method-type-parameter-roundtrip — Preserve method-owned type parameters in constructed handles
 
-**row:** `symbol-handle-method-type-parameter-roundtrip` · **pri:** `Medium` · **size:** `M` · **verified:** `19d3c5330047684ce5de3b7c6d819ff88f5f4144` · **deps:** `symbol-handle-constructed-generic-roundtrip`
+**row:** `symbol-handle-method-type-parameter-roundtrip` · **pri:** `Medium` · **size:** `M` · **verified:** `19d3c5330047684ce5de3b7c6d819ff88f5f4144`
 
 ## Anchors
 
