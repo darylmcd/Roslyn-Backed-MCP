@@ -149,7 +149,7 @@ Re-test 3–5 previously recorded issues from whichever prior source the audited
 
 **Latency findings filter.** Apply this filter once to the latency observations before drafting sections 13 and 14. Use the resulting actionable findings for every emitter (stdout, issue, and fragment).
 
-- A p50 over its triage reference by itself is a **FLAG**. Record its scale and evidence only in *Performance baseline*. Triage references are for audit scoring. Use the server and client deadline contracts and the audited repo's own acceptance criteria for those decisions.
+- A p50 over its triage reference by itself is a **FLAG**. Record its scale and evidence only in *Performance baseline*. Use triage references only for audit scoring. Use the documented server and client deadline contracts to judge timeouts and the audited repo's documented acceptance criteria to judge product performance.
 - A latency **FAIL** or actionable finding requires a demonstrated server request-deadline or cancellation-handling failure (including a witnessed server hang), or a reproducible matched-baseline regression. For the latter, compare paired prior/current server runs with the same tool and comparable input, the same machine, audited revision and fixture state, protocol and warm-up/cache state, and identical timing metric. Record p50 and max for both sides.
 - Record ordinary caller cancellation, a client/harness deadline, or an operator probe cutoff as an incomplete sample unless independent evidence demonstrates a server failure. Exclude incomplete samples from the latency statistics. When a suspected slowdown lacks a matched baseline, record that evidence gap in *Performance baseline*.
 

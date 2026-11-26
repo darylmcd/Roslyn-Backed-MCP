@@ -200,7 +200,7 @@ Quick tier does **not** emit `_latest-promotion-scorecard.json`. Promotion-tier 
 
 ### Phase 19: Finding emission
 
-Apply the full tier's **Latency findings filter** in `prompts/phases/output-and-close.md`, Phase 19, before drafting the report's actionable findings and before using any emitter below. Quick summary:
+Follow the full tier's Phase 19 finding-emission contract in `prompts/phases/output-and-close.md`. Apply its **Latency findings filter** before drafting actionable findings or using any emitter. Quick summary:
 
 - **Use the shared renderer.** Dot-source `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1` and call `Render-FindingIssue -Finding $f`. Same renderer the maintainer's `/backlog-intake --publish` uses, so the body bytes are identical across both paths.
 - **Required envelope fields:** `id`, `source-repo`, `severity`, `area`, `server-version` (from `server_info.version` at Phase -1), `anchors`, `finding`, `repro`, `proposed-fix`. The `area` enum includes `security` — pick it for any pre-disclosure-relevant finding so the refusal contract triggers regardless of severity.
