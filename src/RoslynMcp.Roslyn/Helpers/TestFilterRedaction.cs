@@ -1,4 +1,5 @@
 using System.Text;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -99,7 +100,7 @@ internal sealed class TestFilterRedaction
 
         internal void Append(string chunk)
         {
-            if (_completed) throw new InvalidOperationException("The filter collector is complete.");
+            if (_completed) throw InvalidOperationErrors.Internal("The filter collector is complete.");
             if (chunk.Length == 0) return;
             var bound = (int)Math.Min((long)_owner._maximumLength - 1 + chunk.Length, int.MaxValue);
             var consumed = 0;
@@ -120,7 +121,7 @@ internal sealed class TestFilterRedaction
 
         internal string Complete()
         {
-            if (_completed) throw new InvalidOperationException("The filter collector is complete.");
+            if (_completed) throw InvalidOperationErrors.Internal("The filter collector is complete.");
             _completed = true;
             AppendSafe(Apply(_pending, _pendingMask, 0, _pending.Length));
             _pending = "";
