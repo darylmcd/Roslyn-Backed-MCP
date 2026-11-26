@@ -85,7 +85,21 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
     {
         _logger.LogDebug("ReferenceService.FindImplementationsAsync: workspaceId={WorkspaceId} symbol={Symbol} includeGeneratedPartials={IncludeGeneratedPartials}", workspaceId, symbol.ToDisplayString(), includeGeneratedPartials);
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
+        IEnumerable<ISymbol> implementations;
+        if (symbol is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: true, IsStatic: false } abstractClass)
+        {
+            var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(abstractClass, solution, transitive: true, cancellationToken: ct).ConfigureAwait(false);
+            implementations = derivedClasses.Where(derived => !derived.IsAbstract);
+        }
+        else if (symbol is { IsAbstract: true, ContainingType.TypeKind: TypeKind.Class, Kind: SymbolKind.Method or SymbolKind.Property or SymbolKind.Event })
+        {
+            var overrides = await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
+            implementations = overrides.Where(member => !member.IsAbstract);
+        }
+        else
+        {
+            implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
+        }
         var results = new List<LocationDto>();
 
         // find-implementations-source-gen-partial-dedup: Roslyn merges partial-class
