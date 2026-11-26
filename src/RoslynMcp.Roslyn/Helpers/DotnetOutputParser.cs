@@ -135,7 +135,7 @@ internal static partial class DotnetOutputParser
 
         foreach (var trxPath in trxPaths.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
-            var one = ParseSingleTrxFile(trxPath);
+            var one = ParseSingleTrxFile(trxPath, new TestFilterRedaction(execution.Arguments));
             if (one.Issue is not null)
             {
                 reportIssue = one.Issue;
@@ -163,7 +163,11 @@ internal static partial class DotnetOutputParser
     }
 
     private static TestRunFailureEnvelopeDto ReportFailure(CommandExecutionDto execution, string issue) =>
-        new("TestReportFailure", false, issue, Tail(execution.StdOut), Tail(execution.StdErr));
+        new("TestReportFailure", false, issue, Tail(execution.StdOut), Tail(execution.StdErr))
+        {
+            PublicStdOutTail = SafeTail(execution, standardError: false),
+            PublicStdErrTail = SafeTail(execution, standardError: true),
+        };
 
     /// <summary>
     /// Builds a synthetic <see cref="TestRunResultDto"/> for the case where the test invocation
@@ -177,7 +181,11 @@ internal static partial class DotnetOutputParser
             IsRetryable: false,
             Summary: timeoutSummary,
             StdOutTail: Tail(execution.StdOut),
-            StdErrTail: Tail(execution.StdErr));
+            StdErrTail: Tail(execution.StdErr))
+        {
+            PublicStdOutTail = SafeTail(execution, standardError: false),
+            PublicStdErrTail = SafeTail(execution, standardError: true),
+        };
 
         return new TestRunResultDto(
             execution,
@@ -223,7 +231,11 @@ internal static partial class DotnetOutputParser
                 IsRetryable: true,
                 Summary: summary,
                 StdOutTail: stdOutTail,
-                StdErrTail: stdErrTail);
+                StdErrTail: stdErrTail)
+            {
+                PublicStdOutTail = SafeTail(execution, standardError: false),
+                PublicStdErrTail = SafeTail(execution, standardError: true),
+            };
         }
 
         // Build failure: compilation errors prevented the test step from running.
@@ -238,7 +250,11 @@ internal static partial class DotnetOutputParser
                 Summary: $"dotnet test exited with code {execution.ExitCode} because the build step failed. " +
                          "Inspect the build diagnostics and fix compilation errors before retrying.",
                 StdOutTail: stdOutTail,
-                StdErrTail: stdErrTail);
+                StdErrTail: stdErrTail)
+            {
+                PublicStdOutTail = SafeTail(execution, standardError: false),
+                PublicStdErrTail = SafeTail(execution, standardError: true),
+            };
         }
 
         return new TestRunFailureEnvelopeDto(
@@ -248,7 +264,19 @@ internal static partial class DotnetOutputParser
                      (producedTrx ? "produced TRX output despite the failed process. " : "produced no TRX output. ") +
                      "Inspect StdOutTail/StdErrTail for diagnosis.",
             StdOutTail: stdOutTail,
-            StdErrTail: stdErrTail);
+            StdErrTail: stdErrTail)
+        {
+            PublicStdOutTail = SafeTail(execution, standardError: false),
+            PublicStdErrTail = SafeTail(execution, standardError: true),
+        };
+    }
+
+    private static string? SafeTail(CommandExecutionDto execution, bool standardError)
+    {
+        var source = standardError ? execution.StdErr : execution.StdOut;
+        var safe = (standardError ? execution.PublicStdErr : execution.PublicStdOut)
+            ?? new TestFilterRedaction(execution.Arguments).Mask(source);
+        return Tail(safe);
     }
 
     private static string? Tail(string value)
@@ -281,7 +309,7 @@ internal static partial class DotnetOutputParser
     /// </summary>
     internal const string TruncationMarker = "... [truncated]";
 
-    private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures, bool ReportFailed, string? Issue) ParseSingleTrxFile(string trxPath)
+    private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures, bool ReportFailed, string? Issue) ParseSingleTrxFile(string trxPath, TestFilterRedaction filters)
     {
         if (!File.Exists(trxPath))
             return (0, 0, 0, 0, [], false, "A supplied TRX report is missing.");
@@ -368,7 +396,14 @@ internal static partial class DotnetOutputParser
                     DisplayName: testId is null ? GetDisplayName(testName) : testName ?? "unknown",
                     FullyQualifiedName: fullyQualifiedName,
                     Message: TruncateHead(messageEl?.Value, TestFailureMessageMaxChars) ?? "Test failed",
-                    StackTrace: TruncateHead(stackEl?.Value, TestFailureStackTraceMaxChars));
+                    StackTrace: TruncateHead(stackEl?.Value, TestFailureStackTraceMaxChars))
+                {
+                    PublicDisplayName = testName is null || (testId is null && string.IsNullOrWhiteSpace(testName))
+                        ? "unknown"
+                        : filters.Mask(testName)[(testId is null ? testName.LastIndexOf('.') + 1 : 0)..],
+                    PublicMessage = SafeHead(messageEl?.Value, TestFailureMessageMaxChars, filters) ?? "Test failed",
+                    PublicStackTrace = SafeHead(stackEl?.Value, TestFailureStackTraceMaxChars, filters),
+                };
             })
             .ToList();
 
@@ -379,6 +414,13 @@ internal static partial class DotnetOutputParser
                 !string.Equals((string?)r.Attribute("outcome"), "NotExecuted", StringComparison.OrdinalIgnoreCase)))
             reportFailed = true;
         return (total, passed, failed, skipped, failures, reportFailed, null);
+    }
+
+    private static string? SafeHead(string? value, int maximum, TestFilterRedaction filters)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        var length = Math.Min(value.Length, maximum);
+        return filters.MaskHead(value, length) + (value.Length > maximum ? TruncationMarker : "");
     }
 
     private static string Capitalize(string value) =>

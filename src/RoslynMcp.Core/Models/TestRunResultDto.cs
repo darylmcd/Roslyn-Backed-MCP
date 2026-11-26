@@ -41,7 +41,13 @@ public sealed record TestFailureDto(
     string DisplayName,
     string? FullyQualifiedName,
     string Message,
-    string? StackTrace);
+    string? StackTrace)
+{
+    // These internal companions use the same source coordinates as the original parser cuts.
+    internal string? PublicDisplayName { get; init; }
+    internal string? PublicMessage { get; init; }
+    internal string? PublicStackTrace { get; init; }
+}
 
 /// <summary>
 /// Structured failure envelope populated when <c>dotnet test</c> or its TRX report fails, including failures
@@ -72,4 +78,8 @@ public sealed record TestRunFailureEnvelopeDto(
     bool IsRetryable,
     string Summary,
     string? StdOutTail,
-    string? StdErrTail);
+    string? StdErrTail)
+{
+    internal string? PublicStdOutTail { get; init; }
+    internal string? PublicStdErrTail { get; init; }
+}
