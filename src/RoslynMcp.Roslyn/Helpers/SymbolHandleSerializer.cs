@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -49,8 +50,17 @@ public static class SymbolHandleSerializer
         }
         var constructedType = symbol is INamedTypeSymbol { IsUnboundGenericType: false } named
             && (named.IsTupleType || HasConstructedLevel(named))
-            ? EncodeType(named, named.NullableAnnotation, depth: 1)
+            ? EncodeType(named, named.NullableAnnotation, depth: 1, signatureOwner: null)
             : null;
+        // A legacy location can select the open type when its parameter and the method
+        // parameter have the same name. Older readers must have no locator to fall back to.
+        if (symbol is INamedTypeSymbol candidate && ContainsMethodOwnedParameter(candidate))
+        {
+            var methodPayload = new SymbolHandlePayload(null, symbol.ToDisplayString(), null, null, null,
+                MethodConstructedType: constructedType);
+            return Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(methodPayload));
+        }
+
         var payload = new SymbolHandlePayload(
             MetadataName: symbol is INamedTypeSymbol namedType ? namedType.ToDisplayString() : null,
             DisplayName: symbol.ToDisplayString(),
@@ -82,7 +92,7 @@ public static class SymbolHandleSerializer
             return await ResolveMetadataMemberAsync(solution, payload.MemberIdentity, ct).ConfigureAwait(false);
         }
 
-        if (payload.ConstructedType is { } constructedType)
+        if ((payload.MethodConstructedType ?? payload.ConstructedType) is { } constructedType)
         {
             return await ResolveConstructedTypeAsync(solution, constructedType, ct).ConfigureAwait(false);
         }
@@ -164,7 +174,18 @@ public static class SymbolHandleSerializer
 
         if (payload.ConstructedType is { } constructedType &&
             (payload.MemberIdentity is not null || constructedType.Kind != RecipeKind.Named ||
-             !IsValidRecipe(constructedType, depth: 1)))
+             !IsValidRecipe(constructedType, depth: 1, allowMethodOwner: false, selfArity: null)))
+        {
+            throw new PublicArgumentException("symbolHandle constructed type identity is invalid.", nameof(symbolHandle));
+        }
+
+        if (payload.MethodConstructedType is { } methodType &&
+            (payload.ConstructedType is not null || payload.MemberIdentity is not null ||
+             payload.MetadataName is not null || payload.FilePath is not null ||
+             payload.Line is not null || payload.Column is not null || string.IsNullOrWhiteSpace(payload.DisplayName) ||
+             methodType.Kind != RecipeKind.Named ||
+             !IsValidRecipe(methodType, depth: 1, allowMethodOwner: true, selfArity: null) ||
+             !ContainsMethodOwner(methodType)))
         {
             throw new PublicArgumentException("symbolHandle constructed type identity is invalid.", nameof(symbolHandle));
         }
@@ -189,14 +210,23 @@ public static class SymbolHandleSerializer
         int? Line,
         int? Column,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MemberIdentity? MemberIdentity = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ConstructedTypeIdentity? ConstructedType = null);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ConstructedTypeIdentity? ConstructedType = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ConstructedTypeIdentity? MethodConstructedType = null);
 
     internal sealed record MemberIdentity(
         string AssemblyIdentity,
         string ContainingTypeMetadataName,
         string DeclarationId);
 
-    internal enum RecipeKind { Named = 1, Array, Dynamic, TypeParameter }
+    internal enum RecipeKind { Named = 1, Array, Dynamic, TypeParameter, MethodTypeParameter, MethodSignatureParameter }
+
+    internal sealed record MethodOwnerIdentity(string MetadataName, int Arity, bool IsStatic,
+        SignatureCallingConvention CallingConvention, MethodKind MethodKind, MethodSignaturePart[] Signature,
+        InterfaceMethodIdentity[] ExplicitInterfaces);
+
+    internal sealed record MethodSignaturePart(RefKind RefKind, ConstructedTypeIdentity Type);
+
+    internal sealed record InterfaceMethodIdentity(ConstructedTypeIdentity InterfaceType, string MetadataName);
 
     internal sealed record ConstructedTypeIdentity(RecipeKind Kind, NullableAnnotation Annotation)
     {
@@ -207,6 +237,9 @@ public static class SymbolHandleSerializer
         public ConstructedTypeIdentity? Element { get; init; }
         public int? Rank { get; init; }
         public int? Ordinal { get; init; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public MethodOwnerIdentity? Method { get; init; }
     }
 
     internal sealed record TypeLevel(string Name, ConstructedTypeIdentity[]? Arguments);
@@ -223,7 +256,25 @@ public static class SymbolHandleSerializer
         return false;
     }
 
-    private static ConstructedTypeIdentity? EncodeType(ITypeSymbol type, NullableAnnotation annotation, int depth)
+    private static bool ContainsMethodOwnedParameter(ITypeSymbol type) => type switch
+    {
+        ITypeParameterSymbol parameter => parameter.TypeParameterKind == TypeParameterKind.Method,
+        IArrayTypeSymbol array => ContainsMethodOwnedParameter(array.ElementType),
+        IPointerTypeSymbol pointer => ContainsMethodOwnedParameter(pointer.PointedAtType),
+        IFunctionPointerTypeSymbol pointer => ContainsMethodOwnedParameter(pointer.Signature.ReturnType) ||
+            pointer.Signature.Parameters.Any(parameter => ContainsMethodOwnedParameter(parameter.Type)),
+        INamedTypeSymbol named => named.TypeArguments.Any(ContainsMethodOwnedParameter) ||
+            (named.ContainingType is { } containing && ContainsMethodOwnedParameter(containing)),
+        _ => false,
+    };
+
+    private static bool ContainsMethodOwner(ConstructedTypeIdentity recipe) =>
+        recipe.Kind == RecipeKind.MethodTypeParameter ||
+        (recipe.Element is { } element && ContainsMethodOwner(element)) ||
+        (recipe.Chain is { } chain && chain.Any(level => level.Arguments?.Any(ContainsMethodOwner) == true));
+
+    private static ConstructedTypeIdentity? EncodeType(
+        ITypeSymbol type, NullableAnnotation annotation, int depth, IMethodSymbol? signatureOwner)
     {
         if (depth > MaxConstructedTypeDepth || type.TypeKind == TypeKind.Error)
         {
@@ -233,7 +284,7 @@ public static class SymbolHandleSerializer
         switch (type)
         {
             case INamedTypeSymbol { IsAnonymousType: false, IsUnboundGenericType: false } named:
-                var chain = EncodeTypeChain(named, depth, includeArguments: true);
+                var chain = EncodeTypeChain(named, depth, includeArguments: true, signatureOwner);
                 return chain is null ? null : new ConstructedTypeIdentity(RecipeKind.Named, annotation)
                 {
                     Assembly = named.ContainingAssembly.Identity.ToString(),
@@ -245,7 +296,7 @@ public static class SymbolHandleSerializer
                 };
             case IArrayTypeSymbol array when (array.IsSZArray || array.Rank >= 2) && array.CustomModifiers.IsEmpty &&
                     array.Sizes.IsEmpty && array.LowerBounds.IsDefault:
-                var element = EncodeType(array.ElementType, array.ElementNullableAnnotation, depth + 1);
+                var element = EncodeType(array.ElementType, array.ElementNullableAnnotation, depth + 1, signatureOwner);
                 return element is null ? null : new ConstructedTypeIdentity(RecipeKind.Array, annotation)
                 {
                     Element = element,
@@ -257,15 +308,77 @@ public static class SymbolHandleSerializer
                 return new(RecipeKind.TypeParameter, annotation)
                 {
                     Assembly = owner.ContainingAssembly.Identity.ToString(),
-                    Chain = EncodeTypeChain(owner.OriginalDefinition, depth, includeArguments: false),
+                    Chain = EncodeTypeChain(owner.OriginalDefinition, depth, includeArguments: false, signatureOwner),
                     Ordinal = parameter.Ordinal,
                 };
+            case ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method, DeclaringMethod: { } method } methodParameter:
+                if (signatureOwner is not null)
+                {
+                    return SymbolEqualityComparer.Default.Equals(signatureOwner, method)
+                        ? new(RecipeKind.MethodSignatureParameter, annotation) { Ordinal = methodParameter.Ordinal }
+                        : null;
+                }
+
+                return EncodeMethodOwner(method, depth) is { } methodOwner
+                    ? new ConstructedTypeIdentity(RecipeKind.MethodTypeParameter, annotation)
+                    {
+                        Assembly = method.ContainingAssembly.Identity.ToString(),
+                        Chain = EncodeTypeChain(method.ContainingType, depth, includeArguments: false, signatureOwner: null),
+                        Method = methodOwner,
+                        Ordinal = methodParameter.Ordinal,
+                    }
+                    : null;
             default:
                 return null;
         }
     }
 
-    private static TypeLevel[]? EncodeTypeChain(INamedTypeSymbol type, int depth, bool includeArguments)
+    private static MethodOwnerIdentity? EncodeMethodOwner(IMethodSymbol method, int depth)
+    {
+        if (method.ContainingSymbol is not INamedTypeSymbol containing ||
+            method.MethodKind is MethodKind.LocalFunction or MethodKind.AnonymousFunction or MethodKind.ReducedExtension ||
+            !SymbolEqualityComparer.Default.Equals(method, method.OriginalDefinition) ||
+            !SymbolEqualityComparer.Default.Equals(containing, containing.OriginalDefinition) ||
+            !method.ReturnTypeCustomModifiers.IsEmpty || !method.RefCustomModifiers.IsEmpty ||
+            !method.UnmanagedCallingConventionTypes.IsEmpty)
+        {
+            return null;
+        }
+
+        var signature = new MethodSignaturePart[method.Parameters.Length + 1];
+        foreach (var parameter in method.Parameters)
+        {
+            if (!parameter.CustomModifiers.IsEmpty || !parameter.RefCustomModifiers.IsEmpty ||
+                EncodeType(parameter.Type, parameter.NullableAnnotation, depth + 1, method) is not { } type)
+            {
+                return null;
+            }
+            signature[parameter.Ordinal] = new(parameter.RefKind, type);
+        }
+        if (EncodeType(method.ReturnType, method.ReturnNullableAnnotation, depth + 1, method) is not { } returnType)
+        {
+            return null;
+        }
+        signature[^1] = new(method.RefKind, returnType);
+
+        var explicitInterfaces = new InterfaceMethodIdentity[method.ExplicitInterfaceImplementations.Length];
+        for (var index = 0; index < explicitInterfaces.Length; index++)
+        {
+            var implemented = method.ExplicitInterfaceImplementations[index];
+            if (ContainsMethodOwnedParameter(implemented.ContainingType) ||
+                EncodeType(implemented.ContainingType, implemented.ContainingType.NullableAnnotation, depth + 1,
+                    signatureOwner: null) is not { } interfaceType)
+            {
+                return null;
+            }
+            explicitInterfaces[index] = new(interfaceType, implemented.MetadataName);
+        }
+        return new(method.MetadataName, method.Arity, method.IsStatic, method.CallingConvention, method.MethodKind, signature,
+            explicitInterfaces.OrderBy(identity => JsonSerializer.Serialize(identity), StringComparer.Ordinal).ToArray());
+    }
+
+    private static TypeLevel[]? EncodeTypeChain(
+        INamedTypeSymbol type, int depth, bool includeArguments, IMethodSymbol? signatureOwner)
     {
         var levels = new Stack<TypeLevel>();
         for (INamedTypeSymbol? level = type; level is not null; level = level.ContainingType)
@@ -278,7 +391,7 @@ public static class SymbolHandleSerializer
                 for (var index = 0; index < arguments.Length; index++)
                 {
                     if (!level.GetTypeArgumentCustomModifiers(index).IsEmpty ||
-                        EncodeType(level.TypeArguments[index], level.TypeArgumentNullableAnnotations[index], depth + 1) is not { } argument)
+                        EncodeType(level.TypeArguments[index], level.TypeArgumentNullableAnnotations[index], depth + 1, signatureOwner) is not { } argument)
                     {
                         return null;
                     }
@@ -290,9 +403,10 @@ public static class SymbolHandleSerializer
         return levels.ToArray();
     }
 
-    private static bool IsValidRecipe(ConstructedTypeIdentity? recipe, int depth)
+    private static bool IsValidRecipe(ConstructedTypeIdentity? recipe, int depth, bool allowMethodOwner, int? selfArity)
     {
-        if (recipe is null || depth > MaxConstructedTypeDepth || !Enum.IsDefined(recipe.Annotation))
+        if (recipe is null || depth > MaxConstructedTypeDepth || !Enum.IsDefined(recipe.Annotation) ||
+            (recipe.Method is not null && recipe.Kind != RecipeKind.MethodTypeParameter))
         {
             return false;
         }
@@ -308,15 +422,32 @@ public static class SymbolHandleSerializer
                 recipe.Chain is { } levels && levels.All(level =>
                     !string.IsNullOrWhiteSpace(level?.Name) &&
                     (level.Arguments is null || (level.Arguments.Length > 0 &&
-                        level.Arguments.All(argument => IsValidRecipe(argument, depth + 1))))),
-            RecipeKind.Array => noType && recipe.Ordinal is null && recipe.Rank is >= 1 && IsValidRecipe(recipe.Element, depth + 1),
+                        level.Arguments.All(argument => IsValidRecipe(argument, depth + 1, allowMethodOwner, selfArity))))),
+            RecipeKind.Array => noType && recipe.Ordinal is null && recipe.Rank is >= 1 && IsValidRecipe(recipe.Element, depth + 1, allowMethodOwner, selfArity),
             RecipeKind.Dynamic => noType && noArray && recipe.Ordinal is null,
             RecipeKind.TypeParameter => hasType && noArray && recipe.Ordinal is >= 0 &&
                 recipe.TupleNames is null && !recipe.NativeInteger && recipe.Chain is { } owner &&
                 owner.All(level => !string.IsNullOrWhiteSpace(level?.Name) && level.Arguments is null),
+            RecipeKind.MethodTypeParameter => allowMethodOwner && selfArity is null && hasType && noArray &&
+                recipe.TupleNames is null && !recipe.NativeInteger && recipe.Ordinal is >= 0 &&
+                recipe.Chain is { } methodOwner && methodOwner.All(level => !string.IsNullOrWhiteSpace(level?.Name) && level.Arguments is null) &&
+                recipe.Method is { } method && recipe.Ordinal < method.Arity && IsValidMethodOwner(method, depth),
+            RecipeKind.MethodSignatureParameter => noType && noArray && selfArity is { } arity &&
+                recipe.Ordinal is >= 0 && recipe.Ordinal < arity,
             _ => false,
         };
     }
+
+    private static bool IsValidMethodOwner(MethodOwnerIdentity method, int depth) =>
+        !string.IsNullOrWhiteSpace(method.MetadataName) && method.Arity > 0 &&
+        Enum.IsDefined(method.MethodKind) && Enum.IsDefined(method.CallingConvention) &&
+        method.Signature is { Length: > 0 } && method.Signature.All(part =>
+            part is not null && Enum.IsDefined(part.RefKind) &&
+            IsValidRecipe(part.Type, depth + 1, allowMethodOwner: false, selfArity: method.Arity)) &&
+        method.ExplicitInterfaces is not null && method.ExplicitInterfaces.All(member =>
+            member is not null && !string.IsNullOrWhiteSpace(member.MetadataName) &&
+            member.InterfaceType is { Kind: RecipeKind.Named } &&
+            IsValidRecipe(member.InterfaceType, depth + 1, allowMethodOwner: false, selfArity: null));
 
     private static async Task<ISymbol?> ResolveConstructedTypeAsync(
         Solution solution, ConstructedTypeIdentity recipe, CancellationToken ct)
@@ -349,7 +480,7 @@ public static class SymbolHandleSerializer
             }
             // Compare the structural identity, including labels and annotations that display or symbol
             // equality alone can overlook. Never publish an approximate reconstruction.
-            var encoded = EncodeType(resolved, resolved.NullableAnnotation, depth: 1);
+            var encoded = EncodeType(resolved, resolved.NullableAnnotation, depth: 1, signatureOwner: null);
             if (encoded is null || !string.Equals(JsonSerializer.Serialize(encoded), canonicalRecipe, StringComparison.Ordinal))
             {
                 return null;
@@ -371,7 +502,16 @@ public static class SymbolHandleSerializer
         {
             case (IArrayTypeSymbol leftArray, IArrayTypeSymbol rightArray):
                 return HaveEquivalentDefinitions(leftArray.ElementType, leftCompilation, rightArray.ElementType, rightCompilation, ct);
-            case (ITypeParameterSymbol { ContainingType: { } leftOwner }, ITypeParameterSymbol { ContainingType: { } rightOwner }):
+            case (ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method, DeclaringMethod: { } leftMethod } leftParameter,
+                  ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method, DeclaringMethod: { } rightMethod } rightParameter):
+                return leftParameter.Ordinal == rightParameter.Ordinal &&
+                    SameDefinition(leftMethod.ContainingType.OriginalDefinition, leftCompilation,
+                        rightMethod.ContainingType.OriginalDefinition, rightCompilation, ct) &&
+                    EncodeMethodOwner(leftMethod, depth: 1) is { } leftIdentity &&
+                    EncodeMethodOwner(rightMethod, depth: 1) is { } rightIdentity &&
+                    string.Equals(JsonSerializer.Serialize(leftIdentity), JsonSerializer.Serialize(rightIdentity), StringComparison.Ordinal);
+            case (ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type, ContainingType: { } leftOwner },
+                  ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type, ContainingType: { } rightOwner }):
                 return SameDefinition(leftOwner.OriginalDefinition, leftCompilation, rightOwner.OriginalDefinition, rightCompilation, ct);
             case (INamedTypeSymbol leftNamed, INamedTypeSymbol rightNamed):
                 if (!SameDefinition(leftNamed.OriginalDefinition, leftCompilation, rightNamed.OriginalDefinition, rightCompilation, ct))
@@ -457,7 +597,7 @@ public static class SymbolHandleSerializer
                 return ResolveType(compilation, assemblies, element, ct) is { } elementType
                     ? compilation.CreateArrayTypeSymbol(elementType, rank, element.Annotation).WithNullableAnnotation(recipe.Annotation)
                     : null;
-            case RecipeKind.Named or RecipeKind.TypeParameter when recipe.Assembly is { } assemblyName &&
+            case RecipeKind.Named or RecipeKind.TypeParameter or RecipeKind.MethodTypeParameter when recipe.Assembly is { } assemblyName &&
                 assemblies.TryGetValue(assemblyName, out var assembly) && assembly is not null && recipe.Chain is { } chain:
                 var named = ResolveTypeChain(compilation, assemblies, assembly, chain, ct);
                 if (named is null)
@@ -469,6 +609,10 @@ public static class SymbolHandleSerializer
                     return recipe.Ordinal is { } ordinal && ordinal < named.TypeParameters.Length
                         ? named.TypeParameters[ordinal].WithNullableAnnotation(recipe.Annotation)
                         : null;
+                }
+                if (recipe.Kind == RecipeKind.MethodTypeParameter)
+                {
+                    return ResolveMethodParameter(named, recipe, ct);
                 }
                 if (recipe.NativeInteger)
                 {
@@ -492,6 +636,31 @@ public static class SymbolHandleSerializer
             default:
                 return null;
         }
+    }
+
+    private static ITypeSymbol? ResolveMethodParameter(INamedTypeSymbol containingType, ConstructedTypeIdentity recipe, CancellationToken ct)
+    {
+        var owner = recipe.Method!;
+        var identity = JsonSerializer.Serialize(owner);
+        IMethodSymbol? match = null;
+        foreach (var candidate in containingType.GetMembers().OfType<IMethodSymbol>())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (candidate.MetadataName != owner.MetadataName || candidate.Arity != owner.Arity ||
+                candidate.IsStatic != owner.IsStatic || candidate.CallingConvention != owner.CallingConvention ||
+                candidate.MethodKind != owner.MethodKind || candidate.Parameters.Length != owner.Signature.Length - 1 ||
+                EncodeMethodOwner(candidate, depth: 1) is not { } candidateIdentity ||
+                !string.Equals(JsonSerializer.Serialize(candidateIdentity), identity, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (match is not null)
+            {
+                return null;
+            }
+            match = candidate;
+        }
+        return match?.TypeParameters[recipe.Ordinal!.Value].WithNullableAnnotation(recipe.Annotation);
     }
 
     private static INamedTypeSymbol? ResolveTypeChain(Compilation compilation, Dictionary<string, IAssemblySymbol?> assemblies,
