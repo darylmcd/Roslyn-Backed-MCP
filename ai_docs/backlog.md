@@ -265,6 +265,7 @@
 | `move-type-to-project-source-dependency-gap` | Medium | — | **move_type_to_project_preview: a moved type referencing a type left in the source project does not compile** — the move path adds no source reference and does not refuse; same for classes, enums, delegates. [type: bug] [source: remediation run 2026-11-21] | M | items/move-type-to-project-source-dependency-gap.md |
 | `symbol-handle-constructed-generic-roundtrip` | Medium | — | **BLOCKED: approve an exact named-type handle identity format** — preserve constructed type arguments and assembly identity when replaying emitted handles. [type: bug] [source: remediation 2026-11-25] | S | items/symbol-handle-constructed-generic-roundtrip.md |
 | `workspace-load-abstract-lane-internal-error` | Medium | — | **Diagnose the abstract-lane load error** — identify the cause of the captured valid workspace_load InternalError and prove a regression without changing public errors. [type: bug] [source: remediation 2026-11-25] | M | items/workspace-load-abstract-lane-internal-error.md |
+| `symbol-handle-method-type-parameter-roundtrip` | Medium | symbol-handle-constructed-generic-roundtrip | **Round-trip method-owned type parameters in constructed named-type handles** — preserve exact owner identity and ordinal. [type: bug] [source: operator decision 2026-11-26] | M | items/symbol-handle-method-type-parameter-roundtrip.md |
 
 ## Low
 

@@ -2,7 +2,7 @@
 
 Architecture decision records (ADRs) for breaking, compatibility, and security decisions on the public surface. Breaking changes require an ADR here plus a `CHANGELOG.md` migration note (see [release-policy.md](../release-policy.md)).
 
-Numbering runs 0001 to 0043 with 35 ADR files. Gaps 0014, 0017 and 0020 to 0025 are intentional: those numbers were never published.
+Numbering runs 0001 to 0045 with 37 ADR files. Gaps 0014, 0017 and 0020 to 0025 are intentional: those numbers were never published.
 
 | File | Purpose | Status |
 |------|---------|--------|
@@ -41,3 +41,5 @@ Numbering runs 0001 to 0043 with 35 ADR files. Gaps 0014, 0017 and 0020 to 0025 
 | [0041](0041-stable-corrections-and-security-exception.md) | Corrections and minimal leaked-input removals ship in a 5.x minor; agent qualifies with wire evidence | Accepted 2026-11-20 | 
 | [0042](0042-default-on-bounded-file-log-sink.md) | Default-on bounded file log sink; `disabled` opt-out; `server_info.observability` reports the log path | Accepted 2026-11-20 |
 | [0043](0043-refusal-in-dto-is-a-correction.md) | A silent wrong success turned into a `Success:false` DTO refusal (existing fields only) is a Rule 1 `Fixed` | Accepted 2026-11-21 |
+| [0044](0044-native-test-filter-public-projection.md) | Remove caller filter text from public test-run responses | Accepted 2026-11-25 |
+| [0045](0045-constructed-named-type-symbol-handle.md) | Preserve exact constructed named-type identity in opaque symbol handles | Accepted 2026-11-26 |
