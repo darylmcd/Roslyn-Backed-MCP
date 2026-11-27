@@ -4,8 +4,8 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:55`
-- `src/RoslynMcp.Roslyn/Services/UndoService.cs:80`
+- `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:165`
+- `src/RoslynMcp.Roslyn/Services/UndoService.cs:141`
 - `tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs`
 
 ## Acceptance
@@ -15,7 +15,8 @@
 
 ## Evidence
 
-- HEAD `CompositeApplyOrchestrator.cs:55` `await CaptureUndoSnapshotAsync(...)` runs before the writes; the catch path `:65` `return ProjectFailure(ex, appliedFiles, mutations.Count);` never records the change, and `UndoService.cs:80` `_snapshots[workspaceId] = new UndoSnapshot(` overwrites the prior slot on capture. Traced by the cold review of PR #1619; `EditService` shares the capture-before-write pattern.
+- `CompositeApplyOrchestrator.cs:165` captures a pending undo before the composite writes. The `ProjectFailure` branch at line 128 can return without recording that change. `UndoService.cs:141` replaces the pending slot when the capture is published.
+- PR #1619 cold review identified the displacement. The edit, project-mutation, and refactoring paths now publish only after their own effect boundaries. This row still owns the composite partial-write behaviour.
 
 ## Context
 
