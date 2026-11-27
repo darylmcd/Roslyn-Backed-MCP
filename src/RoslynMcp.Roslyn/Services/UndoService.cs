@@ -600,8 +600,16 @@ public sealed class UndoService : IUndoService, IDisposable
 
     private async Task<bool> ReloadForRecoveryAsync(string workspaceId, CancellationToken cancellationToken)
     {
-        await _workspaceManager.ReloadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
-        return true;
+        try
+        {
+            await _workspaceManager.ReloadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or KeyNotFoundException)
+        {
+            _logger.LogWarning(ex, "Undo recovery reload failed for {WorkspaceId}", workspaceId);
+            return false;
+        }
     }
 
     private async Task<bool> RevertFromFileSnapshotsAsync(
@@ -677,8 +685,8 @@ public sealed class UndoService : IUndoService, IDisposable
 
         if (snapshot.RecoveryMode != UndoRecoveryMode.Full)
         {
-            if (restoredAny || diskOk)
-                await workspace.ReloadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+            if ((restoredAny || diskOk) && !await ReloadForRecoveryAsync(workspaceId, cancellationToken).ConfigureAwait(false))
+                return false;
 
             if (diskOk && snapshot.RecoveryMode == UndoRecoveryMode.OwnedFiles)
                 workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);

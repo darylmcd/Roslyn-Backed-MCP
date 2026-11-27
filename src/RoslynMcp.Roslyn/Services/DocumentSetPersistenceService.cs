@@ -580,6 +580,7 @@ internal sealed class DocumentSetPersistenceService
         var ownedResiduals = new List<FileSnapshotDto>();
         foreach (var (path, snapshot) in persistenceState.FileSnapshots)
         {
+            var observedCurrent = false;
             var restoreAttempted = false;
             try
             {
@@ -590,6 +591,7 @@ internal sealed class DocumentSetPersistenceService
                 }
 
                 var current = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
+                observedCurrent = true;
                 if (current.SameAs(snapshot))
                 {
                     continue;
@@ -621,6 +623,7 @@ internal sealed class DocumentSetPersistenceService
                                 $"Snapshot for existing file '{path}' did not contain bytes."),
                         current.Existed,
                         current.Bytes,
+                        () => persistenceState.MarkForeign(path),
                         CancellationToken.None).ConfigureAwait(false);
                 }
                 else
@@ -631,6 +634,8 @@ internal sealed class DocumentSetPersistenceService
             catch (Exception ex)
             {
                 rollbackFailures.Add(ex);
+                if (!observedCurrent)
+                    persistenceState.MarkForeign(path);
                 if (restoreAttempted && reportRecovery is not null)
                     residualCandidates.Add(path);
             }
@@ -651,6 +656,8 @@ internal sealed class DocumentSetPersistenceService
         // the destination. Unknown or foreign bytes cannot authorize a later restore.
         foreach (var path in residualCandidates)
         {
+            if (persistenceState.IsForeign(path))
+                continue;
             var snapshot = persistenceState.FileSnapshots[path];
             try
             {
@@ -816,7 +823,7 @@ internal interface IDocumentSetFileSystem
     Task<string> ReadAllTextAsync(string path, CancellationToken ct);
     Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct);
     Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
-        CancellationToken ct);
+        Action ownershipLost, CancellationToken ct);
     Task WriteAllTextAsync(string path, string content, CancellationToken ct);
 }
 
@@ -839,33 +846,66 @@ internal sealed class PhysicalDocumentSetFileSystem : IDocumentSetFileSystem
         File.WriteAllBytesAsync(path, bytes, ct);
 
     public Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
-        CancellationToken ct) =>
-        AtomicFileWriter.WriteGuardedReplacementAsync(path, (tempPath, stream) =>
-        {
-            if (expectedExists)
-            {
-                if (OperatingSystem.IsWindows())
-                {
-                    var existing = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
-                    var access = new FileSecurity();
-                    access.SetSecurityDescriptorBinaryForm(existing.GetSecurityDescriptorBinaryForm(), AccessControlSections.Access);
-                    new FileInfo(tempPath).SetAccessControl(access);
-                }
-                else
-                {
-                    File.SetUnixFileMode(stream.SafeFileHandle, File.GetUnixFileMode(path));
-                }
-            }
-            return stream.WriteAsync(bytes, ct).AsTask();
-        }, () => MatchesDestination(path, expectedExists, expectedBytes), Task.Delay, ct);
+        Action ownershipLost, CancellationToken ct) =>
+        RestoreOwnedDestinationAsync(path, bytes, expectedExists, expectedBytes, ownershipLost, ct);
 
-    private static bool MatchesDestination(string path, bool expectedExists, byte[]? expectedBytes)
+    internal static Task RestoreOwnedDestinationAsync(string path, byte[] bytes, bool expectedExists,
+        byte[]? expectedBytes, Action ownershipLost, CancellationToken ct)
+    {
+        FileSecurity? access = null;
+        string? expectedDacl = null;
+        UnixFileMode? expectedMode = null;
+        if (expectedExists)
+        {
+            WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
+            if (OperatingSystem.IsWindows())
+            {
+                access = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+                expectedDacl = access.GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+            }
+            else
+            {
+                expectedMode = File.GetUnixFileMode(path);
+            }
+        }
+
+        return AtomicFileWriter.WriteGuardedReplacementAsync(path, (_, stream) =>
+        {
+            if (!OperatingSystem.IsWindows() && expectedMode is { } mode)
+                File.SetUnixFileMode(stream.SafeFileHandle, mode);
+            return stream.WriteAsync(bytes, ct).AsTask();
+        }, () =>
+        {
+            try
+            {
+                if (MatchesDestination(path, expectedExists, expectedBytes, expectedDacl, expectedMode))
+                    return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ownershipLost();
+                throw;
+            }
+            ownershipLost();
+            return false;
+        }, access, Task.Delay, ct);
+    }
+
+    internal static bool MatchesDestination(string path, bool expectedExists, byte[]? expectedBytes,
+        string? expectedDacl, UnixFileMode? expectedMode)
     {
         WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
         try
         {
             var current = File.ReadAllBytes(path);
-            return expectedExists && current.AsSpan().SequenceEqual(expectedBytes);
+            if (!expectedExists || !current.AsSpan().SequenceEqual(expectedBytes))
+                return false;
+            if (OperatingSystem.IsWindows())
+            {
+                return new FileInfo(path).GetAccessControl(AccessControlSections.Access)
+                    .GetSecurityDescriptorSddlForm(AccessControlSections.Access) == expectedDacl;
+            }
+            return File.GetUnixFileMode(path) == expectedMode;
         }
         catch (FileNotFoundException)
         {

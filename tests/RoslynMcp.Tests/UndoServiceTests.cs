@@ -711,41 +711,48 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task PersistFailure_LeavesPendingCapture_AuditDoesNotAdoptIt_RevertAsyncRestores()
+    public async Task ReadOnlyApplyFailure_PreservesPriorUndo_AndAuditDoesNotAdoptIt()
     {
-        // Real consumer: EditService captures, then the workspace write throws (read-only target).
-        // No record is made, so the capture stays pending; a later
-        // capture-free audit must not adopt it and RevertAsync must still restore.
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         var workspaceId = workspace.WorkspaceId;
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
-        File.SetAttributes(dogFilePath, File.GetAttributes(dogFilePath) | FileAttributes.ReadOnly);
+        var dog = workspace.GetPath("SampleLib", "Dog.cs");
+        var cat = workspace.GetPath("SampleLib", "Cat.cs");
+        var catOriginal = await File.ReadAllBytesAsync(cat);
+        var prior = await EditService.ApplyTextEditsAsync(workspaceId, cat,
+            [new TextEditDto(1, 1, 1, 1, "// prior A\n")], "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(prior.Success);
+        CollectionAssert.AreNotEqual(catOriginal, await File.ReadAllBytesAsync(cat));
+
+        var dogBytes = await File.ReadAllBytesAsync(dog);
+        var dogText = await WorkspaceManager.GetSourceTextAsync(workspaceId, dog, CancellationToken.None);
+        var version = WorkspaceManager.GetCurrentVersion(workspaceId);
+        var dogAttributes = File.GetAttributes(dog);
+        File.SetAttributes(dog, dogAttributes | FileAttributes.ReadOnly);
         try
         {
-            // MSBuildWorkspace.TryApplyChanges writes the document itself and throws on the read-only
-            // file, after EditService took its capture and before it records.
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => EditService.ApplyTextEditsAsync(
-                workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// never lands\n") },
+                workspaceId, dog, [new TextEditDto(1, 1, 1, 1, "// never lands\n")],
                 "apply_text_edit", CancellationToken.None));
-            Assert.AreEqual(0, ChangeTracker.GetChanges(workspaceId).Count, "A failed apply records nothing.");
-            Assert.AreEqual("Apply text edit to Dog.cs", UndoService.GetLastOperation(workspaceId)?.Description,
-                "The failed apply's capture stays pending.");
+            CollectionAssert.AreEqual(dogBytes, await File.ReadAllBytesAsync(dog));
+            Assert.AreEqual(dogText, await WorkspaceManager.GetSourceTextAsync(workspaceId, dog, CancellationToken.None));
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(workspaceId));
+            Assert.HasCount(1, ChangeTracker.GetChanges(workspaceId));
+            Assert.AreEqual("Apply text edit to Cat.cs", UndoService.GetLastOperation(workspaceId)?.Description);
 
-            RecordCaptureFreeAudit(workspaceId, "audit after persist failure");
-            var sequenceAudit = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+            RecordCaptureFreeAudit(workspaceId, "audit after effect-free failure");
+            var sequenceAudit = ChangeTracker.GetChanges(workspaceId).Max(change => change.SequenceNumber);
             Assert.AreEqual("unknown-sequence",
-                (await UndoService.RevertBySequenceAsync(workspaceId, sequenceAudit, CancellationToken.None)).Reason,
-                "The audit must not adopt the failed apply's pending capture.");
+                (await UndoService.RevertBySequenceAsync(workspaceId, sequenceAudit, CancellationToken.None)).Reason);
         }
         finally
         {
-            File.SetAttributes(dogFilePath, File.GetAttributes(dogFilePath) & ~FileAttributes.ReadOnly);
+            File.SetAttributes(dog, dogAttributes);
         }
 
-        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
-            "The failed apply's pending capture must remain the retryable LIFO target.");
-        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
+        CollectionAssert.AreEqual(catOriginal, await File.ReadAllBytesAsync(cat));
+        CollectionAssert.AreEqual(dogBytes, await File.ReadAllBytesAsync(dog));
+        Assert.IsNull(UndoService.GetLastOperation(workspaceId));
     }
 
     [TestMethod]

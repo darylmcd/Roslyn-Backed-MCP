@@ -4,6 +4,7 @@
 
 ## Anchors
 
+- `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:112`
 - `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:165`
 - `src/RoslynMcp.Roslyn/Services/UndoService.cs:141`
 - `tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs`
@@ -15,8 +16,8 @@
 
 ## Evidence
 
-- `CompositeApplyOrchestrator.cs:165` captures a pending undo before the composite writes. The `ProjectFailure` branch at line 128 can return without recording that change. `UndoService.cs:141` replaces the pending slot when the capture is published.
-- PR #1619 cold review identified the displacement. The edit, project-mutation, and refactoring paths now publish only after their own effect boundaries. This row still owns the composite partial-write behaviour.
+- `CompositeApplyOrchestrator.cs:112` captures composite undo before the first non-create write, through the helper at line 165. If a later step fails, the `ProjectFailure` branch can return with partial writes and without recording the change. `UndoService.cs:141` publishes the composite pre-image over the previous LIFO target even when the failure left no composite-owned effects.
+- PR #1619 cold review identified the displacement. The edit, project-mutation, and refactoring paths now publish after their own effect boundaries. This row still owns the composite partial-write and no-effect cases.
 
 ## Context
 

@@ -104,7 +104,7 @@ public sealed class EditService : IEditService
         var preparedUndo = _undoService?.Prepare(workspaceId, description, solution, fileSnapshots);
         var capture = UndoCaptureId.None;
         var workspaceApplied = false;
-        TextEditResultDto coreResult;
+        TextEditResultDto? coreResult = null;
         try
         {
             coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, document, sourceText, newSourceText,
@@ -112,7 +112,7 @@ public sealed class EditService : IEditService
         }
         finally
         {
-            if (workspaceApplied && preparedUndo is not null)
+            if ((workspaceApplied || coreResult?.Success == true) && preparedUndo is not null)
                 capture = _undoService!.Publish(preparedUndo, preparedUndo.FileSnapshots, UndoRecoveryMode.Full);
         }
 
@@ -159,8 +159,8 @@ public sealed class EditService : IEditService
             ? await CapturePreEditBaselineAsync(workspaceId, batchProjectFilter, ct).ConfigureAwait(false)
             : null;
 
-        // Single snapshot at the top so revert_last_apply rolls back the ENTIRE batch atomically
-        // (from an undo perspective; individual disk writes still happen sequentially).
+        // Sample pre-images up front. A batch publishes only the snapshots of legs
+        // that persisted or left a workspace change.
         var fileSnapshots = new List<FileSnapshotDto>(perFileSnapshots.Count);
         foreach (var (document, sourceText, _) in perFileSnapshots)
         {
@@ -284,6 +284,7 @@ public sealed class EditService : IEditService
                 continue;
             }
 
+            var workspaceChanged = false;
             var result = await ApplyTextEditsCoreAsync(
                 workspaceId,
                 fileEdit.FilePath,
@@ -291,9 +292,15 @@ public sealed class EditService : IEditService
                 document,
                 sourceText,
                 merged,
-                () => ownedSnapshots.Add(fileSnapshot),
+                () =>
+                {
+                    workspaceChanged = true;
+                    ownedSnapshots.Add(fileSnapshot);
+                },
                 ct,
                 canonicalWritePath: Path.GetFullPath(resolvedDocument.FilePath!)).ConfigureAwait(false);
+            if (result.Success && !workspaceChanged)
+                ownedSnapshots.Add(fileSnapshot);
             results.Add(result);
         }
 
@@ -706,7 +713,8 @@ public sealed class EditService : IEditService
             return new TextEditResultDto(false, filePath, 0, [], null);
         }
 
-        onWorkspaceApplied();
+        if (!sourceText.ContentEquals(newSourceText))
+            onWorkspaceApplied();
 
         // BUG-N1: Mirror RefactoringService — MSBuildWorkspace may not flush text edits to disk.
         var persisted = await PersistDocumentTextToDiskAsync(workspaceId, document.Id, ct, canonicalWritePath).ConfigureAwait(false);
@@ -922,8 +930,8 @@ public sealed class EditService : IEditService
     /// Single-shot semantics: this revert targets ONLY the snapshot that the current
     /// call placed on the undo stack. Prior-turn edits are never touched — the undo
     /// service is already single-slot per workspace, so the capture earlier in this
-    /// method overwrote whatever was there. Reverting the matching capture restores the
-    /// pre-edit state that was captured inside this call's frame, not an earlier one.
+    /// method publishes only its own accepted changes. Reverting the matching capture restores the
+    /// pre-edit state for this attempt, even if an earlier undo target exists.
     /// </remarks>
     private async Task<VerifyOutcomeDto> RunVerifyAndMaybeRevertAsync(
         string workspaceId,

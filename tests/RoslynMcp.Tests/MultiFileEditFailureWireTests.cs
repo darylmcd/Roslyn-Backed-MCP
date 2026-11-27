@@ -162,7 +162,8 @@ public sealed class MultiFileEditFailureWireTests : IsolatedWorkspaceTestBase
         {
             var a = await CallAsync("apply_text_edit", new(workspaceArgs)
             {
-                ["filePath"] = priorPath, ["edits"] = new[] { Insert("// prior A\n") },
+                ["filePath"] = priorPath,
+                ["edits"] = new[] { Insert("// prior A\n") },
             });
             Assert.IsTrue(a["success"]!.GetValue<bool>());
             CollectionAssert.AreNotEqual(priorBytes, await File.ReadAllBytesAsync(priorPath));

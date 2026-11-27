@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
@@ -339,31 +340,33 @@ internal static class AtomicFileWriter
         ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
     {
-        return WriteReplacementAsync(path, writeTempAsync, canReplace: null, Task.Delay, ct, logger, exceptionReporter);
+        return WriteReplacementAsync(path, writeTempAsync, canReplace: null, access: null, Task.Delay, ct, logger, exceptionReporter);
     }
 
     internal static Task WriteGuardedReplacementAsync(
         string path,
         Func<string, FileStream, Task> writeTempAsync,
         Func<bool> canReplace,
+        FileSecurity? access,
         Func<int, CancellationToken, Task> delayAsync,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(canReplace);
-        return WriteReplacementAsync(path, writeTempAsync, canReplace, delayAsync, ct, logger: null, exceptionReporter: null);
+        return WriteReplacementAsync(path, writeTempAsync, canReplace, access, delayAsync, ct, logger: null, exceptionReporter: null);
     }
 
     private static Task WriteReplacementAsync(
         string path,
         Func<string, FileStream, Task> writeTempAsync,
         Func<bool>? canReplace,
+        FileSecurity? access,
         Func<int, CancellationToken, Task> delayAsync,
         CancellationToken ct,
         ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
     {
         ct.ThrowIfCancellationRequested();
-        var (tmp, stream) = ReserveUniqueTempPath(path);
+        var (tmp, stream) = ReserveUniqueTempPath(path, access);
         return WriteReplacementAtTempPathAsync(path, tmp, stream, writeTempAsync, canReplace,
             delayAsync, ct, logger, exceptionReporter);
     }
@@ -376,13 +379,13 @@ internal static class AtomicFileWriter
         IUnexpectedExceptionReporter? exceptionReporter)
     {
         ct.ThrowIfCancellationRequested();
-        var (tmp, stream) = ReserveUniqueTempPath(path);
+        var (tmp, stream) = ReserveUniqueTempPath(path, access: null);
         return WriteAndPublishAsync(path, tmp, stream, writeTempAsync,
             () => PublishCreateAsync(tmp, path, stream, ct, logger, exceptionReporter),
             ct, logger, exceptionReporter);
     }
 
-    private static (string Path, FileStream Stream) ReserveUniqueTempPath(string path)
+    private static (string Path, FileStream Stream) ReserveUniqueTempPath(string path, FileSecurity? access)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))
             ?? throw new InvalidOperationException("The target has no containing directory.");
@@ -391,8 +394,11 @@ internal static class AtomicFileWriter
             var candidate = Path.Combine(directory, ".rmcp-" + Path.GetRandomFileName() + ".tmp");
             try
             {
-                var reservation = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write,
-                    FileShare.Read | FileShare.Delete);
+                const FileShare share = FileShare.Read | FileShare.Delete;
+                var reservation = OperatingSystem.IsWindows() && access is not null
+                    ? new FileInfo(candidate).Create(FileMode.CreateNew, FileSystemRights.Write, share, 4096,
+                        FileOptions.None, access)
+                    : new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, share);
                 return (candidate, reservation);
             }
             catch (IOException) when (File.Exists(candidate))
