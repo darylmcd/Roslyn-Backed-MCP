@@ -393,6 +393,7 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
             skipSyntaxCheck: skipSyntaxCheck, verify: verify);
         using var result = JsonDocument.Parse(json);
         var files = result.RootElement.GetProperty("files").EnumerateArray().ToArray();
+        bool reverted;
         try
         {
             for (var i = 0; i < paths.Length; i++)
@@ -408,12 +409,14 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
         }
         finally
         {
-            Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None));
-            for (var i = 0; i < paths.Length; i++)
-            {
-                CollectionAssert.AreEqual(originals[i], await File.ReadAllBytesAsync(paths[i]));
-                Assert.AreEqual(System.Text.Encoding.UTF8.GetString(originals[i]).TrimStart('\uFEFF'), await LoadedTextAsync(workspace.WorkspaceId, paths[i]));
-            }
+            reverted = await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None);
+        }
+
+        Assert.AreEqual(expected.Any(applied => applied), reverted);
+        for (var i = 0; i < paths.Length; i++)
+        {
+            CollectionAssert.AreEqual(originals[i], await File.ReadAllBytesAsync(paths[i]));
+            Assert.AreEqual(System.Text.Encoding.UTF8.GetString(originals[i]).TrimStart('\uFEFF'), await LoadedTextAsync(workspace.WorkspaceId, paths[i]));
         }
         Assert.AreEqual(expected.All(x => x), result.RootElement.GetProperty("success").GetBoolean(), json);
         Assert.AreEqual(expected.Count(x => x), result.RootElement.GetProperty("filesModified").GetInt32(), json);

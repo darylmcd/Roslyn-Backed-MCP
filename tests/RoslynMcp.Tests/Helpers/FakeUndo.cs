@@ -27,6 +27,16 @@ internal sealed class FakeUndo : IUndoService
     public UndoCaptureId CaptureBeforeApply(string workspaceId, string description, object? preApplySolution,
         IReadOnlyList<FileSnapshotDto>? fileSnapshots) => UndoCaptureId.None;
 
+    public PreparedUndoCapture Prepare(string workspaceId, string description, object? preApplySolution,
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots) =>
+        new(workspaceId, description, preApplySolution, fileSnapshots, 0, DateTime.UtcNow);
+
+    public UndoCaptureId Publish(PreparedUndoCapture prepared, IReadOnlyList<FileSnapshotDto>? ownedSnapshots,
+        UndoRecoveryMode recoveryMode) => UndoCaptureId.None;
+
+    public Task<bool> RevertCaptureAsync(string workspaceId, UndoCaptureId capture, CancellationToken cancellationToken) =>
+        RevertAsync(workspaceId, cancellationToken);
+
     public UndoEntry? GetLastOperation(string workspaceId) => null;
 
     public Task<RevertBySequenceResult> RevertBySequenceAsync(string workspaceId, int sequenceNumber,

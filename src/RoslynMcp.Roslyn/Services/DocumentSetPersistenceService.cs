@@ -1,3 +1,4 @@
+using System.Security.AccessControl;
 using System.Text;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
@@ -37,7 +38,8 @@ internal sealed class DocumentSetPersistenceService
         Solution currentSolution,
         Solution modifiedSolution,
         SolutionChanges solutionChanges,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action<RollbackRecovery>? reportRecovery)
     {
         DocumentSetPersistenceState? persistenceState = null;
 
@@ -68,7 +70,8 @@ internal sealed class DocumentSetPersistenceService
                 await RollBackAsync(
                     workspaceId,
                     persistenceState,
-                    ex).ConfigureAwait(false);
+                    ex,
+                    reportRecovery).ConfigureAwait(false);
             }
 
             if (ex is OperationCanceledException)
@@ -288,6 +291,7 @@ internal sealed class DocumentSetPersistenceService
         try
         {
             applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+            persistenceState.WorkspaceApplied = applied;
         }
         finally
         {
@@ -568,11 +572,16 @@ internal sealed class DocumentSetPersistenceService
     private async Task RollBackAsync(
         string workspaceId,
         DocumentSetPersistenceState persistenceState,
-        Exception persistenceFailure)
+        Exception persistenceFailure,
+        Action<RollbackRecovery>? reportRecovery)
     {
         var rollbackFailures = new List<Exception>();
+        var residualCandidates = new List<string>();
+        var ownedResiduals = new List<FileSnapshotDto>();
         foreach (var (path, snapshot) in persistenceState.FileSnapshots)
         {
+            var observedCurrent = false;
+            var restoreAttempted = false;
             try
             {
                 var ownedPostStates = persistenceState.GetOwnedPostStates(path);
@@ -581,7 +590,9 @@ internal sealed class DocumentSetPersistenceService
                     continue;
                 }
 
+                WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
                 var current = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
+                observedCurrent = true;
                 if (current.SameAs(snapshot))
                 {
                     continue;
@@ -589,12 +600,15 @@ internal sealed class DocumentSetPersistenceService
 
                 if (persistenceState.IsForeign(path) || !ownedPostStates.Any(current.SameAs))
                 {
+                    persistenceState.MarkForeign(path);
                     rollbackFailures.Add(new IOException(
                         $"Rollback preserved '{path}': its content changed outside this operation after the operation wrote it."));
                     continue;
                 }
 
-                // No await between the ownership check above and the destructive action below.
+                restoreAttempted = true;
+                // Deletion has no intervening await. Replacement rechecks the destination
+                // after the temp write/flush and before each move attempt.
                 if (snapshot.Existed)
                 {
                     var directory = Path.GetDirectoryName(path);
@@ -603,11 +617,14 @@ internal sealed class DocumentSetPersistenceService
                         _fileSystem.CreateDirectory(directory);
                     }
 
-                    await _fileSystem.WriteAllBytesAsync(
+                    await _fileSystem.RestoreBytesAtomicallyAsync(
                         path,
                         snapshot.Bytes
-                            ?? throw new InvalidOperationException(
+                            ?? throw InvalidOperationErrors.Internal(
                                 $"Snapshot for existing file '{path}' did not contain bytes."),
+                        current.Existed,
+                        current.Bytes,
+                        () => persistenceState.MarkForeign(path),
                         CancellationToken.None).ConfigureAwait(false);
                 }
                 else
@@ -618,17 +635,58 @@ internal sealed class DocumentSetPersistenceService
             catch (Exception ex)
             {
                 rollbackFailures.Add(ex);
+                if (!observedCurrent)
+                    persistenceState.MarkForeign(path);
+                if (restoreAttempted && reportRecovery is not null)
+                    residualCandidates.Add(path);
             }
         }
 
+        var reloadFailed = false;
         try
         {
             await _workspace.ReloadAsync(workspaceId, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            reloadFailed = true;
             rollbackFailures.Add(ex);
         }
+
+        // Observe after reload, which may take long enough for another process to change
+        // the destination. Unknown or foreign bytes cannot authorize a later restore.
+        foreach (var path in residualCandidates)
+        {
+            if (persistenceState.IsForeign(path))
+                continue;
+            var snapshot = persistenceState.FileSnapshots[path];
+            try
+            {
+                WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
+                var remaining = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
+                if (!remaining.SameAs(snapshot))
+                {
+                    if (persistenceState.GetOwnedPostStates(path).Any(remaining.SameAs))
+                    {
+                        ownedResiduals.Add(snapshot.Existed
+                            ? FileSnapshotDto.FromExistingBytes(path, snapshot.Bytes!)
+                            : new FileSnapshotDto(path, null));
+                    }
+                    else
+                    {
+                        persistenceState.MarkForeign(path);
+                    }
+                }
+            }
+            catch (Exception observationFailure)
+            {
+                persistenceState.MarkForeign(path);
+                rollbackFailures.Add(observationFailure);
+            }
+        }
+
+        reportRecovery?.Invoke(new RollbackRecovery(ownedResiduals, persistenceState.HasForeignPaths,
+            persistenceState.WorkspaceApplied && reloadFailed));
 
         if (rollbackFailures.Count == 0)
         {
@@ -709,6 +767,8 @@ internal sealed class DocumentSetPersistenceService
             }
         }
 
+        public bool WorkspaceApplied { get; set; }
+        public bool HasForeignPaths => _foreignPaths.Count != 0;
         public bool IsForeign(string path) => _foreignPaths.Contains(path);
 
         public void MarkForeign(string path) => _foreignPaths.Add(path);
@@ -741,6 +801,9 @@ internal sealed class DocumentSetPersistenceService
             _ownedPostStates.TryGetValue(path, out var states) ? states : [];
     }
 
+    internal sealed record RollbackRecovery(IReadOnlyList<FileSnapshotDto> OwnedSnapshots,
+        bool ForeignPathsPreserved, bool RequiresReload);
+
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private sealed record FileMutationSnapshot(bool Existed, byte[]? Bytes)
@@ -761,6 +824,8 @@ internal interface IDocumentSetFileSystem
     Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct);
     Task<string> ReadAllTextAsync(string path, CancellationToken ct);
     Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct);
+    Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
+        Action ownershipLost, CancellationToken ct);
     Task WriteAllTextAsync(string path, string content, CancellationToken ct);
 }
 
@@ -781,6 +846,78 @@ internal sealed class PhysicalDocumentSetFileSystem : IDocumentSetFileSystem
         File.ReadAllTextAsync(path, ct);
     public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct) =>
         File.WriteAllBytesAsync(path, bytes, ct);
+
+    public Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
+        Action ownershipLost, CancellationToken ct)
+    {
+        FileSecurity? access = null;
+        string? expectedDacl = null;
+        UnixFileMode? expectedMode = null;
+        try
+        {
+            WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
+            if (expectedExists)
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    access = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+                    expectedDacl = access.GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+                }
+                else
+                {
+                    expectedMode = File.GetUnixFileMode(path);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ownershipLost();
+            throw;
+        }
+
+        return AtomicFileWriter.WriteGuardedReplacementAsync(path, (_, stream) =>
+        {
+            if (!OperatingSystem.IsWindows() && expectedMode is { } mode)
+                File.SetUnixFileMode(stream.SafeFileHandle, mode);
+            return stream.WriteAsync(bytes, ct).AsTask();
+        }, () =>
+        {
+            try
+            {
+                if (MatchesDestination(path, expectedExists, expectedBytes, expectedDacl, expectedMode))
+                    return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                ownershipLost();
+                throw;
+            }
+            ownershipLost();
+            return false;
+        }, access, Task.Delay, ct);
+    }
+
+    internal static bool MatchesDestination(string path, bool expectedExists, byte[]? expectedBytes,
+        string? expectedDacl, UnixFileMode? expectedMode)
+    {
+        WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
+        try
+        {
+            var current = File.ReadAllBytes(path);
+            if (!expectedExists || !current.AsSpan().SequenceEqual(expectedBytes))
+                return false;
+            if (OperatingSystem.IsWindows())
+            {
+                return new FileInfo(path).GetAccessControl(AccessControlSections.Access)
+                    .GetSecurityDescriptorSddlForm(AccessControlSections.Access) == expectedDacl;
+            }
+            return File.GetUnixFileMode(path) == expectedMode;
+        }
+        catch (FileNotFoundException)
+        {
+            return !expectedExists;
+        }
+    }
     public Task WriteAllTextAsync(string path, string content, CancellationToken ct) =>
         File.WriteAllTextAsync(path, content, ct);
 }

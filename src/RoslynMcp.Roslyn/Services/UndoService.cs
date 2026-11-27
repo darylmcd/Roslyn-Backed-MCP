@@ -101,38 +101,56 @@ public sealed class UndoService : IUndoService, IDisposable
         object? preApplySolution,
         IReadOnlyList<FileSnapshotDto>? fileSnapshots)
     {
-        Solution? solution = null;
-        if (preApplySolution is not null)
+        var prepared = Prepare(workspaceId, description, preApplySolution, fileSnapshots);
+        var capture = Publish(prepared, fileSnapshots, UndoRecoveryMode.Full);
+        if (capture.IsNone)
+            throw new KeyNotFoundException($"Workspace '{workspaceId}' was closed while its undo snapshot was being captured.");
+        return capture;
+    }
+
+    public PreparedUndoCapture Prepare(
+        string workspaceId,
+        string description,
+        object? preApplySolution,
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots)
+    {
+        if (preApplySolution is not null && preApplySolution is not Solution)
+            throw InvalidOperationErrors.Internal("preApplySolution must be a Roslyn Solution or null.");
+
+        return new PreparedUndoCapture(workspaceId, description, preApplySolution, fileSnapshots,
+            _workspaceManager.GetCurrentVersion(workspaceId), DateTime.UtcNow);
+    }
+
+    public UndoCaptureId Publish(
+        PreparedUndoCapture prepared,
+        IReadOnlyList<FileSnapshotDto>? ownedSnapshots,
+        UndoRecoveryMode recoveryMode)
+    {
+        if (recoveryMode is UndoRecoveryMode.OwnedFiles or UndoRecoveryMode.OwnedFilesWithForeignChanges
+            && ownedSnapshots is not { Count: > 0 })
         {
-            if (preApplySolution is not Solution typed)
-                throw new InvalidOperationException("preApplySolution must be a Roslyn Solution or null.");
-            solution = typed;
+            throw InvalidOperationErrors.Internal("File recovery requires owned file snapshots.");
         }
 
-        var preApplyVersion = _workspaceManager.GetCurrentVersion(workspaceId);
-        var capture = new UndoCaptureId(Interlocked.Increment(ref _captureCounter));
-        var snapshot = new UndoSnapshot(
-            workspaceId,
-            description,
-            solution,
-            fileSnapshots,
-            preApplyVersion,
-            DateTime.UtcNow,
-            SequenceNumber: 0,
-            AffectedFiles: Array.Empty<string>(),
-            capture);
-
-        // The workspace can close between GetCurrentVersion above and this write; Clear runs under the
-        // same gate, so re-checking liveness here means no slot is ever left behind for a closed workspace.
         lock (_registrySync)
         {
-            if (!_workspaceManager.ContainsWorkspace(workspaceId))
-                throw new KeyNotFoundException($"Workspace '{workspaceId}' was closed while its undo snapshot was being captured.");
+            if (!_workspaceManager.ContainsWorkspace(prepared.WorkspaceId))
+                return UndoCaptureId.None;
 
-            _snapshots[workspaceId] = snapshot;
+            var capture = new UndoCaptureId(Interlocked.Increment(ref _captureCounter));
+            _snapshots[prepared.WorkspaceId] = new UndoSnapshot(
+                prepared.WorkspaceId,
+                prepared.Description,
+                recoveryMode == UndoRecoveryMode.Full ? (Solution?)prepared.PreApplySolution : null,
+                ownedSnapshots,
+                prepared.PreApplyWorkspaceVersion,
+                prepared.CapturedAtUtc,
+                SequenceNumber: 0,
+                AffectedFiles: Array.Empty<string>(),
+                capture,
+                recoveryMode);
+            return capture;
         }
-
-        return capture;
     }
 
     public UndoEntry? GetLastOperation(string workspaceId)
@@ -143,14 +161,20 @@ public sealed class UndoService : IUndoService, IDisposable
         return new UndoEntry(snapshot.WorkspaceId, snapshot.Description, snapshot.AppliedAtUtc);
     }
 
-    public async Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
+    public Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+        RevertPendingAsync(workspaceId, expectedCapture: null, cancellationToken);
+
+    public Task<bool> RevertCaptureAsync(string workspaceId, UndoCaptureId capture, CancellationToken cancellationToken) =>
+        capture.IsNone ? Task.FromResult(false) : RevertPendingAsync(workspaceId, capture, cancellationToken);
+
+    private async Task<bool> RevertPendingAsync(string workspaceId, UndoCaptureId? expectedCapture, CancellationToken cancellationToken)
     {
         // Claim the pending slot (and its history entry) atomically under the per-workspace lock,
         // exactly as RevertBySequenceAsync claims its target, so a concurrent by-sequence revert of
         // the same operation is refused instead of restoring it a second time. A failed (disk I/O)
         // or cancelled restore UNDOES the claim so the SAME call stays retryable once the
         // obstruction clears (ApplyWithVerifyTool's rollback and cancellation-recovery legs).
-        if (!TryClaimPending(workspaceId, out var claim))
+        if (!TryClaimPending(workspaceId, expectedCapture, out var claim))
             return false;
 
         bool reverted;
@@ -337,7 +361,7 @@ public sealed class UndoService : IUndoService, IDisposable
     /// committed slot (sequence &gt; 0) also gives up its history entry and marks its sequence consumed; a
     /// sequence-0 slot registers as in flight so a commit that races the claim is deferred, not lost.
     /// </summary>
-    private bool TryClaimPending(string workspaceId, out RevertClaim claim)
+    private bool TryClaimPending(string workspaceId, UndoCaptureId? expectedCapture, out RevertClaim claim)
     {
         claim = null!;
 
@@ -358,7 +382,8 @@ public sealed class UndoService : IUndoService, IDisposable
 
         lock (history)
         {
-            if (history.Cleared || !_snapshots.TryGetValue(workspaceId, out var pending))
+            if (history.Cleared || !_snapshots.TryGetValue(workspaceId, out var pending)
+                || (expectedCapture.HasValue && pending.CaptureId != expectedCapture.Value))
                 return false;
 
             var index = -1;
@@ -556,6 +581,9 @@ public sealed class UndoService : IUndoService, IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (snapshot.RecoveryMode == UndoRecoveryMode.ReloadOnly)
+            return ReloadForRecoveryAsync(workspaceId, cancellationToken);
+
         // No solution plus an explicitly empty file capture owns no effects. Missing
         // captures and solution-backed empty lists retain their existing restore paths.
         if (snapshot.PreApplySolution is null
@@ -568,6 +596,20 @@ public sealed class UndoService : IUndoService, IDisposable
         return snapshot.FileSnapshots is { Count: > 0 }
             ? RevertFromFileSnapshotsAsync(workspaceId, _workspaceManager, snapshot, cancellationToken)
             : RevertFromSolutionSnapshotAsync(workspaceId, _workspaceManager, snapshot, cancellationToken);
+    }
+
+    private async Task<bool> ReloadForRecoveryAsync(string workspaceId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _workspaceManager.ReloadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or KeyNotFoundException)
+        {
+            _logger.LogWarning(ex, "Undo recovery reload failed for {WorkspaceId}", workspaceId);
+            return false;
+        }
     }
 
     private async Task<bool> RevertFromFileSnapshotsAsync(
@@ -639,6 +681,16 @@ public sealed class UndoService : IUndoService, IDisposable
                     file.FilePath);
                 diskOk = false;
             }
+        }
+
+        if (snapshot.RecoveryMode != UndoRecoveryMode.Full)
+        {
+            if ((restoredAny || diskOk) && !await ReloadForRecoveryAsync(workspaceId, cancellationToken).ConfigureAwait(false))
+                return false;
+
+            if (diskOk && snapshot.RecoveryMode == UndoRecoveryMode.OwnedFiles)
+                workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
+            return diskOk;
         }
 
         if (restoredAny)
@@ -1156,5 +1208,6 @@ public sealed class UndoService : IUndoService, IDisposable
         DateTime AppliedAtUtc,
         int SequenceNumber,
         IReadOnlyList<string> AffectedFiles,
-        UndoCaptureId CaptureId);
+        UndoCaptureId CaptureId,
+        UndoRecoveryMode RecoveryMode);
 }

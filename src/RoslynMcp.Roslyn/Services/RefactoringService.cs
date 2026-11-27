@@ -360,11 +360,11 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         var alreadySatisfied = ReferenceEquals(preparation.ModifiedSolution, currentSolution);
-        var capture = _undoService?.CaptureBeforeApply(
+        var preparedUndo = _undoService?.Prepare(
             workspaceId,
             description,
             alreadySatisfied ? null : currentSolution,
-            alreadySatisfied ? [] : preparation.FileSnapshots) ?? UndoCaptureId.None;
+            alreadySatisfied ? [] : preparation.FileSnapshots);
 
         // An already-applied intent owns no effects: its explicitly empty undo capture
         // preserves other applies while the common audit and token lifecycle completes.
@@ -372,12 +372,22 @@ public sealed class RefactoringService : IRefactoringService
         IReadOnlyList<string> appliedFiles = [];
         if (!alreadySatisfied)
         {
-            (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
-                workspaceId,
-                currentSolution,
-                preparation.ModifiedSolution,
-                preparation.SolutionChanges,
-                ct).ConfigureAwait(false);
+            DocumentSetPersistenceService.RollbackRecovery? recovery = null;
+            try
+            {
+                (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
+                    workspaceId,
+                    currentSolution,
+                    preparation.ModifiedSolution,
+                    preparation.SolutionChanges,
+                    ct,
+                    preparedUndo is null ? null : outcome => recovery = outcome).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (preparedUndo is not null && recovery is not null)
+                    PublishRefactoringRecovery(preparedUndo, recovery);
+            }
         }
 
         _previewStore.Invalidate(previewToken);
@@ -388,6 +398,8 @@ public sealed class RefactoringService : IRefactoringService
             return new ApplyResultDto(false, [], "Failed to apply changes to the workspace.");
         }
 
+        var capture = preparedUndo is null ? UndoCaptureId.None
+            : _undoService!.Publish(preparedUndo, preparedUndo.FileSnapshots, UndoRecoveryMode.Full);
         _changeTracker?.RecordChange(workspaceId, description, appliedFiles, toolName, capture);
         _logger.LogInformation("Applied refactoring '{Description}' to {Count} file(s)", description, appliedFiles.Count);
 
@@ -396,6 +408,20 @@ public sealed class RefactoringService : IRefactoringService
             previewToken,
             ct).ConfigureAwait(false);
         return new ApplyResultDto(true, appliedFiles, null, mutatedSymbol);
+    }
+
+    private void PublishRefactoringRecovery(
+        PreparedUndoCapture prepared, DocumentSetPersistenceService.RollbackRecovery recovery)
+    {
+        if (recovery.OwnedSnapshots.Count > 0)
+        {
+            _undoService!.Publish(prepared, recovery.OwnedSnapshots, recovery.ForeignPathsPreserved
+                ? UndoRecoveryMode.OwnedFilesWithForeignChanges : UndoRecoveryMode.OwnedFiles);
+        }
+        else if (recovery.RequiresReload)
+        {
+            _undoService!.Publish(prepared, null, UndoRecoveryMode.ReloadOnly);
+        }
     }
 
     private static ApplyResultDto InvalidPreviewResult() =>
