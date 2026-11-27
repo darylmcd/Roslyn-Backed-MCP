@@ -620,7 +620,7 @@ internal sealed class DocumentSetPersistenceService
                     await _fileSystem.RestoreBytesAtomicallyAsync(
                         path,
                         snapshot.Bytes
-                            ?? throw new InvalidOperationException(
+                            ?? throw InvalidOperationErrors.Internal(
                                 $"Snapshot for existing file '{path}' did not contain bytes."),
                         current.Existed,
                         current.Bytes,

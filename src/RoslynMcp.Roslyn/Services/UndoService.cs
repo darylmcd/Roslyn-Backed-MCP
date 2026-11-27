@@ -115,7 +115,7 @@ public sealed class UndoService : IUndoService, IDisposable
         IReadOnlyList<FileSnapshotDto>? fileSnapshots)
     {
         if (preApplySolution is not null && preApplySolution is not Solution)
-            throw new InvalidOperationException("preApplySolution must be a Roslyn Solution or null.");
+            throw InvalidOperationErrors.Internal("preApplySolution must be a Roslyn Solution or null.");
 
         return new PreparedUndoCapture(workspaceId, description, preApplySolution, fileSnapshots,
             _workspaceManager.GetCurrentVersion(workspaceId), DateTime.UtcNow);

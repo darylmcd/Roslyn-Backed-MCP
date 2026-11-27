@@ -388,7 +388,7 @@ internal static class AtomicFileWriter
     private static (string Path, FileStream Stream) ReserveUniqueTempPath(string path, FileSecurity? access)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))
-            ?? throw new InvalidOperationException("The target has no containing directory.");
+            ?? throw InvalidOperationErrors.Internal("The target has no containing directory.");
         for (var attempt = 0; attempt < 10; attempt++)
         {
             var candidate = Path.Combine(directory, ".rmcp-" + Path.GetRandomFileName() + ".tmp");
