@@ -119,4 +119,113 @@ public sealed class MultiFileEditFailureWireTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(allGood, payload["success"]!.GetValue<bool>(), raw);
         Assert.AreEqual(allGood ? 2 : 1, payload["filesModified"]!.GetValue<int>(), raw);
     }
+
+    [TestMethod]
+    [DataRow("2025-11-25", "empty")]
+    [DataRow("2026-07-28", "empty")]
+    [DataRow("2025-11-25", "prior")]
+    [DataRow("2026-07-28", "prior")]
+    [DataRow("2025-11-25", "mixed")]
+    [DataRow("2026-07-28", "mixed")]
+    public async Task FailedBatchUndoRetainsOnlyRealEffectsOnTheWire(string version, string scenario)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var priorPath = workspace.GetPath("SampleLib", "Dog.cs");
+        var editedPath = workspace.GetPath("SampleLib", "Cat.cs");
+        var rejectedPath = workspace.GetPath("SampleLib", "IAnimal.cs");
+        var priorBytes = await File.ReadAllBytesAsync(priorPath);
+        var editedBytes = await File.ReadAllBytesAsync(editedPath);
+        var rejectedBytes = await File.ReadAllBytesAsync(rejectedPath);
+        await using var harness = await ProductionParityMcpHarness.CreateAsync("failed-apply-undo", version,
+            services => services.AddSingleton(new SecurityOptions { SanctionedRoots = [workspace.RootPath] }));
+
+        async Task<JsonObject> CallAsync(string name, Dictionary<string, object?> args)
+        {
+            var before = harness.RawServerMessages.Count;
+            await harness.Client.CallToolAsync(name, args, cancellationToken: CancellationToken.None);
+            var frame = harness.RawServerMessages.Skip(before).Select(s => JsonNode.Parse(s)!.AsObject())
+                .Single(n => n.ContainsKey("id") && (n.ContainsKey("result") || n.ContainsKey("error")));
+            var raw = frame.ToJsonString();
+            Console.WriteLine($"OBSERVED-RESPONSE era={version} scenario={scenario} name={name} frame={raw}");
+            Assert.IsNull(frame["error"], raw);
+            var result = frame["result"]!.AsObject();
+            Assert.AreNotEqual(true, result["isError"]?.GetValue<bool>(), raw);
+            return JsonNode.Parse(result["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
+        }
+
+        var load = await CallAsync("workspace_load", new() { ["path"] = workspace.SolutionPath, ["autoRestore"] = false });
+        var id = load["workspaceId"]!.GetValue<string>();
+        var workspaceArgs = new Dictionary<string, object?> { ["workspaceId"] = id };
+        var emptyUndo = await CallAsync("revert_last_apply", workspaceArgs);
+        Assert.IsFalse(emptyUndo["reverted"]!.GetValue<bool>());
+        if (scenario == "prior")
+        {
+            var a = await CallAsync("apply_text_edit", new(workspaceArgs)
+            {
+                ["filePath"] = priorPath, ["edits"] = new[] { Insert("// prior A\n") },
+            });
+            Assert.IsTrue(a["success"]!.GetValue<bool>());
+            CollectionAssert.AreNotEqual(priorBytes, await File.ReadAllBytesAsync(priorPath));
+        }
+
+        var mixed = scenario == "mixed";
+        var b = await CallAsync("apply_multi_file_edit", new(workspaceArgs)
+        {
+            ["fileEdits"] = new[]
+            {
+                new { filePath = editedPath, edits = new[] { Insert(mixed ? "// mixed B\n" : "}\n") } },
+                new { filePath = rejectedPath, edits = new[] { Insert("}\n") } },
+            },
+        });
+        Assert.IsFalse(b["success"]!.GetValue<bool>());
+        Assert.AreEqual(mixed ? 1 : 0, b["filesModified"]!.GetValue<int>());
+        CollectionAssert.AreEqual(rejectedBytes, await File.ReadAllBytesAsync(rejectedPath));
+        if (mixed)
+            CollectionAssert.AreNotEqual(editedBytes, await File.ReadAllBytesAsync(editedPath));
+        else
+            CollectionAssert.AreEqual(editedBytes, await File.ReadAllBytesAsync(editedPath));
+
+        var changes = (await CallAsync("workspace_changes", workspaceArgs))["changes"]!.AsArray();
+        Assert.HasCount(scenario == "empty" ? 0 : 1, changes);
+        if (mixed)
+        {
+            CollectionAssert.AreEqual(new[] { editedPath },
+                changes[0]!["affectedFiles"]!.AsArray().Select(path => path!.GetValue<string>()).ToArray());
+            var result = await CallAsync("revert_apply_by_sequence", new(workspaceArgs)
+            {
+                ["sequenceNumber"] = changes[0]!["sequenceNumber"]!.GetValue<int>(),
+            });
+            Assert.IsTrue(result["reverted"]!.GetValue<bool>());
+            CollectionAssert.AreEqual(editedBytes, await File.ReadAllBytesAsync(editedPath));
+            CollectionAssert.AreEqual(rejectedBytes, await File.ReadAllBytesAsync(rejectedPath));
+            return;
+        }
+
+        var last = await CallAsync("revert_last_apply", workspaceArgs);
+        last.Remove("_meta");
+        emptyUndo.Remove("_meta");
+        if (scenario == "empty")
+        {
+            Assert.IsTrue(JsonNode.DeepEquals(emptyUndo, last), last.ToJsonString());
+        }
+        else
+        {
+            CollectionAssert.AreEquivalent(new[] { "reverted", "revertedOperation", "appliedAtUtc" },
+                last.Select(field => field.Key).ToArray());
+            Assert.IsTrue(last["reverted"]!.GetValue<bool>());
+            Assert.AreEqual("Apply text edit to Dog.cs", last["revertedOperation"]!.GetValue<string>());
+            CollectionAssert.AreEqual(priorBytes, await File.ReadAllBytesAsync(priorPath));
+        }
+
+        var phantom = await CallAsync("revert_apply_by_sequence", new(workspaceArgs)
+        {
+            ["sequenceNumber"] = scenario == "empty" ? 1 : changes[0]!["sequenceNumber"]!.GetValue<int>() + 1,
+        });
+        Assert.IsFalse(phantom["reverted"]!.GetValue<bool>());
+        Assert.AreEqual("unknown-sequence", phantom["reason"]!.GetValue<string>());
+    }
+
+    private static object Insert(string text) =>
+        new { startLine = 1, startColumn = 1, endLine = 1, endColumn = 1, newText = text };
+
 }

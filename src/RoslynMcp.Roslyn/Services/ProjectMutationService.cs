@@ -570,11 +570,11 @@ public sealed class ProjectMutationService : IProjectMutationService
                 normalizedProjectFilePath,
                 preApplyBytes,
                 fallbackText: null);
-            var capture = _undoService?.CaptureBeforeApply(
+            var preparedUndo = _undoService?.Prepare(
                 workspaceId,
                 $"Project mutation: {Path.GetFileName(projectFilePath)}",
                 preApplySolution: null,
-                fileSnapshots: new[] { preApplySnapshot }) ?? UndoCaptureId.None;
+                fileSnapshots: new[] { preApplySnapshot });
 
             await AtomicFileWriter.WriteAllTextAsync(
                 projectFilePath,
@@ -582,6 +582,8 @@ public sealed class ProjectMutationService : IProjectMutationService
                 ct,
                 logger: _logger,
                 encoding: SourceFileEncoding.FromBytes(preApplyBytes)).ConfigureAwait(false);
+            var capture = preparedUndo is null ? UndoCaptureId.None
+                : _undoService!.Publish(preparedUndo, preparedUndo.FileSnapshots, UndoRecoveryMode.Full);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);
             _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation", capture);

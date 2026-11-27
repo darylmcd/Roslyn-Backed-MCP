@@ -100,18 +100,25 @@ public sealed class EditService : IEditService
                 () => sourceText.ToString(),
                 ct).ConfigureAwait(false),
         };
-        var capture = _undoService?.CaptureBeforeApply(
-            workspaceId,
-            $"Apply text edit to {Path.GetFileName(filePath)}",
-            solution,
-            fileSnapshots) ?? UndoCaptureId.None;
+        var description = $"Apply text edit to {Path.GetFileName(filePath)}";
+        var preparedUndo = _undoService?.Prepare(workspaceId, description, solution, fileSnapshots);
+        var capture = UndoCaptureId.None;
+        var workspaceApplied = false;
+        TextEditResultDto coreResult;
+        try
+        {
+            coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, document, sourceText, newSourceText,
+                () => workspaceApplied = true, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (workspaceApplied && preparedUndo is not null)
+                capture = _undoService!.Publish(preparedUndo, preparedUndo.FileSnapshots, UndoRecoveryMode.Full);
+        }
 
-        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, document, sourceText, newSourceText, toolName, capture, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
+        if (coreResult.Success)
+            _changeTracker?.RecordChange(workspaceId, description, [filePath], toolName, capture);
 
-        // Only wire up verify when the core apply actually wrote the edit. When the
-        // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges
-        // rejected the change), the undo entry still contains the pre-edit snapshot,
-        // but nothing happened on disk — running compile_check here would add noise.
         if (!verify || !coreResult.Success)
         {
             return coreResult;
@@ -122,6 +129,7 @@ public sealed class EditService : IEditService
             projectFilter,
             preErrorBaseline!,
             autoRevertOnError,
+            capture,
             ct).ConfigureAwait(false);
 
         return coreResult with { Verification = verification };
@@ -164,33 +172,30 @@ public sealed class EditService : IEditService
                 () => sourceText.ToString(),
                 ct).ConfigureAwait(false));
         }
-        var batchCapture = _undoService?.CaptureBeforeApply(
-            workspaceId,
-            $"Apply edits to {fileEdits.Count} file(s)",
-            initialSolution,
-            fileSnapshots) ?? UndoCaptureId.None;
+        var preparedUndo = _undoService?.Prepare(
+            workspaceId, $"Apply edits to {fileEdits.Count} file(s)", initialSolution, fileSnapshots);
+        var ownedSnapshots = new List<FileSnapshotDto>();
+        var batchCapture = UndoCaptureId.None;
+        List<TextEditResultDto> results;
+        try
+        {
+            results = await ApplyBatchFilesAsync(
+                workspaceId, perFileSnapshots, fileSnapshots, ownedSnapshots, skipSyntaxCheck, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (ownedSnapshots.Count > 0 && preparedUndo is not null)
+                batchCapture = _undoService!.Publish(preparedUndo, ownedSnapshots, UndoRecoveryMode.Full);
+        }
 
-        var results = await ApplyBatchFilesAsync(
-            workspaceId,
-            perFileSnapshots,
-            toolName,
-            skipSyntaxCheck,
-            ct).ConfigureAwait(false);
-
-        // workspace-changes-atomic-batch-split-without-batchid (gh #740): emit ONE
-        // change-tracker entry covering the whole batch, mirroring
-        // CompositeApplyOrchestrator's post-loop single-entry pattern at
-        // CompositeApplyOrchestrator.cs:82-83. The per-file Core path's RecordChange is
-        // suppressed via suppressChangeTrackerRecord:true above so a 2-file batch
-        // produces a single workspace_changes / IUndoService.CommitPendingCapture
-        // pair rather than splitting into N independent ledger entries.
-        // Persistence can fail after a workspace mutation; every target remains owned by batch undo.
-        var batchAffectedFiles = results.Select(r => r.FilePath).ToList();
-        _changeTracker?.RecordChange(workspaceId,
-            $"Apply text edits to {fileEdits.Count} file(s)",
-            batchAffectedFiles,
-            toolName,
-            batchCapture);
+        // A normally completed batch with persisted edits promotes one undo entry.
+        // An uncommitted residual stays pending without a ledger entry.
+        if (results.Any(result => result.Success))
+        {
+            var batchAffectedFiles = ownedSnapshots.Select(snapshot => snapshot.FilePath).ToList();
+            _changeTracker?.RecordChange(workspaceId, $"Apply text edits to {fileEdits.Count} file(s)",
+                batchAffectedFiles, toolName, batchCapture);
+        }
 
         VerifyOutcomeDto? verification = null;
         if (verify)
@@ -200,6 +205,7 @@ public sealed class EditService : IEditService
                 batchProjectFilter,
                 preErrorBaseline!,
                 autoRevertOnError,
+                batchCapture,
                 ct).ConfigureAwait(false);
         }
 
@@ -256,13 +262,16 @@ public sealed class EditService : IEditService
     private async Task<List<TextEditResultDto>> ApplyBatchFilesAsync(
         string workspaceId,
         IReadOnlyList<(Document Document, SourceText SourceText, FileEditsDto FileEdit)> snapshots,
-        string toolName,
+        IReadOnlyList<FileSnapshotDto> fileSnapshots,
+        List<FileSnapshotDto> ownedSnapshots,
         bool skipSyntaxCheck,
         CancellationToken ct)
     {
         var results = new List<TextEditResultDto>();
-        foreach (var (resolvedDocument, sourceText, fileEdit) in snapshots)
+        for (var index = 0; index < snapshots.Count; index++)
         {
+            var (resolvedDocument, sourceText, fileEdit) = snapshots[index];
+            var fileSnapshot = fileSnapshots[index];
             // Apply each delta to the latest solution without resolving the requested path again.
             var document = _workspace.GetCurrentSolution(workspaceId).GetDocument(resolvedDocument.Id)
                 ?? throw new PublicNotFoundException("An edit target is no longer in the workspace. Reload the workspace and retry.");
@@ -282,10 +291,8 @@ public sealed class EditService : IEditService
                 document,
                 sourceText,
                 merged,
-                toolName,
-                UndoCaptureId.None,
+                () => ownedSnapshots.Add(fileSnapshot),
                 ct,
-                suppressChangeTrackerRecord: true,
                 canonicalWritePath: Path.GetFullPath(resolvedDocument.FilePath!)).ConfigureAwait(false);
             results.Add(result);
         }
@@ -671,19 +678,7 @@ public sealed class EditService : IEditService
     /// responsible for snapshotting before invoking this method (single-file path
     /// snapshots once; multi-file path snapshots once at the batch boundary).
     /// </summary>
-    /// <param name="capture">
-    /// The undo capture the caller took for this logical operation; recorded with the ledger entry.
-    /// <see cref="UndoCaptureId.None"/> when <paramref name="suppressChangeTrackerRecord"/> is true,
-    /// because the batch caller records the entry under its own batch capture.
-    /// </param>
-    /// <param name="suppressChangeTrackerRecord">
-    /// When true, skip the per-file <c>_changeTracker.RecordChange(...)</c> call so the
-    /// caller can emit a single batch-level entry covering all affected files. Used by
-    /// <see cref="ApplyMultiFileTextEditsAsync"/> so a 2-file batch produces ONE ledger
-    /// entry rather than splitting into per-file entries
-    /// (<c>workspace-changes-atomic-batch-split-without-batchid</c>, gh #740).
-    /// Mirrors <see cref="CompositeApplyOrchestrator"/>'s post-loop single-entry pattern.
-    /// </param>
+    /// <param name="onWorkspaceApplied">Records acceptance before disk persistence.</param>
     /// <param name="canonicalWritePath">
     /// Optional boundary-canonicalized target the physical write must land on, pinned by the caller's
     /// path validation (<c>path-boundary-link-swap-toctou</c>). <c>null</c> writes to the resolved
@@ -696,10 +691,8 @@ public sealed class EditService : IEditService
         Document document,
         SourceText sourceText,
         SourceText newSourceText,
-        string toolName,
-        UndoCaptureId capture,
+        Action onWorkspaceApplied,
         CancellationToken ct,
-        bool suppressChangeTrackerRecord = false,
         string? canonicalWritePath = null)
     {
         var originalText = sourceText.ToString();
@@ -712,6 +705,8 @@ public sealed class EditService : IEditService
         {
             return new TextEditResultDto(false, filePath, 0, [], null);
         }
+
+        onWorkspaceApplied();
 
         // BUG-N1: Mirror RefactoringService — MSBuildWorkspace may not flush text edits to disk.
         var persisted = await PersistDocumentTextToDiskAsync(workspaceId, document.Id, ct, canonicalWritePath).ConfigureAwait(false);
@@ -726,13 +721,6 @@ public sealed class EditService : IEditService
         var newText = newSourceText.ToString();
         var unified = DiffGenerator.GenerateUnifiedDiff(originalText, newText, filePath);
         var fileChange = new FileChangeDto(filePath, unified);
-
-        if (!suppressChangeTrackerRecord)
-        {
-            _changeTracker?.RecordChange(workspaceId,
-                $"Apply text edit to {Path.GetFileName(filePath)}",
-                [filePath], toolName, capture);
-        }
 
         return new TextEditResultDto(true, filePath, edits.Count, [fileChange], null);
     }
@@ -934,7 +922,7 @@ public sealed class EditService : IEditService
     /// Single-shot semantics: this revert targets ONLY the snapshot that the current
     /// call placed on the undo stack. Prior-turn edits are never touched — the undo
     /// service is already single-slot per workspace, so the capture earlier in this
-    /// method overwrote whatever was there. Running <c>RevertAsync</c> restores the
+    /// method overwrote whatever was there. Reverting the matching capture restores the
     /// pre-edit state that was captured inside this call's frame, not an earlier one.
     /// </remarks>
     private async Task<VerifyOutcomeDto> RunVerifyAndMaybeRevertAsync(
@@ -942,6 +930,7 @@ public sealed class EditService : IEditService
         string? projectFilter,
         CompilationErrorSnapshot preEditBaseline,
         bool autoRevertOnError,
+        UndoCaptureId capture,
         CancellationToken ct)
     {
         // The null-check here would only fire in a misconfigured test DI; production
@@ -998,7 +987,7 @@ public sealed class EditService : IEditService
                 "The edit remained applied. Wire IUndoService via AddRoslynMcpCoreServices.");
         }
 
-        var reverted = await _undoService.RevertAsync(workspaceId, ct).ConfigureAwait(false);
+        var reverted = !capture.IsNone && await _undoService.RevertCaptureAsync(workspaceId, capture, ct).ConfigureAwait(false);
         return reverted
             ? CreateVerifyOutcome(
                 "reverted",

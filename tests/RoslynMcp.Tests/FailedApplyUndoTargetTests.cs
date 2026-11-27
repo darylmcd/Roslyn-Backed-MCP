@@ -16,6 +16,203 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    [DataRow("single")]
+    [DataRow("batch")]
+    [DataRow("batch-syntax")]
+    public async Task EditWithoutOwnedEffects_MustLeavePriorUndo(string route)
+    {
+        await using var fixture = CreateSingleProjectWorkspace();
+        await fixture.LoadAsync();
+        var id = fixture.WorkspaceId;
+        var prior = await ApplyPriorAsync(id, fixture.GetPath("SampleLib", "Dog.cs"));
+        var cat = fixture.GetPath("SampleLib", "Cat.cs");
+        var before = await File.ReadAllBytesAsync(cat);
+        var manager = new FaultingManager(Services.WorkspaceManager);
+        manager.Apply = (_, _) => false;
+        var edit = CreateEdit(manager, Services.CompileCheckService);
+        if (route == "single")
+        {
+            var result = await edit.ApplyTextEditsAsync(id, cat, [Insert("// B\n")], "apply_text_edit", CancellationToken.None);
+            Assert.IsFalse(result.Success);
+        }
+        else
+        {
+            var change = route == "batch-syntax" ? "}\n" : "// B\n";
+            var result = await edit.ApplyMultiFileTextEditsAsync(id, [new(cat, [Insert(change)])],
+                "apply_multi_file_edit", CancellationToken.None);
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(0, result.FilesModified);
+        }
+        CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(cat));
+        Assert.AreEqual(prior.AfterVersion, Services.WorkspaceManager.GetCurrentVersion(id));
+        await RequirePriorUndoAsync(id, prior);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task SingleEditSurvivingWorkspaceApply_RemainsUndoable(bool persistThrows)
+    {
+        await using var fixture = CreateSingleProjectWorkspace();
+        await fixture.LoadAsync();
+        var id = fixture.WorkspaceId;
+        var prior = await ApplyPriorAsync(id, fixture.GetPath("SampleLib", "Dog.cs"));
+        var cat = fixture.GetPath("SampleLib", "Cat.cs");
+        var original = await File.ReadAllBytesAsync(cat);
+        var target = Services.WorkspaceManager.GetCurrentSolution(id).Projects.SelectMany(project => project.Documents)
+            .Single(document => document.FilePath == cat).Id;
+        var manager = new FaultingManager(Services.WorkspaceManager);
+        manager.Apply = (workspace, modified) =>
+        {
+            Assert.IsTrue(Services.WorkspaceManager.TryApplyChanges(workspace, modified));
+            manager.NextSolutionRead = solution => persistThrows
+                ? throw new OperationCanceledException("Diagnostic persistence cancellation")
+                : solution.RemoveDocument(target);
+            return true;
+        };
+        var edit = CreateEdit(manager, Services.CompileCheckService);
+        var apply = () => edit.ApplyTextEditsAsync(id, cat, [Insert("// surviving B\n")], "apply_text_edit", CancellationToken.None);
+        if (persistThrows)
+        {
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(apply);
+        }
+        else
+        {
+            Assert.IsFalse((await apply()).Success);
+        }
+        StringAssert.Contains(await Services.WorkspaceManager.GetSourceTextAsync(id, cat, CancellationToken.None),
+            "// surviving B");
+        await RequireRecoveryAsync(id, prior, cat, original, "Apply text edit");
+    }
+
+    [TestMethod]
+    [DataRow("mixed")]
+    [DataRow("throw")]
+    [DataRow("cancel")]
+    public async Task BatchWithSurvivingLeg_RemainsUndoable(string outcome)
+    {
+        await using var fixture = CreateSingleProjectWorkspace();
+        var later = fixture.GetPath("SampleLib", "UndoWitnessLater.cs");
+        await File.WriteAllTextAsync(later, "namespace SampleLib; public class UndoWitnessLater { }\n");
+        await fixture.LoadAsync();
+        var id = fixture.WorkspaceId;
+        var prior = await ApplyPriorAsync(id, fixture.GetPath("SampleLib", "Dog.cs"));
+        var cat = fixture.GetPath("SampleLib", "Cat.cs");
+        var original = await File.ReadAllBytesAsync(cat);
+        var laterBefore = await File.ReadAllBytesAsync(later);
+        var manager = new FaultingManager(Services.WorkspaceManager);
+        var issued = 0;
+        manager.Apply = (workspace, modified) =>
+        {
+            if (++issued == 1)
+            {
+                return Services.WorkspaceManager.TryApplyChanges(workspace, modified);
+            }
+            if (outcome == "cancel")
+            {
+                throw new OperationCanceledException("Diagnostic cancellation after first batch leg");
+            }
+            throw new InvalidOperationException("Diagnostic failure after first batch leg");
+        };
+        var edit = CreateEdit(manager, Services.CompileCheckService);
+        var apply = () => edit.ApplyMultiFileTextEditsAsync(id,
+            [new(cat, [Insert("// surviving batch B\n")]), new(later, [Insert(outcome == "mixed" ? "}\n" : "// later B\n")])],
+            "apply_multi_file_edit", CancellationToken.None);
+        if (outcome == "mixed")
+        {
+            var result = await apply();
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(1, result.FilesModified);
+        }
+        else if (outcome == "cancel")
+        {
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(apply);
+        }
+        else
+        {
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(apply);
+        }
+        CollectionAssert.AreNotEqual(original, await File.ReadAllBytesAsync(cat));
+        CollectionAssert.AreEqual(laterBefore, await File.ReadAllBytesAsync(later));
+        await RequireRecoveryAsync(id, prior, cat, original, "Apply edits to 2 file(s)");
+    }
+
+    [TestMethod]
+    public async Task BatchAutoRevertWithNoEffects_LeavesPriorBytes()
+    {
+        await using var fixture = CreateSingleProjectWorkspace();
+        await fixture.LoadAsync();
+        var id = fixture.WorkspaceId;
+        var prior = await ApplyPriorAsync(id, fixture.GetPath("SampleLib", "Dog.cs"));
+        var cat = fixture.GetPath("SampleLib", "Cat.cs");
+        var before = await File.ReadAllBytesAsync(cat);
+        var probe = new AppearingCompileError(cat);
+        var edit = CreateEdit(Services.WorkspaceManager, probe);
+        var result = await edit.ApplyMultiFileTextEditsAsync(id, [new(cat, [Insert("}\n")])],
+            "apply_multi_file_edit", CancellationToken.None, verify: true, autoRevertOnError: true);
+        Assert.IsFalse(result.Success);
+        Assert.AreEqual(0, result.FilesModified);
+        Assert.AreEqual(2, probe.Calls);
+        Assert.IsNotNull(result.Verification);
+        CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(cat));
+        CollectionAssert.AreEqual(prior.Applied, await File.ReadAllBytesAsync(prior.Path));
+        Assert.AreEqual("revert_failed", result.Verification.Status);
+        await RequirePriorUndoAsync(id, prior);
+    }
+
+    [TestMethod]
+    public async Task ProjectReplacementBeforePublication_MustLeavePriorUndo()
+    {
+        await using var fixture = CreateSingleProjectWorkspace();
+        await fixture.LoadAsync();
+        var id = fixture.WorkspaceId;
+        var prior = await ApplyPriorAsync(id, fixture.GetPath("SampleLib", "Dog.cs"));
+        var target = fixture.GetPath("SampleLib", "BlockedMutation.csproj");
+        Directory.CreateDirectory(target);
+        var service = CreateProjectMutation(Services.WorkspaceManager, out var previews);
+        var token = previews.Store(id, target, "<Project />", Services.WorkspaceManager.GetCurrentVersion(id), "B");
+        var result = await service.ApplyProjectMutationAsync(token, CancellationToken.None);
+        Assert.IsFalse(result.Success);
+        Assert.AreEqual("Failed to apply project mutation.", result.Error);
+        Assert.IsTrue(Directory.Exists(target));
+        Assert.IsFalse(Directory.EnumerateFileSystemEntries(target).Any());
+        Assert.AreEqual(prior.AfterVersion, Services.WorkspaceManager.GetCurrentVersion(id));
+        await RequirePriorUndoAsync(id, prior);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ProjectPublicationThenReloadFailure_RemainsUndoable(bool cancel)
+    {
+        await using var fixture = CreateSingleProjectWorkspace();
+        await fixture.LoadAsync();
+        var id = fixture.WorkspaceId;
+        var prior = await ApplyPriorAsync(id, fixture.GetPath("SampleLib", "Dog.cs"));
+        var project = Services.WorkspaceManager.GetCurrentSolution(id).Projects.Single().FilePath!;
+        var original = await File.ReadAllBytesAsync(project);
+        var content = (await File.ReadAllTextAsync(project)).Replace("</Project>", "  <!-- B -->\n</Project>", StringComparison.Ordinal);
+        var manager = new FaultingManager(Services.WorkspaceManager);
+        manager.Reload = _ => cancel
+            ? throw new OperationCanceledException("Diagnostic cancellation after verified replacement")
+            : throw new IOException("Diagnostic reload failure after verified replacement");
+        var service = CreateProjectMutation(manager, out var previews);
+        var token = previews.Store(id, project, content, Services.WorkspaceManager.GetCurrentVersion(id), "B");
+        if (cancel)
+        {
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => service.ApplyProjectMutationAsync(token, CancellationToken.None));
+        }
+        else
+        {
+            var result = await service.ApplyProjectMutationAsync(token, CancellationToken.None);
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("Failed to apply project mutation.", result.Error);
+        }
+        StringAssert.Contains(await File.ReadAllTextAsync(project), "<!-- B -->");
+        await RequireRecoveryAsync(id, prior, project, original, "Project mutation");
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task RefactoringWorkspaceRejectionRestoresBytes_MustLeavePriorUndo(bool reloadFails)
