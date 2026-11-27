@@ -21,7 +21,8 @@
 - reloc-b (PR 2144): Failed 22 fork-storage cases (ForkNativeOwnership, ForkStorageBoundary, ForkNativeCopyAdmission, ForkNativeBuildOutputAdmission, WorkspaceForkApply, WorkspaceForkDocumentEncoding, WorkspaceForkSourceLifecycle); 74/74 alone.
 - file-watcher (PR 2146): Failed 20 deadline/process tests (e.g. `RestoreGraph_PhaseExpiresBeforeGraphWorkStarts_ReportsTimeout`, `NativeBuildHost_LateChild_...`, `VerifyRelease_*` x5); 45/45 alone.
 - shared-expr (PR 2142): `NativeCacheVerification_RejectsAnInvalidSignatureAsync` (pwsh probe 17 s under load, 627 ms alone).
-- Overlaps: `timing-test-reaudit-wave` (other deadline sites), `missing-root-retirement-provider-dispose-timeout-flake` (ProviderDispose_* only), `test-temp-root-reap-tests-delete-live-sibling-runs` (cross-host directory deletion, a separate cause of sub-second failures).
+- Overlaps: `timing-test-reaudit-wave` (other deadline sites), `missing-root-retirement-provider-dispose-timeout-flake` (ProviderDispose_* only).
+- The separate cross-host directory deletion defect was fixed in PR #2235 (commit 127d83c1).
 
 ## Context
 
