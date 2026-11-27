@@ -264,6 +264,7 @@
 | `workspace-load-abstract-lane-internal-error` | Medium | — | **Diagnose the abstract-lane load error** — identify the cause of the captured valid workspace_load InternalError and prove a regression without changing public errors. [type: bug] [source: remediation 2026-11-25] | M | items/workspace-load-abstract-lane-internal-error.md |
 | `symbol-handle-local-function-owner-roundtrip` | Medium | — | **Replay constructed types over exact local-function type parameters** — preserve lexical owner and ordinal without rebinding to a sibling. [type: bug] [source: operator decision 2026-11-26] | M | items/symbol-handle-local-function-owner-roundtrip.md |
 | `metadata-member-handle-aliased-identity` | Medium | — | **Distinguish metadata member handles across aliased overloads** — preserve bound parameter assembly identities during mint and replay. [type: bug] [source: collab review 2026-11-26] | M | items/metadata-member-handle-aliased-identity.md |
+| `atomic-file-replacement-access-metadata` | Medium | — | **Atomic file replace drops DACL/Unix mode** — six unguarded `AtomicFileWriter` overwrite callers inherit default temp access; audit callers, add platform access tests, preserve bytes/responses. [type: bug] [source: agent-collab 01M8ENT7T23EVF0ZTMMF2TDCCE seq 32] | M | items/atomic-file-replacement-access-metadata.md |
 
 ## Low
 
