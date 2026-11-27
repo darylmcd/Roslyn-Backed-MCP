@@ -447,26 +447,6 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 singleKeys.Take(noDefCap).ToList(),
                 bulkNoDefKeys,
                 $"find_references_bulk(maxItemsPerSymbol={noDefCap}) must match find_references(offset=0, limit={noDefCap}) for {metadataNames[i]}.");
-        }
-
-        for (var i = 0; i < metadataNames.Length; i++)
-        {
-            var singleJson = await SymbolTools.FindReferences(
-                requestContext: null!,
-                WorkspaceManager,
-                WorkspaceExecutionGate,
-                ReferenceService,
-                WorkspaceId,
-                metadataName: metadataNames[i],
-                limit: 50,
-                offset: 0,
-                ct: CancellationToken.None);
-
-            using var singleDoc = JsonDocument.Parse(singleJson);
-            var singleKeys = singleDoc.RootElement.GetProperty("items")
-                .EnumerateArray()
-                .Select(ReadLocationKey)
-                .ToList();
 
             var bulkWithDef = bulkWithDefResults[i];
             var withDefRefs = bulkWithDef.GetProperty("references").EnumerateArray().ToList();
