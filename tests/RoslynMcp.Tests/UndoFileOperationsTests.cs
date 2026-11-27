@@ -41,7 +41,7 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
     public async Task GuardedCompensation_PreservesForeignDestinationOnFirstMoveAndRetry(bool afterSharingViolation)
     {
         if (afterSharingViolation && !OperatingSystem.IsWindows())
-            return; // Only the Windows writer retries a transient sharing failure.
+            Assert.Inconclusive("Only the Windows writer retries a transient sharing failure.");
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var path = workspace.GetPath("SampleLib", "GuardedUndo.cs");
