@@ -201,16 +201,21 @@ public static partial class RoslynPrompts
         CancellationToken ct = default)
     {
         var discovered = await testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
-        // review-test-coverage-prompt-payload-overflow (gh #756): the prompt previously
-        // applied a per-project cap of `200 / project_count` and embedded the resulting
+        // review-test-coverage-prompt-payload-overflow (gh #756) +
+        // review-test-coverage-prompt-project-filter: the prompt previously applied a
+        // per-project cap of `200 / project_count` and embedded the resulting
         // TestDiscoveryDto verbatim, so single-project solutions kept all 200 cases and
-        // pushed the JSON body past 100 KB on large test suites. Flatten the test cases
-        // into a single list, cap at 50 entries (consistent with the SerializeTruncatedList
-        // helper used elsewhere — see guided_extract_interface, analyze_dependencies), and
-        // let the helper emit the `[Showing N of M items]` footer. Callers needing the
-        // full list invoke `test_discover` directly; this section is orientation-only.
+        // pushed the JSON body past 100 KB on large test suites. Filter discovered projects
+        // by optional projectName (ordinal case-insensitive, matching TestCoverageCoordinator)
+        // before flattening into a single list, cap at 50 entries (consistent with
+        // SerializeTruncatedList — see guided_extract_interface, analyze_dependencies), and
+        // let the helper emit `[Showing N of M items]`. Callers needing the full list invoke
+        // `test_discover` directly; this section is orientation-only.
         const int testCaseCap = 50;
-        var allTestCases = discovered.TestProjects.SelectMany(p => p.Tests).ToList();
+        var filteredProjects = projectName is null
+            ? discovered.TestProjects
+            : discovered.TestProjects.Where(p => string.Equals(p.ProjectName, projectName, StringComparison.OrdinalIgnoreCase));
+        var allTestCases = filteredProjects.SelectMany(p => p.Tests).ToList();
         var discoveredJson = PromptMessageBuilder.SerializeTruncatedList(allTestCases, testCaseCap, JsonDefaults.Indented);
 
         return
