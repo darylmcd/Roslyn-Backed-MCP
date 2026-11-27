@@ -72,7 +72,9 @@ internal static class SourceTextRequestProjection
         var truncated = false;
         if (slice.Length > maxChars)
         {
-            slice = slice.Substring(0, maxChars) + $"\n[TRUNCATED at {maxChars} characters — re-request a narrower line range to see the rest]";
+            var keptPrefix = slice.Substring(0, maxChars);
+            returnedEnd = returnedStart + SourceTextSlicer.CountLines(keptPrefix) - 1;
+            slice = keptPrefix + $"\n[TRUNCATED at {maxChars} characters — re-request a narrower line range to see the rest]";
             truncated = true;
         }
 

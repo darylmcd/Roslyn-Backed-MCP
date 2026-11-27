@@ -54,15 +54,18 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
                 .ToList();
         }
         var dtos = await ReferenceLocationMaterializer.MaterializeDtosAsync(refLocations, ct, summary).ConfigureAwait(false);
-        // FLAG-8b-A: stable sort by (FilePath, StartLine, StartColumn) so parallel callers get
-        // identical ordering. Roslyn's symbol-enumeration walker may otherwise produce different
-        // orderings across concurrent invocations of the same query.
-        return dtos
+        return SortReferenceLocations(dtos);
+    }
+
+    // FLAG-8b-A + bulk-reference-truncation-and-source-text-end-line: stable sort by
+    // (FilePath, StartLine, StartColumn) shared by FindReferencesAsync and FindReferencesBulkAsync
+    // so parallel callers and capped bulk results match find_references(offset=0, limit=N).
+    private static List<LocationDto> SortReferenceLocations(IEnumerable<LocationDto> dtos) =>
+        dtos
             .OrderBy(dto => dto.FilePath ?? string.Empty, StringComparer.Ordinal)
             .ThenBy(dto => dto.StartLine)
             .ThenBy(dto => dto.StartColumn)
             .ToList();
-    }
 
     public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(
         string workspaceId,
@@ -612,7 +615,7 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
 
                 var refLocations = references.SelectMany(r => r.Locations).ToList();
                 var refDtos = await ReferenceLocationMaterializer.MaterializeDtosAsync(refLocations, ct).ConfigureAwait(false);
-                locations.AddRange(refDtos);
+                locations.AddRange(SortReferenceLocations(refDtos));
 
                 return new BulkReferenceResultDto(key, symbol.ToDisplayString(), locations.Count, locations, null);
             }

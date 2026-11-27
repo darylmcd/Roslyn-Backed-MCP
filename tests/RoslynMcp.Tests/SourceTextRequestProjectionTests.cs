@@ -140,6 +140,30 @@ public sealed class SourceTextRequestProjectionTests
     }
 
     [TestMethod]
+    [DataRow("line1\nline2\nline3", 1, 3, 8, 1, 2, true, DisplayName = "Cut mid-line")]
+    [DataRow("line1\nline2\nline3", 1, 3, 6, 1, 1, true, DisplayName = "Cut immediately after LF")]
+    [DataRow("line1\r\nline2\r\nline3", 1, 3, 6, 1, 1, true, DisplayName = "Cut between CR and LF")]
+    [DataRow("line1\nline2\nline3", 2, 3, 3, 2, 2, true, DisplayName = "Cut inside first returned line")]
+    [DataRow("line1\nline2\nline3", 1, 2, 12, 1, 2, false, DisplayName = "Exact multi-line cap is not truncated")]
+    public void Project_SliceOverCap_UpdatesReturnedEndLineForEdgeCases(
+        string text,
+        int startLine,
+        int endLine,
+        int maxChars,
+        int expectedReturnedStartLine,
+        int expectedReturnedEndLine,
+        bool expectedTruncated)
+    {
+        var projection = SourceTextRequestProjection.Project("C:/repo/A.cs", text, startLine, endLine, maxChars);
+
+        Assert.AreEqual(expectedTruncated, projection.Truncated);
+        Assert.AreEqual(expectedReturnedStartLine, projection.ReturnedStartLine);
+        Assert.AreEqual(expectedReturnedEndLine, projection.ReturnedEndLine);
+        Assert.AreEqual(startLine, projection.RequestedStartLine);
+        Assert.AreEqual(endLine, projection.RequestedEndLine);
+    }
+
+    [TestMethod]
     public void Project_SerializedWithJsonDefaults_EmitsHistoricalCamelCaseKeys()
     {
         var projection = SourceTextRequestProjection.Project("C:/repo/A.cs", "a\nb\nc", 1, 2, 65536);

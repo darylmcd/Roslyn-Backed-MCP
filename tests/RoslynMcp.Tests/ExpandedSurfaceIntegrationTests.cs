@@ -366,6 +366,133 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task FindReferencesBulk_WithMaxItemsPerSymbol_MatchesFindReferencesOrder()
+    {
+        var metadataNames = new[]
+        {
+            "SampleLib.IAnimal",
+            "SampleLib.AnimalService",
+        };
+        var symbols = metadataNames
+            .Select(name => new BulkSymbolLocator(SymbolHandle: null, MetadataName: name,
+                FilePath: null, Line: null, Column: null))
+            .ToArray();
+
+        const int noDefCap = 2;
+        var bulkNoDefJson = await SymbolTools.FindReferencesBulk(
+            WorkspaceExecutionGate,
+            ReferenceService,
+            WorkspaceId,
+            symbols,
+            includeDefinition: false,
+            summary: false,
+            maxItemsPerSymbol: noDefCap,
+            ct: CancellationToken.None);
+
+        using var bulkNoDefDoc = JsonDocument.Parse(bulkNoDefJson);
+        var bulkNoDefResults = bulkNoDefDoc.RootElement.GetProperty("results").EnumerateArray().ToList();
+        Assert.AreEqual(metadataNames.Length, bulkNoDefResults.Count);
+
+        const int withDefCap = 3;
+        var bulkWithDefJson = await SymbolTools.FindReferencesBulk(
+            WorkspaceExecutionGate,
+            ReferenceService,
+            WorkspaceId,
+            symbols,
+            includeDefinition: true,
+            summary: false,
+            maxItemsPerSymbol: withDefCap,
+            ct: CancellationToken.None);
+
+        using var bulkWithDefDoc = JsonDocument.Parse(bulkWithDefJson);
+        var bulkWithDefResults = bulkWithDefDoc.RootElement.GetProperty("results").EnumerateArray().ToList();
+        Assert.AreEqual(metadataNames.Length, bulkWithDefResults.Count);
+
+        static (string FilePath, int StartLine, int StartColumn) ReadLocationKey(JsonElement el) =>
+            (el.GetProperty("filePath").GetString()!,
+             el.GetProperty("startLine").GetInt32(),
+             el.GetProperty("startColumn").GetInt32());
+
+        for (var i = 0; i < metadataNames.Length; i++)
+        {
+            var singleJson = await SymbolTools.FindReferences(
+                requestContext: null!,
+                WorkspaceManager,
+                WorkspaceExecutionGate,
+                ReferenceService,
+                WorkspaceId,
+                metadataName: metadataNames[i],
+                limit: 50,
+                offset: 0,
+                ct: CancellationToken.None);
+
+            using var singleDoc = JsonDocument.Parse(singleJson);
+            var singleKeys = singleDoc.RootElement.GetProperty("items")
+                .EnumerateArray()
+                .Select(ReadLocationKey)
+                .ToList();
+            Assert.IsTrue(singleKeys.Count > noDefCap,
+                $"Expected {metadataNames[i]} to have > {noDefCap} references so capping is exercised (saw {singleKeys.Count}).");
+
+            var bulkNoDef = bulkNoDefResults[i];
+            Assert.AreEqual(singleKeys.Count, bulkNoDef.GetProperty("referenceCount").GetInt32());
+            Assert.AreEqual(noDefCap, bulkNoDef.GetProperty("returnedCount").GetInt32());
+            Assert.IsTrue(bulkNoDef.GetProperty("truncated").GetBoolean());
+            var bulkNoDefKeys = bulkNoDef.GetProperty("references")
+                .EnumerateArray()
+                .Select(ReadLocationKey)
+                .ToList();
+            Assert.AreEqual(noDefCap, bulkNoDefKeys.Count);
+            CollectionAssert.AreEqual(
+                singleKeys.Take(noDefCap).ToList(),
+                bulkNoDefKeys,
+                $"find_references_bulk(maxItemsPerSymbol={noDefCap}) must match find_references(offset=0, limit={noDefCap}) for {metadataNames[i]}.");
+        }
+
+        for (var i = 0; i < metadataNames.Length; i++)
+        {
+            var singleJson = await SymbolTools.FindReferences(
+                requestContext: null!,
+                WorkspaceManager,
+                WorkspaceExecutionGate,
+                ReferenceService,
+                WorkspaceId,
+                metadataName: metadataNames[i],
+                limit: 50,
+                offset: 0,
+                ct: CancellationToken.None);
+
+            using var singleDoc = JsonDocument.Parse(singleJson);
+            var singleKeys = singleDoc.RootElement.GetProperty("items")
+                .EnumerateArray()
+                .Select(ReadLocationKey)
+                .ToList();
+
+            var bulkWithDef = bulkWithDefResults[i];
+            var withDefRefs = bulkWithDef.GetProperty("references").EnumerateArray().ToList();
+            Assert.AreEqual(withDefCap, withDefRefs.Count);
+            Assert.AreEqual(withDefCap, bulkWithDef.GetProperty("returnedCount").GetInt32());
+
+            var defCount = withDefRefs.TakeWhile(el =>
+                el.TryGetProperty("classification", out var cls) &&
+                string.Equals(cls.GetString(), "Definition", StringComparison.Ordinal)).Count();
+            Assert.IsTrue(defCount >= 1, $"Expected definition location(s) first for {metadataNames[i]}.");
+            Assert.AreEqual(defCount + singleKeys.Count, bulkWithDef.GetProperty("referenceCount").GetInt32());
+
+            var trailingRefKeys = withDefRefs.Skip(defCount).Select(ReadLocationKey).ToList();
+            Assert.IsFalse(
+                withDefRefs.Skip(defCount).Any(el =>
+                    el.TryGetProperty("classification", out var cls) &&
+                    string.Equals(cls.GetString(), "Definition", StringComparison.Ordinal)),
+                "Definition locations must precede sorted references.");
+            CollectionAssert.AreEqual(
+                singleKeys.Take(withDefCap - defCount).ToList(),
+                trailingRefKeys,
+                $"find_references_bulk(includeDefinition=true, maxItemsPerSymbol={withDefCap}) trailing references must match find_references prefix for {metadataNames[i]}.");
+        }
+    }
+
+    [TestMethod]
     public async Task FindReferencesBulk_InvalidMaxItemsPerSymbol_Throws()
     {
         var symbols = new[]
