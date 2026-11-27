@@ -103,7 +103,24 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    [DataRow("OnlyInForeignAssembly", false, false, 0)]
+    public async Task FindOverloads_Does_Not_Switch_Between_Unrelated_Types_With_The_Same_Name()
+    {
+        var modern = WorkspaceManager.GetCurrentSolution(WorkspaceId).Projects.Single(p => p.Name == "SampleLib");
+        using var workspace = new AdhocWorkspace();
+        var solution = AddProject(workspace.CurrentSolution, "Selected", modern.MetadataReferences,
+            source: "namespace Probe; public class Subject { }");
+        solution = AddProject(solution, "Foreign", modern.MetadataReferences,
+            source: "namespace Probe; public class Subject { public void OnlyInForeignAssembly() { } }");
+        const string memberName = "OnlyInForeignAssembly";
+
+        using var explicitResult = await FindInOrderedSolutionAsync(solution, "Probe.Subject", memberName, "Foreign");
+        AssertResolution(explicitResult.RootElement, "Foreign", null, memberFound: true, count: 1);
+
+        using var implicitResult = await FindInOrderedSolutionAsync(solution, "Probe.Subject", memberName);
+        AssertResolution(implicitResult.RootElement, "Selected", null, memberFound: false, count: 0);
+    }
+
+    [TestMethod]
     [DataRow("Property", false, true, 0)]
     [DataRow("DeclaredPrivate", false, true, 1)]
     [DataRow("InheritedPrivate", true, false, 0)]
@@ -127,14 +144,6 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
                 private void DeclaredPrivate() { }
             }
             """);
-        solution = AddProject(solution, "Foreign", modern.MetadataReferences, source: """
-            namespace Probe;
-            public class Subject
-            {
-                public void OnlyInForeignAssembly() { }
-            }
-            """);
-
         using var result = await FindInOrderedSolutionAsync(solution, "Probe.Subject", memberName, includeInherited: includeInherited);
         AssertResolution(result.RootElement, "Selected", null, memberFound, count);
     }
