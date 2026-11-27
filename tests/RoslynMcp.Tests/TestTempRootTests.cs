@@ -10,40 +10,31 @@ namespace RoslynMcp.Tests;
 /// only made the LEAF unique, while the deleted tree was the shared parent above it. The
 /// load-bearing property is therefore not "roots are unique" but "no run ever deletes a directory
 /// belonging to a live sibling run", which
-/// <see cref="TestTempRoot.ReapAbandonedRuns(DateTime)"/> must uphold.
+/// <see cref="TestTempRoot.ReapAbandonedRuns()"/> must uphold.
 /// </para>
 /// </summary>
 [TestClass]
 public sealed class TestTempRootTests
 {
-    private readonly List<string> _created = [];
+    private const int SiblingPid = 123;
+    private readonly string _parent = Path.Combine(TestTempRoot.Current, "reap-" + Guid.NewGuid().ToString("N"));
+    private string CurrentRoot => Path.Combine(_parent, "run-1-00000000");
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        foreach (var dir in _created)
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(dir);
-        }
-    }
+    public void Cleanup() => TestFixtureFileSystem.DeleteDirectoryIfExists(_parent);
 
-    private string CreateSiblingRun(string label)
+    private string CreateSiblingRun(string name = "run-123-00000001")
     {
-        var dir = Path.Combine(
-            TestTempRoot.SharedParent,
-            TestTempRoot.RunDirectoryPrefix + label + "-" + Guid.NewGuid().ToString("N")[..8]);
+        var dir = Path.Combine(_parent, name);
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "fixture.txt"), "in-flight work");
-        _created.Add(dir);
         return dir;
     }
 
-    private static void Backdate(string dir, TimeSpan age)
-    {
-        var stamp = DateTime.UtcNow - age;
-        Directory.SetLastWriteTimeUtc(dir, stamp);
-        Directory.SetCreationTimeUtc(dir, stamp);
-    }
+    private void Reap(Func<int, bool?> ownerAbsent, TimeSpan clockAdvance) =>
+        TestTempRoot.ReapAbandonedRuns(_parent, CurrentRoot, DateTime.UtcNow + clockAdvance, ownerAbsent);
+
+    private static TimeSpan PastStaleThreshold => TestTempRoot.StaleRunAge + TimeSpan.FromHours(1);
 
     [TestMethod]
     public void Current_IsAPerProcessSubdirectoryOfTheSharedParent()
@@ -83,69 +74,91 @@ public sealed class TestTempRootTests
     [TestMethod]
     public void ReapAbandonedRuns_LeavesAFreshSiblingRunIntact()
     {
-        // THE regression. A concurrently-running assembly's root is young; reaping must skip it.
-        var sibling = CreateSiblingRun("sibling-fresh");
+        var sibling = CreateSiblingRun();
 
-        TestTempRoot.ReapAbandonedRuns(DateTime.UtcNow);
+        Reap(pid => pid == SiblingPid ? true : null, TimeSpan.Zero);
 
-        Assert.IsTrue(
-            Directory.Exists(sibling),
-            "A fresh sibling run directory was deleted — this is the shared-parent race reintroduced.");
-        Assert.IsTrue(
-            File.Exists(Path.Combine(sibling, "fixture.txt")),
-            "The sibling run's in-flight fixture file was destroyed.");
+        Assert.IsTrue(Directory.Exists(sibling), "Even proven absence does not bypass the age threshold.");
+        Assert.IsTrue(File.Exists(Path.Combine(sibling, "fixture.txt")));
     }
 
     [TestMethod]
     public void ReapAbandonedRuns_RemovesASiblingRunOlderThanTheStaleThreshold()
     {
-        var sibling = CreateSiblingRun("sibling-abandoned");
-        Backdate(sibling, TestTempRoot.StaleRunAge + TimeSpan.FromHours(1));
+        var sibling = CreateSiblingRun();
 
-        TestTempRoot.ReapAbandonedRuns(DateTime.UtcNow);
+        Reap(pid => pid == SiblingPid ? true : null, PastStaleThreshold);
 
-        Assert.IsFalse(
-            Directory.Exists(sibling),
-            "An abandoned run directory was not reaped — isolating the root would leak %TEMP% forever.");
+        Assert.IsFalse(Directory.Exists(sibling), "An old run with a proven absent owner should be reaped.");
+    }
+
+    [TestMethod]
+    [DataRow("present")]
+    [DataRow("unknown")]
+    [DataRow("probe-failed")]
+    public void ReapAbandonedRuns_PreservesAnOldRunUnlessItsOwnerIsProvenAbsent(string evidence)
+    {
+        var sibling = CreateSiblingRun();
+
+        Reap(pid => pid != SiblingPid ? null : evidence switch
+        {
+            "present" => false,
+            "unknown" => null,
+            _ => throw new IOException("Injected owner probe failure."),
+        }, PastStaleThreshold);
+
+        Assert.IsTrue(File.Exists(Path.Combine(sibling, "fixture.txt")));
+    }
+
+    [TestMethod]
+    [DataRow("run-sibling-00000001")]
+    [DataRow("run-0-00000001")]
+    [DataRow("run-2147483648-00000001")]
+    [DataRow("run-123-0000000z")]
+    [DataRow("run-123-123")]
+    public void ReapAbandonedRuns_PreservesNamesWithoutAValidRunOwner(string name)
+    {
+        var sibling = CreateSiblingRun(name);
+        var probes = 0;
+
+        Reap(pid =>
+        {
+            probes++;
+            return pid == SiblingPid ? true : null;
+        }, PastStaleThreshold);
+
+        Assert.AreEqual(0, probes);
+        Assert.IsTrue(File.Exists(Path.Combine(sibling, "fixture.txt")));
     }
 
     [TestMethod]
     public void ReapAbandonedRuns_NeverRemovesThisRunEvenWhenItLooksStale()
     {
-        Directory.CreateDirectory(TestTempRoot.Current);
-        var marker = Path.Combine(TestTempRoot.Current, "own-run-marker.txt");
-        File.WriteAllText(marker, "this run is still going");
+        var current = CreateSiblingRun(Path.GetFileName(CurrentRoot));
 
-        // Anchor far in the future so the age check would classify this run as abandoned.
-        TestTempRoot.ReapAbandonedRuns(DateTime.UtcNow + TestTempRoot.StaleRunAge + TimeSpan.FromDays(365));
+        Reap(pid => pid == 1 ? true : null, TimeSpan.FromDays(365));
 
-        Assert.IsTrue(File.Exists(marker), "The reaper deleted the running assembly's own temp root.");
-        File.Delete(marker);
+        Assert.IsTrue(File.Exists(Path.Combine(current, "fixture.txt")));
     }
 
     [TestMethod]
-    public void ReapAbandonedRuns_NeverDeletesTheSharedParentItself()
+    public void ReapAbandonedRuns_NeverDeletesTheParentItself()
     {
-        Directory.CreateDirectory(TestTempRoot.SharedParent);
+        var abandoned = CreateSiblingRun();
 
-        TestTempRoot.ReapAbandonedRuns(DateTime.UtcNow + TimeSpan.FromDays(365));
+        Reap(pid => pid == SiblingPid ? true : null, TimeSpan.FromDays(365));
 
-        Assert.IsTrue(
-            Directory.Exists(TestTempRoot.SharedParent),
-            "The shared parent must survive — deleting it is the original defect.");
+        Assert.IsFalse(Directory.Exists(abandoned));
+        Assert.IsTrue(Directory.Exists(_parent));
     }
 
     [TestMethod]
     public void ReapAbandonedRuns_IgnoresNonRunDirectories()
     {
-        // Anything not matching the run- prefix is not ours to reap, however old it looks.
-        var foreign = Path.Combine(TestTempRoot.SharedParent, "unrelated-" + Guid.NewGuid().ToString("N")[..8]);
-        Directory.CreateDirectory(foreign);
-        _created.Add(foreign);
-        Backdate(foreign, TestTempRoot.StaleRunAge + TimeSpan.FromDays(30));
+        var foreign = CreateSiblingRun("unrelated-123-00000001");
 
-        TestTempRoot.ReapAbandonedRuns(DateTime.UtcNow);
+        Reap(pid => pid == SiblingPid ? true : null, PastStaleThreshold);
 
-        Assert.IsTrue(Directory.Exists(foreign), "A directory outside the run- namespace was reaped.");
+        Assert.IsTrue(Directory.Exists(foreign));
     }
 }
