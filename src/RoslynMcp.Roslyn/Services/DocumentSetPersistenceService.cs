@@ -590,6 +590,7 @@ internal sealed class DocumentSetPersistenceService
                     continue;
                 }
 
+                WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
                 var current = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
                 observedCurrent = true;
                 if (current.SameAs(snapshot))
@@ -661,6 +662,7 @@ internal sealed class DocumentSetPersistenceService
             var snapshot = persistenceState.FileSnapshots[path];
             try
             {
+                WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
                 var remaining = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
                 if (!remaining.SameAs(snapshot))
                 {
@@ -846,27 +848,31 @@ internal sealed class PhysicalDocumentSetFileSystem : IDocumentSetFileSystem
         File.WriteAllBytesAsync(path, bytes, ct);
 
     public Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
-        Action ownershipLost, CancellationToken ct) =>
-        RestoreOwnedDestinationAsync(path, bytes, expectedExists, expectedBytes, ownershipLost, ct);
-
-    internal static Task RestoreOwnedDestinationAsync(string path, byte[] bytes, bool expectedExists,
-        byte[]? expectedBytes, Action ownershipLost, CancellationToken ct)
+        Action ownershipLost, CancellationToken ct)
     {
         FileSecurity? access = null;
         string? expectedDacl = null;
         UnixFileMode? expectedMode = null;
-        if (expectedExists)
+        try
         {
             WorkspacePhysicalPathGuard.EnsurePhysicalPath(path);
-            if (OperatingSystem.IsWindows())
+            if (expectedExists)
             {
-                access = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
-                expectedDacl = access.GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+                if (OperatingSystem.IsWindows())
+                {
+                    access = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+                    expectedDacl = access.GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+                }
+                else
+                {
+                    expectedMode = File.GetUnixFileMode(path);
+                }
             }
-            else
-            {
-                expectedMode = File.GetUnixFileMode(path);
-            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ownershipLost();
+            throw;
         }
 
         return AtomicFileWriter.WriteGuardedReplacementAsync(path, (_, stream) =>
@@ -881,7 +887,7 @@ internal sealed class PhysicalDocumentSetFileSystem : IDocumentSetFileSystem
                 if (MatchesDestination(path, expectedExists, expectedBytes, expectedDacl, expectedMode))
                     return true;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
                 ownershipLost();
                 throw;

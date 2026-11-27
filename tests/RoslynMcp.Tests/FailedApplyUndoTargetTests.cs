@@ -388,27 +388,43 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
     [DataRow("foreign")]
     [DataRow("mixed-ownership")]
     [DataRow("unreadable")]
+    [DataRow("linked")]
     [DataRow("cancel")]
     public async Task RefactoringFailure_LeavesOnlyItsRecordedOwnedEffectsRecoverable(string outcome)
     {
         await using var fixture = CreateSingleProjectWorkspace();
         var extra = fixture.GetPath("SampleLib", "UndoWitnessExtra.cs");
-        await File.WriteAllTextAsync(extra, "namespace SampleLib; public class UndoWitnessExtra { }\n");
         var last = fixture.GetPath("SampleLib", "UndoWitnessLast.cs");
-        if (outcome is "mixed-ownership" or "unreadable")
+        var linkedFirst = fixture.GetPath("SampleLib", "UndoWitnessLinked", "UndoWitnessFirst.cs");
+        if (outcome == "linked")
+        {
+            extra = fixture.GetPath("SampleLib", "UndoWitnessSecond", "UndoWitnessExtra.cs");
+            last = fixture.GetPath("SampleLib", "UndoWitnessThird", "UndoWitnessLast.cs");
+            var probePath = fixture.GetPath("SampleLib", "UndoWitnessLinkProbe");
+            var firstDirectory = Path.GetDirectoryName(linkedFirst)!;
+            Directory.CreateDirectory(firstDirectory);
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(probePath, firstDirectory))
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+            Directory.Delete(probePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(extra)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(last)!);
+            await File.WriteAllTextAsync(linkedFirst, "namespace SampleLib; public class UndoWitnessFirst { }\n");
+        }
+        await File.WriteAllTextAsync(extra, "namespace SampleLib; public class UndoWitnessExtra { }\n");
+        if (outcome is "mixed-ownership" or "unreadable" or "linked")
         {
             await File.WriteAllTextAsync(last, "namespace SampleLib; public class UndoWitnessLast { }\n");
         }
         await fixture.LoadAsync();
         var id = fixture.WorkspaceId;
         var prior = await ApplyPriorAsync(id, fixture.GetPath("SampleLib", "Dog.cs"));
-        var cat = fixture.GetPath("SampleLib", "Cat.cs");
+        var cat = outcome == "linked" ? linkedFirst : fixture.GetPath("SampleLib", "Cat.cs");
         var originals = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
         {
             [cat] = await File.ReadAllBytesAsync(cat),
             [extra] = await File.ReadAllBytesAsync(extra),
         };
-        if (outcome is "mixed-ownership" or "unreadable")
+        if (outcome is "mixed-ownership" or "unreadable" or "linked")
         {
             originals.Add(last, await File.ReadAllBytesAsync(last));
         }
@@ -468,18 +484,35 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
             await RequirePriorUndoAsync(id, prior);
             CollectionAssert.AreEqual(foreign, await File.ReadAllBytesAsync(files.FirstPath));
         }
-        else if (outcome == "unreadable")
+        else if (outcome is "unreadable" or "linked")
         {
             Assert.IsNotNull(files.SecondPath);
-            var unreadableDuringRollback = await File.ReadAllBytesAsync(files.FirstPath);
+            var firstDirectory = Path.GetDirectoryName(files.FirstPath)!;
+            if (outcome == "linked")
+            {
+                Assert.IsTrue((File.GetAttributes(firstDirectory) & FileAttributes.ReparsePoint) != 0);
+                Assert.AreEqual(0, files.ReadsAfterLink, "Rollback must not read through the new directory link.");
+            }
+            var firstBytes = await File.ReadAllBytesAsync(files.FirstPath);
             StringAssert.Contains(await File.ReadAllTextAsync(files.FirstPath), "// refactoring B");
             StringAssert.Contains(await File.ReadAllTextAsync(files.SecondPath), "// refactoring B");
             var versionBeforeUndo = Services.WorkspaceManager.GetCurrentVersion(id);
             var undo = await ObserveUndoAsync(id, prior);
-            Assert.IsTrue(undo.Reverted);
             Assert.AreEqual("Refactoring B", undo.Description);
-            CollectionAssert.AreEqual(unreadableDuringRollback, await File.ReadAllBytesAsync(files.FirstPath));
+            CollectionAssert.AreEqual(firstBytes, await File.ReadAllBytesAsync(files.FirstPath));
             CollectionAssert.AreEqual(originals[files.SecondPath], await File.ReadAllBytesAsync(files.SecondPath));
+            if (outcome == "linked")
+            {
+                // The rollback excludes the linked write. Workspace reload still correctly
+                // rejects loading through that link, so this recovery remains retryable.
+                Assert.IsFalse(undo.Reverted);
+                Assert.AreEqual(versionBeforeUndo, undo.Version);
+                Directory.Delete(firstDirectory);
+                Directory.Move(firstDirectory + "-foreign-target", firstDirectory);
+                undo = await ObserveUndoAsync(id, prior);
+                CollectionAssert.AreEqual(firstBytes, await File.ReadAllBytesAsync(files.FirstPath));
+            }
+            Assert.IsTrue(undo.Reverted);
             Assert.IsGreaterThan(versionBeforeUndo, undo.Version);
         }
         else if (outcome == "mixed-ownership")
@@ -649,13 +682,19 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
         public string? SecondPath { get; private set; }
         public string? ProjectPath { get; init; }
         public bool ProjectFault { get; private set; }
+        public int ReadsAfterLink { get; private set; }
         public bool FileExists(string path) => File.Exists(path);
         public void CreateDirectory(string path) => Directory.CreateDirectory(path);
         public void DeleteFile(string path) => File.Delete(path);
         public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct)
         {
-            if (outcome == "unreadable" && RejectedPath is not null && path == FirstPath)
-                throw new IOException("Diagnostic sharing failure on the first rollback read");
+            if (RejectedPath is not null && path == FirstPath)
+            {
+                if (outcome == "unreadable")
+                    throw new IOException("Diagnostic sharing failure on the first rollback read");
+                if (outcome == "linked")
+                    ReadsAfterLink++;
+            }
             return File.ReadAllBytesAsync(path, ct);
         }
         public Task<string> ReadAllTextAsync(string path, CancellationToken ct) => File.ReadAllTextAsync(path, ct);
@@ -670,6 +709,11 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
                     await stream.WriteAsync(bytes.AsMemory(0, 5), ct);
                     throw new IOException("Diagnostic rollback fault after writing a temp prefix");
                 }, () => true, access: null, Task.Delay, ct);
+            }
+            if (outcome == "linked" && path == FirstPath)
+            {
+                return PhysicalDocumentSetFileSystem.Instance.RestoreBytesAtomicallyAsync(
+                    path, bytes, expectedExists, expectedBytes, ownershipLost, ct);
             }
             return WriteAllBytesAsync(path, bytes, ct);
         }
@@ -686,7 +730,7 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
                 ProjectFault = true;
                 throw new IOException("Diagnostic SDK project restore failed");
             }
-            if (outcome == "unreadable" && path == SecondPath)
+            if ((outcome is "unreadable" or "linked") && path == SecondPath)
                 throw new IOException("Diagnostic failure restoring the second owned document");
             if ((outcome is "owned" or "mixed-ownership" or "reload-foreign") && path == FirstPath)
             {
@@ -708,13 +752,20 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
                 await File.WriteAllTextAsync(path, content, ct);
                 return;
             }
-            if ((outcome is "mixed-ownership" or "unreadable") && SecondPath is null)
+            if ((outcome is "mixed-ownership" or "unreadable" or "linked") && SecondPath is null)
             {
                 SecondPath = path;
                 await File.WriteAllTextAsync(path, content, ct);
                 return;
             }
             RejectedPath = path;
+            if (outcome == "linked")
+            {
+                var originalDirectory = Path.GetDirectoryName(FirstPath)!;
+                var retainedDirectory = originalDirectory + "-foreign-target";
+                Directory.Move(originalDirectory, retainedDirectory);
+                Assert.IsTrue(TestFixtureFileSystem.TryCreateDirectoryLink(originalDirectory, retainedDirectory));
+            }
             if (outcome == "mixed-ownership")
             {
                 await File.WriteAllTextAsync(SecondPath!, "// external edit\n" + await File.ReadAllTextAsync(SecondPath!, ct), ct);
