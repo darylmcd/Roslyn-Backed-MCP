@@ -1,3 +1,4 @@
+using System.Security.AccessControl;
 using System.Text;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
@@ -32,6 +33,85 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup()
     {
         DisposeServices();
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task GuardedCompensation_PreservesForeignDestinationOnFirstMoveAndRetry(bool afterSharingViolation)
+    {
+        if (afterSharingViolation && !OperatingSystem.IsWindows())
+            return; // Only the Windows writer retries a transient sharing failure.
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "GuardedUndo.cs");
+        await File.WriteAllTextAsync(path, "owned");
+        using var reader = afterSharingViolation
+            ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) : null;
+        var comparisons = 0;
+        var delays = 0;
+        var exception = await Assert.ThrowsExactlyAsync<IOException>(() => AtomicFileWriter.WriteGuardedReplacementAsync(
+            path,
+            async (_, stream) =>
+            {
+                await stream.WriteAsync("preimage"u8.ToArray());
+                if (!afterSharingViolation)
+                    await File.WriteAllTextAsync(path, "foreign");
+            },
+            () =>
+            {
+                comparisons++;
+                return File.ReadAllText(path) == "owned";
+            },
+            async (_, ct) =>
+            {
+                delays++;
+                reader!.Dispose();
+                await File.WriteAllTextAsync(path, "foreign", ct);
+            },
+            CancellationToken.None));
+        StringAssert.Contains(exception.Message, "destination changed before replacement");
+        Assert.AreEqual(afterSharingViolation ? 2 : 1, comparisons);
+        Assert.AreEqual(afterSharingViolation ? 1 : 0, delays);
+        Assert.AreEqual("foreign", await File.ReadAllTextAsync(path));
+        Assert.IsEmpty(Directory.GetFiles(Path.GetDirectoryName(path)!, ".rmcp-*.tmp"));
+    }
+
+    [TestMethod]
+    public async Task PhysicalCompensation_PreservesExistingAccessRestrictions()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "CompensationMode.cs");
+        var owned = "owned"u8.ToArray();
+        var original = "original"u8.ToArray();
+        await File.WriteAllBytesAsync(path, owned);
+        var target = new FileInfo(path);
+        const UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+        string? dacl = null;
+        if (OperatingSystem.IsWindows())
+        {
+            var existing = target.GetAccessControl(AccessControlSections.Access);
+            existing.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
+            target.SetAccessControl(existing);
+            dacl = target.GetAccessControl(AccessControlSections.Access).GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+        }
+        else
+        {
+            File.SetUnixFileMode(path, mode);
+        }
+
+        await PhysicalDocumentSetFileSystem.Instance.RestoreBytesAtomicallyAsync(
+            path, original, expectedExists: true, owned, CancellationToken.None);
+        CollectionAssert.AreEqual(original, await File.ReadAllBytesAsync(path));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.AreEqual(dacl, target.GetAccessControl(AccessControlSections.Access)
+                .GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+        }
+        else
+        {
+            Assert.AreEqual(mode, File.GetUnixFileMode(path));
+        }
     }
 
     [TestMethod]
@@ -174,6 +254,9 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         }
         public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) => File.ReadAllBytesAsync(path, ct);
         public Task<string> ReadAllTextAsync(string path, CancellationToken ct) => File.ReadAllTextAsync(path, ct);
+        public Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
+            CancellationToken ct) => WriteAllBytesAsync(path, bytes, ct);
+
         public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct)
         {
             Effects++;
@@ -927,6 +1010,9 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
             File.ReadAllTextAsync(path, ct);
 
+        public Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
+            CancellationToken ct) => WriteAllBytesAsync(path, bytes, ct);
+
         public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct)
         {
             BeforeWriteBytes?.Invoke(path);
@@ -983,6 +1069,9 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             File.ReadAllBytesAsync(path, ct);
         public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
             File.ReadAllTextAsync(path, ct);
+        public Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
+            CancellationToken ct) => WriteAllBytesAsync(path, bytes, ct);
+
         public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct) =>
             File.WriteAllBytesAsync(path, bytes, ct);
         public Task WriteAllTextAsync(string path, string content, CancellationToken ct) =>

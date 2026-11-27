@@ -124,6 +124,8 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
 
     [TestMethod]
     [DataRow("owned")]
+    [DataRow("prefix")]
+    [DataRow("reload-foreign")]
     [DataRow("foreign")]
     [DataRow("mixed-ownership")]
     [DataRow("cancel")]
@@ -151,7 +153,24 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
             originals.Add(last, await File.ReadAllBytesAsync(last));
         }
         var files = new DiagnosticFileSystem(outcome);
-        var (service, token) = await CreateRefactoringAsync(Services.WorkspaceManager, id, originals.Keys.ToArray(), files);
+        IWorkspaceManager manager = Services.WorkspaceManager;
+        var cache = new CompilationCache(manager);
+        var beforeCompilation = outcome == "mixed-ownership"
+            ? await cache.GetCompilationAsync(id, manager.GetCurrentSolution(id).Projects.Single(), CancellationToken.None)
+            : null;
+        if (outcome == "reload-foreign")
+        {
+            manager = new FaultingManager(manager)
+            {
+                Reload = async workspaceId =>
+                {
+                    Assert.IsNotNull(files.FirstPath);
+                    await File.AppendAllTextAsync(files.FirstPath, "// independent write during reload\n");
+                    return await Services.WorkspaceManager.ReloadAsync(workspaceId, CancellationToken.None);
+                },
+            };
+        }
+        var (service, token) = await CreateRefactoringAsync(manager, id, originals.Keys.ToArray(), files);
         var apply = () => service.ApplyRefactoringAsync(token, "rename_apply", CancellationToken.None);
         if (outcome == "cancel")
         {
@@ -170,10 +189,24 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
         Assert.IsNotNull(files.FirstPath);
         Assert.IsNotNull(files.RejectedPath);
         CollectionAssert.AreEqual(originals[files.RejectedPath], await File.ReadAllBytesAsync(files.RejectedPath));
-        if (outcome == "owned")
+        if (outcome is "owned" or "prefix")
         {
-            StringAssert.Contains(await File.ReadAllTextAsync(files.FirstPath), "// refactoring B");
-            await RequireRecoveryAsync(id, prior, files.FirstPath, originals[files.FirstPath], "Refactoring B");
+            var survivingText = await File.ReadAllTextAsync(files.FirstPath);
+            var undo = await ObserveUndoAsync(id, prior);
+            Assert.AreEqual("Refactoring B", undo.Description,
+                $"A failed compensating write must leave an owned recovery target. Observed disk text: {survivingText}");
+            Assert.IsTrue(undo.Reverted);
+            CollectionAssert.AreEqual(originals[files.FirstPath], await File.ReadAllBytesAsync(files.FirstPath));
+            CollectionAssert.AreEqual(prior.Applied, await File.ReadAllBytesAsync(prior.Path));
+            Assert.AreEqual(prior.AfterVersion, undo.Version);
+            StringAssert.Contains(survivingText, "// refactoring B");
+        }
+        else if (outcome == "reload-foreign")
+        {
+            var foreign = await File.ReadAllBytesAsync(files.FirstPath);
+            StringAssert.Contains(await File.ReadAllTextAsync(files.FirstPath), "// independent write during reload");
+            await RequirePriorUndoAsync(id, prior);
+            CollectionAssert.AreEqual(foreign, await File.ReadAllBytesAsync(files.FirstPath));
         }
         else if (outcome == "mixed-ownership")
         {
@@ -189,6 +222,11 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
             CollectionAssert.AreEqual(prior.Applied, await File.ReadAllBytesAsync(prior.Path));
             CollectionAssert.AreEqual(foreign, await File.ReadAllBytesAsync(files.SecondPath));
             Assert.IsGreaterThanOrEqualTo(versionBeforeUndo, undo.Version, "Undo over unrestored foreign state should not resurrect older versions.");
+            var fresh = await cache.GetCompilationAsync(id, manager.GetCurrentSolution(id).Projects.Single(), CancellationToken.None);
+            Assert.IsNotNull(fresh);
+            Assert.AreNotSame(beforeCompilation, fresh);
+            var tree = fresh.SyntaxTrees.Single(candidate => candidate.FilePath == files.SecondPath);
+            StringAssert.Contains((await tree.GetTextAsync()).ToString(), "// external edit");
         }
         else if (outcome == "foreign")
         {
@@ -343,18 +381,37 @@ public sealed class FailedApplyUndoTargetTests : OwnedRefactoringTestBase
         public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) => File.ReadAllBytesAsync(path, ct);
         public Task<string> ReadAllTextAsync(string path, CancellationToken ct) => File.ReadAllTextAsync(path, ct);
 
-        public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct)
+        public Task RestoreBytesAtomicallyAsync(string path, byte[] bytes, bool expectedExists, byte[]? expectedBytes,
+            CancellationToken ct)
         {
+            if (outcome == "prefix" && path == FirstPath)
+            {
+                return AtomicFileWriter.WriteGuardedReplacementAsync(path, async (_, stream) =>
+                {
+                    await stream.WriteAsync(bytes.AsMemory(0, 5), ct);
+                    throw new IOException("Diagnostic rollback fault after writing a temp prefix");
+                }, () => true, Task.Delay, ct);
+            }
+            return WriteAllBytesAsync(path, bytes, ct);
+        }
+
+        public async Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct)
+        {
+            if (outcome == "prefix" && path == FirstPath)
+            {
+                await File.WriteAllBytesAsync(path, bytes[..5], ct);
+                throw new IOException("Diagnostic rollback fault after truncating the destination");
+            }
             if (outcome == "project" && path == ProjectPath && !ProjectFault)
             {
                 ProjectFault = true;
                 throw new IOException("Diagnostic SDK project restore failed");
             }
-            if ((outcome is "owned" or "mixed-ownership") && path == FirstPath)
+            if ((outcome is "owned" or "mixed-ownership" or "reload-foreign") && path == FirstPath)
             {
                 throw new IOException("Diagnostic failure restoring the first owned document");
             }
-            return File.WriteAllBytesAsync(path, bytes, ct);
+            await File.WriteAllBytesAsync(path, bytes, ct);
         }
 
         public async Task WriteAllTextAsync(string path, string content, CancellationToken ct)
