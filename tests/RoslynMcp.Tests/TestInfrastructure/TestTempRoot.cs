@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Globalization;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -15,7 +18,8 @@ namespace RoslynMcp.Tests;
 /// <para>
 /// Callers combine against <see cref="Current"/> and never re-derive
 /// <c>Path.GetTempPath()</c> + <see cref="SharedParentName"/> themselves; a site that does is
-/// outside the isolation and re-opens the race.
+/// outside the isolation and re-opens the race. Reaping requires evidence that the owning
+/// process is absent, even when a sibling's last activity is old.
 /// </para>
 /// </summary>
 internal static class TestTempRoot
@@ -27,9 +31,8 @@ internal static class TestTempRoot
     internal const string RunDirectoryPrefix = "run-";
 
     /// <summary>
-    /// A run directory older than this is assumed abandoned (a crashed or killed test host) and is
-    /// eligible for reaping. Deliberately far longer than any real test run: a LIVE sibling run is
-    /// never this old, which is what keeps the reaper from re-introducing the cross-run delete.
+    /// Minimum age for a run directory to be considered for reaping.
+    /// An eligible directory is reaped only when its owning process is proven absent.
     /// </summary>
     internal static readonly TimeSpan StaleRunAge = TimeSpan.FromDays(1);
 
@@ -43,7 +46,7 @@ internal static class TestTempRoot
     /// </summary>
     internal static string Current { get; } = System.IO.Path.Combine(
         SharedParent,
-        RunDirectoryPrefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        RunDirectoryPrefix + Environment.ProcessId.ToString(CultureInfo.InvariantCulture)
             + "-" + Guid.NewGuid().ToString("N")[..8]);
 
     /// <summary>
@@ -54,14 +57,15 @@ internal static class TestTempRoot
     /// <summary>
     /// Best-effort removal of run directories abandoned by earlier crashed hosts, so isolating the
     /// root does not trade a race for an unbounded <c>%TEMP%</c> leak. Only directories older than
-    /// <see cref="StaleRunAge"/> are considered, and this run's own root is never a candidate.
+    /// <see cref="StaleRunAge"/> whose owners are absent are reaped. This run's root is excluded.
     /// </summary>
-    internal static void ReapAbandonedRuns() => ReapAbandonedRuns(DateTime.UtcNow);
+    internal static void ReapAbandonedRuns() =>
+        ReapAbandonedRuns(SharedParent, Current, DateTime.UtcNow, IsOwnerAbsent);
 
-    /// <summary>Test seam for <see cref="ReapAbandonedRuns()"/>; <paramref name="utcNow"/> anchors the age check.</summary>
-    internal static void ReapAbandonedRuns(DateTime utcNow)
+    /// <summary>Reaps only within the supplied parent. An unknown owner is treated as present.</summary>
+    internal static void ReapAbandonedRuns(string parent, string currentRoot, DateTime utcNow, Func<int, bool?> ownerAbsent)
     {
-        if (!Directory.Exists(SharedParent))
+        if (!Directory.Exists(parent))
         {
             return;
         }
@@ -69,7 +73,7 @@ internal static class TestTempRoot
         IEnumerable<string> candidates;
         try
         {
-            candidates = Directory.EnumerateDirectories(SharedParent, RunDirectoryPrefix + "*");
+            candidates = Directory.EnumerateDirectories(parent, RunDirectoryPrefix + "*");
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
         {
@@ -78,12 +82,14 @@ internal static class TestTempRoot
 
         foreach (var candidate in candidates.ToList())
         {
-            if (string.Equals(candidate, Current, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(candidate, currentRoot, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (!IsStale(candidate, utcNow))
+            if (!IsStale(candidate, utcNow)
+                || !TryGetOwnerPid(Path.GetFileName(candidate), out var pid)
+                || !IsProvenAbsent(pid, ownerAbsent))
             {
                 continue;
             }
@@ -97,6 +103,57 @@ internal static class TestTempRoot
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
             }
+        }
+    }
+
+    private static bool TryGetOwnerPid(string name, out int pid)
+    {
+        pid = 0;
+        if (!name.StartsWith(RunDirectoryPrefix, StringComparison.Ordinal))
+            return false;
+
+        var ownerAndSuffix = name.AsSpan(RunDirectoryPrefix.Length);
+        var separator = ownerAndSuffix.IndexOf('-');
+        if (separator < 1 || ownerAndSuffix.Length - separator - 1 != 8)
+            return false;
+
+        foreach (var digit in ownerAndSuffix[(separator + 1)..])
+        {
+            if (!Uri.IsHexDigit(digit))
+                return false;
+        }
+
+        return int.TryParse(ownerAndSuffix[..separator], NumberStyles.None, CultureInfo.InvariantCulture, out pid)
+            && pid > 0;
+    }
+
+    private static bool IsProvenAbsent(int pid, Func<int, bool?> ownerAbsent)
+    {
+        try
+        {
+            return ownerAbsent(pid) == true;
+        }
+        catch (Exception)
+        {
+            // A failed probe cannot justify removing a sibling's files.
+            return false;
+        }
+    }
+
+    private static bool? IsOwnerAbsent(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 

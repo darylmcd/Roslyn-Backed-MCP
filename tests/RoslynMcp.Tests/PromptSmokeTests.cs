@@ -808,8 +808,94 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             "Prompt must direct callers to test_coverage for coverage collection.");
     }
 
+    // review-test-coverage-prompt-project-filter: projectName must filter TestDiscoveryDto.TestProjects
+    // before flattening and applying the 50-case cap, using exact case-insensitive ProjectName
+    // matching (matching TestCoverageCoordinator). Null keeps all projects; unmatched yields [].
+    [TestMethod]
+    [DataRow("Target.UnitTests")]
+    [DataRow("target.unittests")]
+    public async Task ReviewTestCoverage_WithProjectFilter_FiltersBeforeCapAndMatchesCaseInsensitively(string requestedProjectName)
+    {
+        const int targetProjectCount = 80;
+        var stubDiscovery = new StubTestDiscoveryServiceForReviewTestCoverage(
+        [
+            ("Preceding.Unrelated.Tests", 10),
+            ("Target.UnitTests", targetProjectCount),
+            ("Trailing.Unrelated.Tests", 5),
+        ]);
+
+        var messages = (await RoslynPrompts.ReviewTestCoverage(
+            stubDiscovery,
+            workspaceId: "fake-mixed-project-test-discovery-workspace",
+            projectName: requestedProjectName,
+            CancellationToken.None)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+
+        StringAssert.Contains(text, $"**Project Filter:** {requestedProjectName}");
+        StringAssert.Contains(text, "Target.UnitTests.",
+            "Filtered prompt must include test cases from the selected project.");
+        Assert.IsFalse(text.Contains("Preceding.Unrelated.Tests", StringComparison.Ordinal),
+            "Preceding unrelated project tests must be filtered out before the 50-case cap.");
+        Assert.IsFalse(text.Contains("Trailing.Unrelated.Tests", StringComparison.Ordinal),
+            "Trailing unrelated project tests must be filtered out.");
+        StringAssert.Contains(text, $"[Showing 50 of {targetProjectCount} items]",
+            "Footer must report 50 of the selected project's test count, not the workspace total.");
+    }
+
+    [TestMethod]
+    public async Task ReviewTestCoverage_WithUnmatchedProjectFilter_ReturnsEmptyJsonArray()
+    {
+        var stubDiscovery = new StubTestDiscoveryServiceForReviewTestCoverage(
+        [
+            ("Preceding.Unrelated.Tests", 10),
+            ("Target.UnitTests", 80),
+        ]);
+
+        var messages = (await RoslynPrompts.ReviewTestCoverage(
+            stubDiscovery,
+            workspaceId: "fake-unmatched-project-test-discovery-workspace",
+            projectName: "Missing.Project.Tests",
+            CancellationToken.None)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var normalized = GetText(messages[0]).Replace("\r\n", "\n");
+
+        StringAssert.Contains(normalized, "**Project Filter:** Missing.Project.Tests");
+        StringAssert.Contains(normalized, "```json\n[]\n```",
+            "An unmatched projectName must produce the existing empty JSON array without a new error.");
+        Assert.IsFalse(normalized.Contains("[Showing ", StringComparison.Ordinal));
+        Assert.IsFalse(normalized.Contains("Preceding.Unrelated.Tests", StringComparison.Ordinal));
+        Assert.IsFalse(normalized.Contains("Target.UnitTests", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task ReviewTestCoverage_WithNullProjectFilter_IncludesAllProjects()
+    {
+        var stubDiscovery = new StubTestDiscoveryServiceForReviewTestCoverage(
+        [
+            ("Preceding.Unrelated.Tests", 10),
+            ("Target.UnitTests", 80),
+        ]);
+
+        var messages = (await RoslynPrompts.ReviewTestCoverage(
+            stubDiscovery,
+            workspaceId: "fake-null-project-test-discovery-workspace",
+            projectName: null,
+            CancellationToken.None)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+
+        StringAssert.Contains(text, "**Project Filter:** (all test projects)");
+        StringAssert.Contains(text, "Preceding.Unrelated.Tests.");
+        StringAssert.Contains(text, "Target.UnitTests.");
+        StringAssert.Contains(text, "[Showing 50 of 90 items]");
+    }
+
     // review-test-coverage-prompt-payload-overflow (gh #756): stub that returns a
-    // synthetic TestDiscoveryDto with a single project containing the requested number
+    // synthetic TestDiscoveryDto with one or more projects containing the requested number
     // of test cases. Each TestCaseDto uses realistic field lengths
     // (DisplayName ~30 chars, FullyQualifiedName ~120-150 chars, FilePath ~80 chars,
     // Line int) so the post-cap rendered body approximates production payload weight.
@@ -820,19 +906,31 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         private readonly TestDiscoveryDto _discovery;
 
         public StubTestDiscoveryServiceForReviewTestCoverage(int testCaseCount)
+            : this([("Contoso.Application.UnitTests", testCaseCount)])
         {
-            var tests = Enumerable.Range(0, testCaseCount).Select(i => new TestCaseDto(
-                DisplayName: $"TestMethod_{i:D4}_VerifiesExpectedBehavior",
-                FullyQualifiedName: $"Contoso.Application.SubsystemAlpha.Module{i % 20:D3}.UnitTests.TestClass{i % 50:D3}Tests.TestMethod_{i:D4}_VerifiesExpectedBehavior",
-                FilePath: $@"C:\fake\path\Contoso.Application\Module{i % 20:D3}\TestClass{i % 50:D3}Tests.cs",
-                Line: 50 + (i % 200))).ToList();
+        }
 
-            var project = new TestProjectDto(
-                ProjectName: "Contoso.Application.UnitTests",
-                ProjectFilePath: @"C:\fake\path\Contoso.Application.UnitTests\Contoso.Application.UnitTests.csproj",
-                Tests: tests);
+        public StubTestDiscoveryServiceForReviewTestCoverage(IReadOnlyList<(string ProjectName, int TestCaseCount)> projects)
+        {
+            var testProjects = projects.Select(project =>
+            {
+                var namespaceRoot = string.Equals(project.ProjectName, "Contoso.Application.UnitTests", StringComparison.Ordinal)
+                    ? "Contoso.Application.SubsystemAlpha"
+                    : project.ProjectName;
 
-            _discovery = new TestDiscoveryDto(TestProjects: new[] { project });
+                var tests = Enumerable.Range(0, project.TestCaseCount).Select(i => new TestCaseDto(
+                    DisplayName: $"TestMethod_{i:D4}_VerifiesExpectedBehavior",
+                    FullyQualifiedName: $"{namespaceRoot}.Module{i % 20:D3}.UnitTests.TestClass{i % 50:D3}Tests.TestMethod_{i:D4}_VerifiesExpectedBehavior",
+                    FilePath: $@"C:\fake\path\{project.ProjectName}\Module{i % 20:D3}\TestClass{i % 50:D3}Tests.cs",
+                    Line: 50 + (i % 200))).ToList();
+
+                return new TestProjectDto(
+                    ProjectName: project.ProjectName,
+                    ProjectFilePath: $@"C:\fake\path\{project.ProjectName}\{project.ProjectName}.csproj",
+                    Tests: tests);
+            }).ToList();
+
+            _discovery = new TestDiscoveryDto(TestProjects: testProjects);
         }
 
         public Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct) =>
