@@ -145,7 +145,7 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             var service = new DocumentSetPersistenceService(WorkspaceManager, NullLogger.Instance, fileSystem);
 
             var result = await service.PersistAsync("conflicting-contexts", original, modified,
-                modified.GetChanges(original), CancellationToken.None);
+                modified.GetChanges(original), CancellationToken.None, reportRecovery: null);
 
             Assert.IsFalse(result.Success);
             Assert.AreEqual(0, fileSystem.Effects, "Rollback is insufficient: contradictory plans must be rejected before any create, write or delete.");
@@ -331,7 +331,7 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
                 currentSolution,
                 modifiedSolution,
                 modifiedSolution.GetChanges(currentSolution),
-                CancellationToken.None);
+                CancellationToken.None, reportRecovery: null);
 
             Assert.IsFalse(result.Success, "The injected delete failure must fail the transaction.");
             CollectionAssert.AreEqual(
@@ -402,7 +402,7 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
                 currentSolution,
                 modifiedSolution,
                 modifiedSolution.GetChanges(currentSolution),
-                CancellationToken.None);
+                CancellationToken.None, reportRecovery: null);
 
             Assert.IsTrue(result.Success);
             CollectionAssert.Contains(result.AppliedFiles.ToList(), sampleLibProjectPath);
@@ -828,7 +828,7 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             scenario.Current,
             modified,
             modified.GetChanges(scenario.Current),
-            CancellationToken.None);
+            CancellationToken.None, reportRecovery: null);
 
     private sealed record PersistenceScenario(
         string WorkspaceId,

@@ -37,7 +37,8 @@ internal sealed class DocumentSetPersistenceService
         Solution currentSolution,
         Solution modifiedSolution,
         SolutionChanges solutionChanges,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action<RollbackRecovery>? reportRecovery)
     {
         DocumentSetPersistenceState? persistenceState = null;
 
@@ -68,7 +69,8 @@ internal sealed class DocumentSetPersistenceService
                 await RollBackAsync(
                     workspaceId,
                     persistenceState,
-                    ex).ConfigureAwait(false);
+                    ex,
+                    reportRecovery).ConfigureAwait(false);
             }
 
             if (ex is OperationCanceledException)
@@ -288,6 +290,7 @@ internal sealed class DocumentSetPersistenceService
         try
         {
             applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+            persistenceState.WorkspaceApplied = applied;
         }
         finally
         {
@@ -568,11 +571,14 @@ internal sealed class DocumentSetPersistenceService
     private async Task RollBackAsync(
         string workspaceId,
         DocumentSetPersistenceState persistenceState,
-        Exception persistenceFailure)
+        Exception persistenceFailure,
+        Action<RollbackRecovery>? reportRecovery)
     {
         var rollbackFailures = new List<Exception>();
+        var ownedResiduals = new List<FileSnapshotDto>();
         foreach (var (path, snapshot) in persistenceState.FileSnapshots)
         {
+            var restoreAttempted = false;
             try
             {
                 var ownedPostStates = persistenceState.GetOwnedPostStates(path);
@@ -589,11 +595,13 @@ internal sealed class DocumentSetPersistenceService
 
                 if (persistenceState.IsForeign(path) || !ownedPostStates.Any(current.SameAs))
                 {
+                    persistenceState.MarkForeign(path);
                     rollbackFailures.Add(new IOException(
                         $"Rollback preserved '{path}': its content changed outside this operation after the operation wrote it."));
                     continue;
                 }
 
+                restoreAttempted = true;
                 // No await between the ownership check above and the destructive action below.
                 if (snapshot.Existed)
                 {
@@ -618,17 +626,47 @@ internal sealed class DocumentSetPersistenceService
             catch (Exception ex)
             {
                 rollbackFailures.Add(ex);
+                if (restoreAttempted && reportRecovery is not null)
+                {
+                    try
+                    {
+                        var remaining = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
+                        if (!remaining.SameAs(snapshot))
+                        {
+                            if (persistenceState.GetOwnedPostStates(path).Any(remaining.SameAs))
+                            {
+                                ownedResiduals.Add(snapshot.Existed
+                                    ? FileSnapshotDto.FromExistingBytes(path, snapshot.Bytes!)
+                                    : new FileSnapshotDto(path, null));
+                            }
+                            else
+                            {
+                                persistenceState.MarkForeign(path);
+                            }
+                        }
+                    }
+                    catch (Exception observationFailure)
+                    {
+                        persistenceState.MarkForeign(path);
+                        rollbackFailures.Add(observationFailure);
+                    }
+                }
             }
         }
 
+        var reloadFailed = false;
         try
         {
             await _workspace.ReloadAsync(workspaceId, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            reloadFailed = true;
             rollbackFailures.Add(ex);
         }
+
+        reportRecovery?.Invoke(new RollbackRecovery(ownedResiduals, persistenceState.HasForeignPaths,
+            persistenceState.WorkspaceApplied && reloadFailed));
 
         if (rollbackFailures.Count == 0)
         {
@@ -709,6 +747,8 @@ internal sealed class DocumentSetPersistenceService
             }
         }
 
+        public bool WorkspaceApplied { get; set; }
+        public bool HasForeignPaths => _foreignPaths.Count != 0;
         public bool IsForeign(string path) => _foreignPaths.Contains(path);
 
         public void MarkForeign(string path) => _foreignPaths.Add(path);
@@ -740,6 +780,9 @@ internal sealed class DocumentSetPersistenceService
         public IReadOnlyList<FileMutationSnapshot> GetOwnedPostStates(string path) =>
             _ownedPostStates.TryGetValue(path, out var states) ? states : [];
     }
+
+    internal sealed record RollbackRecovery(IReadOnlyList<FileSnapshotDto> OwnedSnapshots,
+        bool ForeignPathsPreserved, bool RequiresReload);
 
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 

@@ -557,7 +557,7 @@ public class ClientRootPathValidatorTests
             Assert.ThrowsExactly<InvalidOperationException>(() => manager.TryApplyChanges(workspaceId, edited));
             var persistence = new DocumentSetPersistenceService(manager, NullLogger.Instance);
             var persisted = await persistence.PersistAsync(
-                workspaceId, current, edited, edited.GetChanges(current), CancellationToken.None);
+                workspaceId, current, edited, edited.GetChanges(current), CancellationToken.None, reportRecovery: null);
             Assert.IsFalse(persisted.Success, "Document-set persistence must reject the alias before writing.");
             Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath),
                 "An aliased external document must never be written through MSBuildWorkspace.");

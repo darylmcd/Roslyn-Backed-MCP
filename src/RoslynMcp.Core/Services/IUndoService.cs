@@ -57,6 +57,17 @@ public interface IUndoService
         object? preApplySolution,
         IReadOnlyList<FileSnapshotDto>? fileSnapshots);
 
+    /// <summary>Samples pre-apply state without changing the pending slot or history.</summary>
+    PreparedUndoCapture Prepare(string workspaceId, string description, object? preApplySolution,
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots);
+
+    /// <summary>Publishes the prepared pre-image after a successful apply or a proven residual effect.</summary>
+    UndoCaptureId Publish(PreparedUndoCapture prepared, IReadOnlyList<FileSnapshotDto>? ownedSnapshots,
+        UndoRecoveryMode recoveryMode);
+
+    /// <summary>Reverts only if the pending slot still belongs to the given attempt.</summary>
+    Task<bool> RevertCaptureAsync(string workspaceId, UndoCaptureId capture, CancellationToken cancellationToken);
+
     /// <summary>
     /// Returns metadata about the last undoable operation for the given workspace,
     /// or <see langword="null"/> if nothing is undoable.
@@ -122,6 +133,23 @@ public readonly record struct UndoCaptureId(long Value)
 
     /// <summary>Gets a value indicating whether this id denotes no capture.</summary>
     public bool IsNone => Value == 0;
+}
+
+/// <summary>Pre-apply state sampled before any mutation, independent of the pending slot.</summary>
+public sealed record PreparedUndoCapture(string WorkspaceId, string Description, object? PreApplySolution,
+    IReadOnlyList<FileSnapshotDto>? FileSnapshots, int PreApplyWorkspaceVersion, DateTime CapturedAtUtc);
+
+/// <summary>How a published pre-image can safely be used.</summary>
+public enum UndoRecoveryMode
+{
+    /// <summary>A normal apply uses the original snapshot rules.</summary>
+    Full,
+    /// <summary>A failed apply left only positively owned file effects.</summary>
+    OwnedFiles,
+    /// <summary>A failed apply left owned files alongside foreign changes that must be preserved.</summary>
+    OwnedFilesWithForeignChanges,
+    /// <summary>Disk compensation finished but the workspace still needs to be reloaded.</summary>
+    ReloadOnly,
 }
 
 /// <summary>
