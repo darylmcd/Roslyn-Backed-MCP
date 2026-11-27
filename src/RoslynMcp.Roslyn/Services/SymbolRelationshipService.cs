@@ -263,7 +263,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             Documentation: dto.Documentation);
     }
 
-    public async Task<IReadOnlyList<SignatureHelpDto>?> FindOverloadsAsync(
+    public async Task<FindOverloadsResultDto?> FindOverloadsAsync(
         string workspaceId, string typeMetadataName, string memberName,
         bool includeInherited, string? projectName, CancellationToken ct)
     {
@@ -277,46 +277,52 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
                 nameof(projectName));
         }
 
-        INamedTypeSymbol? typeSymbol = null;
-        Compilation? resolvedCompilation = null;
         foreach (var project in solution.Projects)
         {
             if (projectName is not null && !string.Equals(project.Name, projectName, StringComparison.Ordinal)) continue;
             ct.ThrowIfCancellationRequested();
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-            var candidate = compilation?.GetTypeByMetadataName(typeMetadataName);
-            if (candidate is not null)
+            if (compilation is not null && compilation.GetTypeByMetadataName(typeMetadataName) is { } typeSymbol)
             {
-                typeSymbol = candidate;
-                resolvedCompilation = compilation;
-                break;
+                return CreateOverloadResult(project, compilation, typeSymbol, memberName, includeInherited);
             }
         }
-        if (typeSymbol is null) return null;
 
-        var methods = typeSymbol.GetMembers(memberName).OfType<IMethodSymbol>().ToList();
+        return null;
+    }
+
+    private static FindOverloadsResultDto CreateOverloadResult(
+        Project project, Compilation compilation, INamedTypeSymbol typeSymbol, string memberName, bool includeInherited)
+    {
+        var members = typeSymbol.GetMembers(memberName).ToList();
         if (includeInherited)
         {
-            // Base-class GetMembers returns every declared member, including private ones that
-            // are not actually inherited/visible to the derived type — filter through Roslyn's own
-            // accessibility rules (evaluated FROM typeSymbol) instead of advertising overloads the
-            // caller could never actually invoke on this type.
+            // Apply the same inherited accessibility rule to overloads and member presence.
             for (var baseType = typeSymbol.BaseType; baseType is not null; baseType = baseType.BaseType)
             {
-                methods.AddRange(baseType.GetMembers(memberName)
-                    .OfType<IMethodSymbol>()
-                    .Where(m => resolvedCompilation!.IsSymbolAccessibleWithin(m, typeSymbol)));
+                members.AddRange(baseType.GetMembers(memberName)
+                    .Where(member => compilation.IsSymbolAccessibleWithin(member, typeSymbol)));
             }
         }
 
-        return methods.Select(m => new SignatureHelpDto(
-            DisplaySignature: m.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-            ReturnType: m.ReturnType.ToDisplayString(),
-            Parameters: m.Parameters
-                .Select(p => $"{p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} {p.Name}")
-                .ToList(),
-            Documentation: m.GetDocumentationCommentXml()))
+        var items = members.OfType<IMethodSymbol>()
+            .Select(method => new SignatureHelpDto(
+                DisplaySignature: method.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+                ReturnType: method.ReturnType.ToDisplayString(),
+                Parameters: method.Parameters
+                    .Select(p => $"{p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} {p.Name}")
+                    .ToList(),
+                Documentation: method.GetDocumentationCommentXml()))
             .ToList();
+
+        // The selected project's compiler configuration contains the evaluated inner-build TFM.
+        // A declared TargetFrameworks list cannot establish which compilation supplied the type.
+        var options = project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GlobalOptions;
+        var targetFramework = options.TryGetValue("build_property.TargetFramework", out var framework)
+            && !string.IsNullOrWhiteSpace(framework) && !framework.Contains(';')
+            ? framework
+            : null;
+        return new FindOverloadsResultDto(items, project.Name, targetFramework, members.Count > 0);
     }
 
     public async Task<CallerCalleeDto?> GetCallersCalleesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)

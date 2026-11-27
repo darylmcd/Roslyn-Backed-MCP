@@ -563,7 +563,14 @@ public static class SymbolTools
         {
             var results = await symbolRelationshipService.FindOverloadsAsync(workspaceId, typeMetadataName, memberName, includeInherited, projectName, c);
             if (results is null) throw new KeyNotFoundException($"Type not found: '{typeMetadataName}' (workspace '{workspaceId}').");
-            return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new
+            {
+                count = results.Items.Count,
+                items = results.Items,
+                results.ResolvedProject,
+                results.ResolvedTargetFramework,
+                results.MemberFound
+            }, JsonDefaults.Indented);
         }, ct);
     }
 
