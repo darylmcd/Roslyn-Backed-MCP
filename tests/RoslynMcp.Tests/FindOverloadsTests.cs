@@ -1,6 +1,12 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -11,10 +17,8 @@ namespace RoslynMcp.Tests;
 /// resolves a single already-bound call site rather than listing every overload choice.
 /// </summary>
 // donotparallelize-audit-wave-09: [DoNotParallelize] removed. Every test method here is a read-only
-// SymbolTools.FindOverloads query against the assembly-shared SampleSolution workspace obtained through the
-// synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) — no *_apply, no
-// WorkspaceManager.LoadAsync/ReloadAsync/Close, no static/environment/filesystem mutation. Validated with a
-// repeated (3x) run of this class alongside its donotparallelize-audit-wave-09 siblings.
+// SymbolTools.FindOverloads query uses the assembly-shared SampleSolution workspace or a test-owned
+// read-only solution. No test applies changes to the shared workspace or closes its session.
 [TestClass]
 public sealed class FindOverloadsTests : SharedWorkspaceTestBase
 {
@@ -76,6 +80,110 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
 
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual(2, doc.RootElement.GetProperty("count").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task FindOverloads_Reports_Which_Framework_Supplied_The_Metadata_Type()
+    {
+        using var msbuild = MSBuildWorkspace.Create();
+        var generatorPath = Path.Combine(Path.GetDirectoryName(GeneratedDocumentSolutionPath)!,
+            "ConsumerLib.Generators", "ConsumerLib.Generators.csproj");
+        var generator = await msbuild.OpenProjectAsync(generatorPath);
+        var modern = WorkspaceManager.GetCurrentSolution(WorkspaceId).Projects.Single(p => p.Name == "SampleLib");
+        using var workspace = new AdhocWorkspace();
+        var solution = AddProject(workspace.CurrentSolution, generator.Name, generator.MetadataReferences,
+            targetFramework: "netstandard2.0");
+        solution = AddProject(solution, modern.Name, modern.MetadataReferences, targetFramework: "net10.0");
+
+        using var implicitResult = await FindInOrderedSolutionAsync(solution, "System.Math", "Clamp");
+        using var explicitResult = await FindInOrderedSolutionAsync(solution, "System.Math", "Clamp", modern.Name);
+
+        AssertResolution(implicitResult.RootElement, generator.Name, "netstandard2.0", memberFound: false, count: 0);
+        AssertResolution(explicitResult.RootElement, modern.Name, "net10.0", memberFound: true, count: 13);
+    }
+
+    [TestMethod]
+    public async Task FindOverloads_Does_Not_Switch_Between_Unrelated_Types_With_The_Same_Name()
+    {
+        var modern = WorkspaceManager.GetCurrentSolution(WorkspaceId).Projects.Single(p => p.Name == "SampleLib");
+        using var workspace = new AdhocWorkspace();
+        var solution = AddProject(workspace.CurrentSolution, "Selected", modern.MetadataReferences,
+            source: "namespace Probe; public class Subject { }");
+        solution = AddProject(solution, "Foreign", modern.MetadataReferences,
+            source: "namespace Probe; public class Subject { public void OnlyInForeignAssembly() { } }");
+        const string memberName = "OnlyInForeignAssembly";
+
+        using var explicitResult = await FindInOrderedSolutionAsync(solution, "Probe.Subject", memberName, "Foreign");
+        AssertResolution(explicitResult.RootElement, "Foreign", null, memberFound: true, count: 1);
+
+        using var implicitResult = await FindInOrderedSolutionAsync(solution, "Probe.Subject", memberName);
+        AssertResolution(implicitResult.RootElement, "Selected", null, memberFound: false, count: 0);
+    }
+
+    [TestMethod]
+    [DataRow("Property", false, true, 0)]
+    [DataRow("DeclaredPrivate", false, true, 1)]
+    [DataRow("InheritedPrivate", true, false, 0)]
+    [DataRow("InheritedProperty", false, false, 0)]
+    [DataRow("InheritedProperty", true, true, 0)]
+    public async Task FindOverloads_Reports_Member_In_Selected_Definition_With_Unknown_Framework(
+        string memberName, bool includeInherited, bool memberFound, int count)
+    {
+        var modern = WorkspaceManager.GetCurrentSolution(WorkspaceId).Projects.Single(p => p.Name == "SampleLib");
+        using var workspace = new AdhocWorkspace();
+        var solution = AddProject(workspace.CurrentSolution, "Selected", modern.MetadataReferences, source: """
+            namespace Probe;
+            public class Root
+            {
+                private void InheritedPrivate() { }
+                protected int InheritedProperty => 0;
+            }
+            public class Subject : Root
+            {
+                public int Property => 0;
+                private void DeclaredPrivate() { }
+            }
+            """);
+        using var result = await FindInOrderedSolutionAsync(solution, "Probe.Subject", memberName, includeInherited: includeInherited);
+        AssertResolution(result.RootElement, "Selected", null, memberFound, count);
+    }
+
+    private static Solution AddProject(
+        Solution solution, string name, IEnumerable<MetadataReference> references,
+        string? targetFramework = null, string? source = null)
+    {
+        var id = ProjectId.CreateNewId();
+        solution = solution.AddProject(ProjectInfo.Create(id, VersionStamp.Create(), name, name,
+            LanguageNames.CSharp, metadataReferences: references));
+        if (targetFramework is not null)
+        {
+            solution = solution.AddAnalyzerConfigDocument(DocumentId.CreateNewId(id), "framework.globalconfig",
+                SourceText.From($"is_global = true\nbuild_property.TargetFramework = {targetFramework}\n"),
+                filePath: Path.Combine(Path.GetTempPath(), name, "framework.globalconfig"));
+        }
+
+        return source is null ? solution : solution.AddDocument(DocumentId.CreateNewId(id), "Subject.cs", source);
+    }
+
+    private static async Task<JsonDocument> FindInOrderedSolutionAsync(
+        Solution solution, string typeMetadataName, string memberName, string? projectName = null, bool includeInherited = false)
+    {
+        var selected = new InterfaceExtractionTestContext.FixedSolutionWorkspace(WorkspaceManager, solution);
+        using var cache = new CompilationCache(selected);
+        var service = new SymbolRelationshipService(selected, ReferenceService, cache,
+            NullLogger<SymbolRelationshipService>.Instance);
+        var result = await SymbolTools.FindOverloads(WorkspaceExecutionGate, service, WorkspaceId,
+            typeMetadataName, memberName, includeInherited, projectName);
+        return JsonDocument.Parse(result);
+    }
+
+    private static void AssertResolution(JsonElement result, string project, string? framework, bool memberFound, int count)
+    {
+        Assert.AreEqual(count, result.GetProperty("count").GetInt32());
+        Assert.AreEqual(count, result.GetProperty("items").GetArrayLength());
+        Assert.AreEqual(project, result.GetProperty("resolvedProject").GetString());
+        Assert.AreEqual(framework, result.GetProperty("resolvedTargetFramework").GetString());
+        Assert.AreEqual(memberFound, result.GetProperty("memberFound").GetBoolean());
     }
 
     [TestMethod]
@@ -149,6 +257,7 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
             $"An unknown member name on a resolvable type should be an empty success, not an error. Got: {json}");
         Assert.AreEqual(0, doc.RootElement.GetProperty("count").GetInt32());
         Assert.AreEqual(0, doc.RootElement.GetProperty("items").GetArrayLength());
+        Assert.IsFalse(doc.RootElement.GetProperty("memberFound").GetBoolean());
     }
 
     [TestMethod]
@@ -195,7 +304,7 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
         Assert.IsFalse(
             doc.RootElement.TryGetProperty("error", out _),
             $"A valid projectName scoping the type's own project should succeed. Got: {json}");
-        Assert.AreEqual(2, doc.RootElement.GetProperty("count").GetInt32());
+        AssertResolution(doc.RootElement, "SampleLib", "net10.0", memberFound: true, count: 2);
     }
 
     [TestMethod]

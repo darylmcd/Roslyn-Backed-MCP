@@ -556,14 +556,21 @@ public static class SymbolTools
         [Description("Fully qualified metadata name of the containing type, e.g. 'System.Math' or 'System.Collections.Generic.List`1' (backtick arity for generics).")] string typeMetadataName,
         [Description("Bare member name to enumerate overloads of, e.g. 'Max'. No signature needed — resolves ALL overloads of that name. Extension methods are out of scope — query the extending static class directly instead, e.g. typeMetadataName: 'System.Linq.Enumerable', memberName: 'Select'.")] string memberName,
         [Description("Optional: when true, also walk the base-class chain for additional overloads. Inaccessible (e.g. private) base members are excluded via Roslyn's own accessibility rules; there is no override-chain dedup — use member_hierarchy for that. Default false (direct-declared members only).")] bool includeInherited = false,
-        [Description("Optional: restrict type resolution to one project by name (case-sensitive), for multi-targeted solutions where the same type could differ across TFMs.")] string? projectName = null,
+        [Description("Optional: restrict type resolution to one case-sensitive project name. Otherwise use the first project in solution order whose compilation resolves the type. Results report resolvedProject, resolvedTargetFramework (null if unknown), and memberFound within the includeInherited scope.")] string? projectName = null,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var results = await symbolRelationshipService.FindOverloadsAsync(workspaceId, typeMetadataName, memberName, includeInherited, projectName, c);
             if (results is null) throw new KeyNotFoundException($"Type not found: '{typeMetadataName}' (workspace '{workspaceId}').");
-            return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new
+            {
+                count = results.Items.Count,
+                items = results.Items,
+                results.ResolvedProject,
+                results.ResolvedTargetFramework,
+                results.MemberFound
+            }, JsonDefaults.Indented);
         }, ct);
     }
 
