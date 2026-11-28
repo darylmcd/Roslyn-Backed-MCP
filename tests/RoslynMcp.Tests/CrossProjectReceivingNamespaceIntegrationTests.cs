@@ -34,7 +34,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     [DataRow("extract", "Acme.@namespace")]
     public async Task Derived_Receiving_Namespace_Escapes_Keyword_Segments(string route, string rootNamespace)
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateIsolatedSampleLibrarySolutionCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var targetProjectPath = workspace.GetPath("Contracts", "Contracts.csproj");
         var projectXml = XDocument.Load(targetProjectPath);
@@ -66,7 +66,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     [DynamicData(nameof(ReceivingCases))]
     public async Task Receiving_Syntax_Compiles_Through_Serialized_Preview_Apply_And_Reload(string route, string version)
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateIsolatedSampleLibrarySolutionCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var targetProjectPath = workspace.GetPath("Contracts", "Contracts.csproj");
         SetReceivingPolicy(targetProjectPath, version);
@@ -153,7 +153,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     [DynamicData(nameof(MoveCases))]
     public async Task Move_Preserves_Member_Trivia_And_Namespace_Selection(string version, string selection)
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateIsolatedSampleLibrarySolutionCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var projectPath = workspace.GetPath("Contracts", "Contracts.csproj");
         SetReceivingPolicy(projectPath, version);
@@ -232,7 +232,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     public async Task Move_Preserves_File_Generation_Context_And_Declaration_Documentation(
         bool selectedFirst, bool wrapNamespace, bool explicitNullable)
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateIsolatedSampleLibrarySolutionCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var projectPath = workspace.GetPath("Contracts", "Contracts.csproj");
         SetReceivingPolicy(projectPath, "14.0");
@@ -322,7 +322,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     [DataRow("14.0", true)]
     public async Task Move_Second_Type_Preserves_Documentation_Ownership(string version, bool wrapNamespace)
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateIsolatedSampleLibrarySolutionCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         SetReceivingPolicy(workspace.GetPath("Contracts", "Contracts.csproj"), version);
         var path = workspace.GetPath("SampleLib", "EchoService.cs");
@@ -375,7 +375,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     [TestMethod]
     public async Task Same_Project_Global_Interface_Remains_Unwrapped()
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateIsolatedSampleLibrarySolutionCopy();
         var path = workspace.GetPath("SampleLib", "EchoService.cs");
         await File.WriteAllTextAsync(path, "public class EchoService { public int Echo(int value) => value + 1; }");
         await workspace.LoadAsync();
@@ -404,7 +404,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     [DataRow("9.0")]
     public async Task Move_Block_Wrapper_Separates_Leading_Directives_And_Closing_Brace(string version)
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateIsolatedSampleLibrarySolutionCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var projectPath = workspace.GetPath("Contracts", "Contracts.csproj");
         SetReceivingPolicy(projectPath, version);

@@ -16,9 +16,11 @@ public sealed class TestFixtureFileSystemTests
     [DataRow("solution", true)]
     [DataRow("library", true)]
     [DataRow("library-tests", true)]
+    [DataRow("library-solution", true)]
     [DataRow("solution", false)]
     [DataRow("library", false)]
     [DataRow("library-tests", false)]
+    [DataRow("library-solution", false)]
     public void CopyFixture_ProvidesActualDetachedSourceRoot_WithoutChangingCompilerPolicy(string kind, bool existingProps)
     {
         var root = Path.Combine(TestTempRoot.Current, nameof(TestFixtureFileSystemTests), "root %;()$' " + Guid.NewGuid().ToString("N"));
@@ -39,8 +41,18 @@ public sealed class TestFixtureFileSystemTests
             {
                 "library" => TestFixtureFileSystem.CreateSampleLibraryCopy(root, solution).RootPath,
                 "library-tests" => TestFixtureFileSystem.CreateSampleLibraryTestsCopy(root, solution).RootPath,
+                "library-solution" => TestFixtureFileSystem.CreateSampleLibrarySolutionCopy(root, solution).RootPath,
                 _ => Path.GetDirectoryName(TestFixtureFileSystem.CreateSampleSolutionCopy(root, solution))!,
             };
+            if (kind == "library-solution")
+            {
+                var copiedSolution = XDocument.Load(Path.Combine(copiedRoot, "SampleSolution.slnx"));
+                CollectionAssert.AreEqual(
+                    new[] { "SampleLib/SampleLib.csproj" },
+                    copiedSolution.Root!.Elements("Project").Select(p => p.Attribute("Path")!.Value).ToArray());
+                Assert.IsFalse(Directory.Exists(Path.Combine(copiedRoot, "SampleLib.Tests")));
+            }
+
             var props = XDocument.Load(Path.Combine(copiedRoot, "Directory.Build.props"));
             var sourceRoot = props.Descendants("SourceRoot").Single();
             Assert.AreEqual(TestFixtureFileSystem.EscapeMsBuildItemInclude(
@@ -82,6 +94,12 @@ public sealed class TestFixtureFileSystemTests
         AssertMissingEntryPointCleanup(
             (root, solution) => TestFixtureFileSystem.CreateSampleLibraryTestsCopy(root, solution),
             includeLibraryProject: true);
+
+    [TestMethod]
+    public void CopyLibrarySolutionFixture_MissingLibraryProject_RemovesPartialCopy() =>
+        AssertMissingEntryPointCleanup(
+            (root, solution) => TestFixtureFileSystem.CreateSampleLibrarySolutionCopy(root, solution),
+            includeLibraryProject: false);
 
     private static void AssertMissingEntryPointCleanup(Action<string, string> copy, bool includeLibraryProject)
     {
