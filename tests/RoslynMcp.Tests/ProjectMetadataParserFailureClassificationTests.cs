@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Tests.Helpers;
@@ -126,26 +125,17 @@ public sealed class ProjectMetadataParserFailureClassificationTests
     [TestMethod]
     public void GetExistingAssetsPath_InvalidProjectAndEvaluatedPaths_ReturnUnknown()
     {
-        Assert.IsNull(ProjectMetadataParser.GetExistingAssetsPath("invalid\0path", MsBuildMetadataHelper.DefaultGlobalProperties));
+        Assert.IsNull(ProjectMetadataParser.GetExistingAssetsPath("invalid\0path", MsBuildMetadataHelper.DefaultGlobalProperties, evaluation: null));
         var projectPath = CreateProject("<Project />");
         Assert.IsNull(ProjectMetadataParser.GetExistingAssetsPath(projectPath,
-            new Dictionary<string, string> { ["ProjectAssetsFile"] = "invalid\0path" }));
+            new Dictionary<string, string> { ["ProjectAssetsFile"] = "invalid\0path" }, evaluation: null));
     }
 
     private static object? Evaluate(string boundary, string projectPath, IReadOnlyDictionary<string, string> properties, ILogger logger)
     {
-        if (boundary == "output") return ProjectMetadataParser.GetEvaluatedOutputType(projectPath, properties, logger);
-        if (boundary == "assets") return ProjectMetadataParser.GetExistingAssetsPath(projectPath, properties);
-        var method = typeof(ProjectMetadataParser).GetMethod("GetEvaluatedTargetFrameworks", BindingFlags.NonPublic | BindingFlags.Static)!;
-        try
-        {
-            return method.Invoke(null, [projectPath, properties, logger]);
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-            throw;
-        }
+        if (boundary == "output") return ProjectMetadataParser.GetEvaluatedOutputType(projectPath, properties, logger, evaluation: null);
+        if (boundary == "assets") return ProjectMetadataParser.GetExistingAssetsPath(projectPath, properties, evaluation: null);
+        return ProjectMetadataParser.GetEvaluatedTargetFrameworks(projectPath, properties, logger, evaluation: null);
     }
 
     private string CreateProject(string xml)

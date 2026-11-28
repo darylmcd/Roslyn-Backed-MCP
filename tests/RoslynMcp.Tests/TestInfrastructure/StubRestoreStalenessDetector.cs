@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -18,7 +19,8 @@ internal sealed class StubRestoreStalenessDetector(bool restoreRequired = false)
     public override bool DetectRestoreRequired(
         ImmutableArray<ProjectStatusDto> projects,
         IReadOnlyDictionary<string, string> globalProperties,
-        ILogger logger)
+        ILogger logger,
+        MsBuildMetadataHelper.SharedEvaluation? evaluation)
     {
         Interlocked.Increment(ref _detectCalls);
         return restoreRequired;

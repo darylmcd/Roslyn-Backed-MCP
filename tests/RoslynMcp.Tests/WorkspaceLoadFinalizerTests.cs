@@ -108,6 +108,158 @@ public sealed class WorkspaceLoadFinalizerTests
     }
 
     [TestMethod]
+    public async Task BuildLoadProjection_OpenedSampleSolution_EvaluatesEachProjectOnce()
+    {
+        var (workspace, lease) = await new WorkspaceSessionLoader().CreateAndOpenAsync(
+            "finalizer-eval-count", _sampleSolutionPath, globalProperties: null,
+            new WorkspaceDiagnosticsSink(200), NullLogger.Instance, Bounded());
+        try
+        {
+            using var evaluation = new MsBuildMetadataHelper.SharedEvaluation(workspace.Properties);
+            var projection = new WorkspaceLoadFinalizer(new RestoreStalenessDetector())
+                .BuildLoadProjection(workspace, new ConcurrentQueue<DiagnosticDto>(), NullLogger.Instance, evaluation);
+
+            Assert.AreEqual(0, evaluation.Misses);
+            Assert.AreEqual(projection.ProjectStatuses.Length, evaluation.Loads.Count,
+                "Each project is loaded once for the projection's global properties.");
+            Assert.AreEqual(evaluation.Loads.Count, evaluation.Loads.Select(call => call.ProjectPath + "\n" + call.GlobalProperties).Distinct().Count());
+        }
+        finally
+        {
+            workspace.Dispose();
+            lease.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task Reload_OutputTypeEditedOnDisk_PublishesTheNewValue()
+    {
+        var root = Path.Combine(TestTempRoot.Current, "h6-output-type-" + Guid.NewGuid().ToString("N"));
+        var projectDirectory = Path.Combine(root, "App");
+        Directory.CreateDirectory(projectDirectory);
+        var projectPath = Path.Combine(projectDirectory, "App.csproj");
+        var projectText = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """;
+        File.WriteAllText(projectPath, projectText);
+        File.WriteAllText(Path.Combine(projectDirectory, "Program.cs"), "System.Console.WriteLine(\"hi\");");
+        var solutionPath = Path.Combine(root, "App.slnx");
+        File.WriteAllText(solutionPath, """
+            <Solution>
+              <Project Path="App/App.csproj" />
+            </Solution>
+            """);
+
+        var manager = CreateManager();
+        try
+        {
+            var loaded = await manager.LoadAsync(solutionPath, Bounded(180));
+            Assert.AreEqual("Exe", loaded.Projects.Single().OutputType);
+
+            File.WriteAllText(projectPath, projectText.Replace(
+                "<OutputType>Exe</OutputType>",
+                "<OutputType>Library</OutputType>",
+                StringComparison.Ordinal));
+
+            var reloaded = await manager.ReloadAsync(loaded.WorkspaceId, Bounded(180));
+            Assert.AreEqual("Library", reloaded.Projects.Single().OutputType);
+        }
+        finally
+        {
+            manager.Dispose();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void SharedEvaluation_InvalidProjectMidScope_DisposesTheCollection()
+    {
+        var root = Path.Combine(TestTempRoot.Current, "h6-bad-project-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var goodPath = Path.Combine(root, "Good.csproj");
+        var badPath = Path.Combine(root, "Bad.csproj");
+        File.WriteAllText(goodPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        File.WriteAllText(badPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType>");
+        var properties = MsBuildMetadataHelper.DefaultGlobalProperties;
+        var evaluation = new MsBuildMetadataHelper.SharedEvaluation(properties);
+        try
+        {
+            var thrown = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            {
+                var outputType = MsBuildMetadataHelper.EvaluateProperties(goodPath, properties, evaluation, "OutputType")[0];
+                Assert.AreEqual("Exe", outputType);
+                MsBuildMetadataHelper.EvaluateProperties(badPath, properties, evaluation, "OutputType");
+            });
+
+            Assert.IsTrue(MsBuildMetadataHelper.IsExpectedEvaluationFailure(thrown));
+            evaluation.Dispose();
+            Assert.IsTrue(evaluation.IsDisposed, "The projection's collection must be disposed when the caller leaves it.");
+            Assert.AreEqual("Exe", MsBuildMetadataHelper.EvaluateProperties(goodPath, properties, "OutputType")[0],
+                "A later evaluation must not reuse the disposed collection.");
+        }
+        finally
+        {
+            evaluation.Dispose();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void SharedEvaluation_SecondInstance_KeepsItsOwnLoads()
+    {
+        var root = Path.Combine(TestTempRoot.Current, "h6-two-loads-" + Guid.NewGuid().ToString("N"));
+        var firstPath = Path.Combine(root, "First.csproj");
+        var secondPath = Path.Combine(root, "Second.csproj");
+        Directory.CreateDirectory(root);
+        const string project = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """;
+        try
+        {
+            File.WriteAllText(firstPath, project);
+            File.WriteAllText(secondPath, project);
+            var properties = MsBuildMetadataHelper.DefaultGlobalProperties;
+            using var first = new MsBuildMetadataHelper.SharedEvaluation(properties);
+            using var second = new MsBuildMetadataHelper.SharedEvaluation(properties);
+            MsBuildMetadataHelper.EvaluateProperties(firstPath, properties, first, "OutputType");
+            MsBuildMetadataHelper.EvaluateProperties(secondPath, properties, second, "OutputType");
+
+            Assert.AreEqual(0, first.Misses);
+            Assert.AreEqual(0, second.Misses);
+            Assert.AreEqual(firstPath, first.Loads.Single().ProjectPath);
+            Assert.AreEqual(secondPath, second.Loads.Single().ProjectPath);
+
+            var mismatched = new Dictionary<string, string> { ["Configuration"] = "Debug" };
+            using var offered = new MsBuildMetadataHelper.SharedEvaluation(mismatched);
+            var outputType = MsBuildMetadataHelper.EvaluateProperties(firstPath, properties, offered, "OutputType")[0];
+            Assert.AreEqual("Exe", outputType);
+            Assert.AreEqual(1, offered.Misses);
+            Assert.AreEqual(0, offered.Loads.Count);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task BuildLoadProjection_DetectorReportsRestoreRequired_SurfacesRestoreRequiredNotBuildRequired()
     {
         var (workspace, lease) = await new WorkspaceSessionLoader().CreateAndOpenAsync(

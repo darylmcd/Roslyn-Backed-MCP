@@ -50,7 +50,7 @@ public sealed class RestoreStalenessDetectorTests
         File.WriteAllText(Path.Combine(assetsDirectory, "project.assets.json"), json);
         var logger = new ListLogger<RestoreStalenessDetector>();
 
-        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, logger));
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, logger, evaluation: null));
         Assert.HasCount(1, logger.Entries);
         Assert.IsNull(logger.Entries[0].Exception);
         Assert.IsFalse(logger.Entries[0].Message.Contains(project, StringComparison.Ordinal));
@@ -72,7 +72,7 @@ public sealed class RestoreStalenessDetectorTests
 
         var detector = new RestoreStalenessDetector();
 
-        Assert.IsFalse(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsFalse(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -93,7 +93,7 @@ public sealed class RestoreStalenessDetectorTests
 
         var detector = new RestoreStalenessDetector();
 
-        Assert.IsTrue(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsTrue(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     private const string PackageReferenceProject = """
@@ -118,7 +118,7 @@ public sealed class RestoreStalenessDetectorTests
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(project)!, "obj", "project.assets.json"), contents);
 
         var logger = new ListLogger<RestoreStalenessDetector>();
-        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, logger));
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, logger, evaluation: null));
         Assert.HasCount(1, logger.Entries);
         Assert.IsNull(logger.Entries[0].Exception, "Assets diagnostics must not retain raw parse or I/O exceptions.");
         Assert.IsFalse(logger.Entries[0].Message.Contains(project, StringComparison.Ordinal));
@@ -135,7 +135,7 @@ public sealed class RestoreStalenessDetectorTests
         using var exclusive = new FileStream(Path.Combine(Path.GetDirectoryName(project)!, "obj", "project.assets.json"),
             FileMode.Open, FileAccess.Read, FileShare.None);
 
-        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -144,7 +144,7 @@ public sealed class RestoreStalenessDetectorTests
         var project = WriteProject("LockedMetadata.csproj", PackageReferenceProject);
         using var exclusive = new FileStream(project, FileMode.Open, FileAccess.Read, FileShare.None);
 
-        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(project, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -162,7 +162,7 @@ public sealed class RestoreStalenessDetectorTests
         WriteAssets(projectFilePath, "Newtonsoft.Json", "12.0.1");
 
         Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance), "Drift is not missing assets.");
-        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -229,7 +229,7 @@ public sealed class RestoreStalenessDetectorTests
             "{\"project\":{\"restore\":{\"packagesPath\":\"D:/scratch\"},\"frameworks\":{\"net10.0\":{\"dependencies\":{\"Newtonsoft.Json\":{\"version\":\"13.0.3\"}}}}}}");
 
         Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance));
-        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
         Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectFilePath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
     }
 
@@ -252,7 +252,7 @@ public sealed class RestoreStalenessDetectorTests
 
         var detector = new RestoreStalenessDetector();
 
-        Assert.IsTrue(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsTrue(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -274,7 +274,7 @@ public sealed class RestoreStalenessDetectorTests
 
         var detector = new RestoreStalenessDetector();
 
-        Assert.IsFalse(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsFalse(detector.IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -285,7 +285,7 @@ public sealed class RestoreStalenessDetectorTests
         Assert.IsFalse(detector.IsRestoreRequired(
             Path.Combine(_tempRoot, "DoesNotExist.csproj"),
             ImmutableDictionary<string, string>.Empty,
-            NullLogger.Instance));
+            NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -307,9 +307,9 @@ public sealed class RestoreStalenessDetectorTests
         var detector = new RestoreStalenessDetector();
 
         Assert.IsFalse(detector.IsRestoreRequired(project,
-            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Debug"), NullLogger.Instance));
+            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Debug"), NullLogger.Instance, evaluation: null));
         Assert.IsTrue(detector.IsRestoreRequired(project,
-            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Release"), NullLogger.Instance));
+            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Release"), NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -349,7 +349,7 @@ public sealed class RestoreStalenessDetectorTests
 
         var detector = new RestoreStalenessDetector();
 
-        Assert.IsTrue(detector.DetectRestoreRequired(projects, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsTrue(detector.DetectRestoreRequired(projects, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -369,7 +369,7 @@ public sealed class RestoreStalenessDetectorTests
 
         var detector = new RestoreStalenessDetector();
 
-        Assert.IsFalse(detector.DetectRestoreRequired(projects, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
+        Assert.IsFalse(detector.DetectRestoreRequired(projects, ImmutableDictionary<string, string>.Empty, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -439,7 +439,7 @@ public sealed class RestoreStalenessDetectorTests
             Assert.AreEqual(packages, RestoreStalenessDetector.TryReadRestorePackagesPath(project, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
 
         Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(project, NullLogger.Instance));
-        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance));
+        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -461,7 +461,7 @@ public sealed class RestoreStalenessDetectorTests
             Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
 
         Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(project, NullLogger.Instance));
-        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance));
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance, evaluation: null));
     }
 
     [TestMethod]
@@ -529,9 +529,9 @@ public sealed class RestoreStalenessDetectorTests
         var detector = new RestoreStalenessDetector();
 
         Assert.IsTrue(detector.IsRestoreRequired(project,
-            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Debug"), NullLogger.Instance));
+            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Debug"), NullLogger.Instance, evaluation: null));
         Assert.IsFalse(detector.IsRestoreRequired(project,
-            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Release"), NullLogger.Instance));
+            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Release"), NullLogger.Instance, evaluation: null));
     }
 
     private (string Project, string Active, string Default, string Packages) CreateAssetsLayout(string layout)
