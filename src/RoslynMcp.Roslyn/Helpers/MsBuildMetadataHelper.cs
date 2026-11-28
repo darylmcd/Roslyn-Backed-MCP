@@ -161,11 +161,11 @@ internal static class MsBuildMetadataHelper
 
         internal string[] Read(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
         {
-            var loadedBefore = _collection.LoadedProjects.Count;
+            var loadedBefore = _collection.Count;
             try
             {
                 var values = ReadProperties(_collection, projectFilePath, propertyNames);
-                if (_collection.LoadedProjects.Count > loadedBefore)
+                if (_collection.Count > loadedBefore)
                 {
                     _loads.Add(new EvaluationCall(
                         projectFilePath,

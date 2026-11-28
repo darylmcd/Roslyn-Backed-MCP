@@ -168,7 +168,7 @@ internal static class ProjectMetadataParser
         return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
     }
 
-    private static IReadOnlyList<string> GetEvaluatedTargetFrameworks(
+    internal static IReadOnlyList<string> GetEvaluatedTargetFrameworks(
         string? projectFilePath,
         IReadOnlyDictionary<string, string> globalProperties,
         ILogger? logger,

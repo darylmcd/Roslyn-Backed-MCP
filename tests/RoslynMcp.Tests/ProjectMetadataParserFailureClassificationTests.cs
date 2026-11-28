@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Tests.Helpers;
@@ -136,16 +135,7 @@ public sealed class ProjectMetadataParserFailureClassificationTests
     {
         if (boundary == "output") return ProjectMetadataParser.GetEvaluatedOutputType(projectPath, properties, logger, evaluation: null);
         if (boundary == "assets") return ProjectMetadataParser.GetExistingAssetsPath(projectPath, properties, evaluation: null);
-        var method = typeof(ProjectMetadataParser).GetMethod("GetEvaluatedTargetFrameworks", BindingFlags.NonPublic | BindingFlags.Static)!;
-        try
-        {
-            return method.Invoke(null, [projectPath, properties, logger]);
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-            throw;
-        }
+        return ProjectMetadataParser.GetEvaluatedTargetFrameworks(projectPath, properties, logger, evaluation: null);
     }
 
     private string CreateProject(string xml)
