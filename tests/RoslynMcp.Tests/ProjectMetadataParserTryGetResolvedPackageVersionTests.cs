@@ -127,7 +127,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         File.WriteAllText(Path.Combine(directory, "Fixture.csproj"), SdkProject);
         File.WriteAllText(Path.Combine(directory, "obj", "project.assets.json"), json);
         Assert.AreEqual(Path.Combine(directory, "obj", "project.assets.json"),
-            ProjectMetadataParser.GetExistingAssetsPath(Path.Combine(directory, "Fixture.csproj"), MsBuildMetadataHelper.DefaultGlobalProperties),
+            ProjectMetadataParser.GetExistingAssetsPath(Path.Combine(directory, "Fixture.csproj"), MsBuildMetadataHelper.DefaultGlobalProperties, evaluation: null),
             "Qualify active assets authority before exercising the JSON-kind guards.");
         Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(
             Path.Combine(directory, "Fixture.csproj"), "TUnit.Engine"));

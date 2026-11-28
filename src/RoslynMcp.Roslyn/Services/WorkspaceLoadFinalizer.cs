@@ -49,20 +49,28 @@ internal class WorkspaceLoadFinalizer(RestoreStalenessDetector restoreStalenessD
         var solution = workspace.CurrentSolution;
         EnsureWorkspacePathsArePhysical(solution);
 
-        using (var evaluation = new MsBuildMetadataHelper.SharedEvaluation(workspace.Properties))
-        {
-            var projectStatuses = BuildProjectStatuses(solution, logger, evaluation);
-            var documentPaths = BuildDocumentPathIndex(solution);
-            var restoreRequired = restoreStalenessDetector.DetectRestoreRequired(projectStatuses, workspace.Properties, logger, evaluation) ||
-                                  RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnostics);
-            // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
-            // BUILD output, distinct from a missing NuGet package. Track it separately so the
-            // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
-            // rather than a no-op `dotnet restore`.
-            var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics);
+        using var evaluation = new MsBuildMetadataHelper.SharedEvaluation(workspace.Properties);
+        return BuildLoadProjection(workspace, diagnostics, logger, evaluation);
+    }
 
-            return new WorkspaceLoadProjection(projectStatuses, documentPaths, restoreRequired, buildRequired);
-        }
+    internal WorkspaceLoadProjection BuildLoadProjection(
+        MSBuildWorkspace workspace,
+        ConcurrentQueue<DiagnosticDto> diagnostics,
+        ILogger logger,
+        MsBuildMetadataHelper.SharedEvaluation evaluation)
+    {
+        var solution = workspace.CurrentSolution;
+        var projectStatuses = BuildProjectStatuses(solution, logger, evaluation);
+        var documentPaths = BuildDocumentPathIndex(solution);
+        var restoreRequired = restoreStalenessDetector.DetectRestoreRequired(projectStatuses, workspace.Properties, logger, evaluation) ||
+                              RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnostics);
+        // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
+        // BUILD output, distinct from a missing NuGet package. Track it separately so the
+        // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
+        // rather than a no-op `dotnet restore`.
+        var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics);
+
+        return new WorkspaceLoadProjection(projectStatuses, documentPaths, restoreRequired, buildRequired);
     }
 
     /// <summary>

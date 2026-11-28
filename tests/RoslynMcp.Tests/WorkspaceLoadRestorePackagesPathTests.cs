@@ -283,7 +283,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
         using var manager = fixture.CreateManager();
         var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
         Assert.AreEqual(activeAssets, RoslynMcp.Roslyn.Helpers.ProjectMetadataParser.GetExistingAssetsPath(
-            fixture.Projects[1], RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
+            fixture.Projects[1], RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties, evaluation: null));
         File.WriteAllText(activeAssets, "{ not json");
 
         var runner = new RecordingRestoreRunner();
@@ -480,7 +480,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             var assetsPath = Path.Combine(root, "obj", "project.assets.json");
             File.WriteAllText(assetsPath, "{ not json");
             Assert.AreEqual(assetsPath, RoslynMcp.Roslyn.Helpers.ProjectMetadataParser.GetExistingAssetsPath(
-                projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
+                projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties, evaluation: null));
             Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties), "Malformed assets file.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{}}}");

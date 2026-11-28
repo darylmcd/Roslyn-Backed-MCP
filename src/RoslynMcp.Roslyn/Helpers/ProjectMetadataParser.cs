@@ -28,7 +28,7 @@ internal static class ProjectMetadataParser
         string? assetsPath = null;
         try
         {
-            assetsPath = GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties);
+            assetsPath = GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties, evaluation: null);
             if (assetsPath is null)
             {
                 return null;
@@ -71,7 +71,7 @@ internal static class ProjectMetadataParser
     internal static string? GetExistingAssetsPath(
         string projectFilePath,
         IReadOnlyDictionary<string, string> globalProperties,
-        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
+        MsBuildMetadataHelper.SharedEvaluation? evaluation)
     {
         string projectDirectory;
         try
@@ -145,8 +145,8 @@ internal static class ProjectMetadataParser
     public static IReadOnlyList<string> GetTargetFrameworks(
         RoslynProject project,
         XDocument? document,
-        ILogger? logger = null,
-        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
+        ILogger? logger,
+        MsBuildMetadataHelper.SharedEvaluation evaluation)
     {
         var evaluatedFrameworks = GetEvaluatedTargetFrameworks(project.FilePath,
             MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger, evaluation);
@@ -307,8 +307,8 @@ internal static class ProjectMetadataParser
     public static string GetOutputType(
         RoslynProject project,
         XDocument? document,
-        ILogger? logger = null,
-        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
+        ILogger? logger,
+        MsBuildMetadataHelper.SharedEvaluation evaluation)
     {
         var evaluated = GetEvaluatedOutputType(project.FilePath,
             MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger, evaluation);
@@ -324,7 +324,7 @@ internal static class ProjectMetadataParser
         string? projectFilePath,
         IReadOnlyDictionary<string, string> globalProperties,
         ILogger? logger,
-        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
+        MsBuildMetadataHelper.SharedEvaluation? evaluation)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {

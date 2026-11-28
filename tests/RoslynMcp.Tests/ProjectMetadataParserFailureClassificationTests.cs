@@ -126,16 +126,16 @@ public sealed class ProjectMetadataParserFailureClassificationTests
     [TestMethod]
     public void GetExistingAssetsPath_InvalidProjectAndEvaluatedPaths_ReturnUnknown()
     {
-        Assert.IsNull(ProjectMetadataParser.GetExistingAssetsPath("invalid\0path", MsBuildMetadataHelper.DefaultGlobalProperties));
+        Assert.IsNull(ProjectMetadataParser.GetExistingAssetsPath("invalid\0path", MsBuildMetadataHelper.DefaultGlobalProperties, evaluation: null));
         var projectPath = CreateProject("<Project />");
         Assert.IsNull(ProjectMetadataParser.GetExistingAssetsPath(projectPath,
-            new Dictionary<string, string> { ["ProjectAssetsFile"] = "invalid\0path" }));
+            new Dictionary<string, string> { ["ProjectAssetsFile"] = "invalid\0path" }, evaluation: null));
     }
 
     private static object? Evaluate(string boundary, string projectPath, IReadOnlyDictionary<string, string> properties, ILogger logger)
     {
-        if (boundary == "output") return ProjectMetadataParser.GetEvaluatedOutputType(projectPath, properties, logger);
-        if (boundary == "assets") return ProjectMetadataParser.GetExistingAssetsPath(projectPath, properties);
+        if (boundary == "output") return ProjectMetadataParser.GetEvaluatedOutputType(projectPath, properties, logger, evaluation: null);
+        if (boundary == "assets") return ProjectMetadataParser.GetExistingAssetsPath(projectPath, properties, evaluation: null);
         var method = typeof(ProjectMetadataParser).GetMethod("GetEvaluatedTargetFrameworks", BindingFlags.NonPublic | BindingFlags.Static)!;
         try
         {

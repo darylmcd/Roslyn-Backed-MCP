@@ -20,7 +20,7 @@ internal sealed class StubRestoreStalenessDetector(bool restoreRequired = false)
         ImmutableArray<ProjectStatusDto> projects,
         IReadOnlyDictionary<string, string> globalProperties,
         ILogger logger,
-        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
+        MsBuildMetadataHelper.SharedEvaluation? evaluation)
     {
         Interlocked.Increment(ref _detectCalls);
         return restoreRequired;

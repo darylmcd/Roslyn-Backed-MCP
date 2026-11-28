@@ -207,7 +207,7 @@ internal class RestoreStalenessDetector
         ImmutableArray<ProjectStatusDto> projects,
         IReadOnlyDictionary<string, string> globalProperties,
         ILogger logger,
-        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
+        MsBuildMetadataHelper.SharedEvaluation? evaluation)
     {
         foreach (var project in projects)
         {
@@ -224,7 +224,7 @@ internal class RestoreStalenessDetector
         string projectFilePath,
         IReadOnlyDictionary<string, string> globalProperties,
         ILogger logger,
-        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
+        MsBuildMetadataHelper.SharedEvaluation? evaluation)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -421,7 +421,7 @@ internal class RestoreStalenessDetector
     {
         try
         {
-            var assetsPath = ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, globalProperties);
+            var assetsPath = ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, globalProperties, evaluation: null);
             if (assetsPath is null)
             {
                 return null;
@@ -513,7 +513,7 @@ internal class RestoreStalenessDetector
         try
         {
             return CollectExpectedPackages(projectFilePath).Count > 0 &&
-                   ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties) is null;
+                   ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties, evaluation: null) is null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {

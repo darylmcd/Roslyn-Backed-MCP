@@ -61,15 +61,22 @@ internal static class MsBuildMetadataHelper
         SharedEvaluation? shared,
         string[] propertyNames)
     {
-        if (shared is not null && shared.Owns(globalProperties))
+        if (shared is not null)
         {
-            return shared.Read(projectFilePath, globalProperties, propertyNames);
+            if (!shared.Owns(globalProperties))
+            {
+                shared.RecordMiss();
+            }
+            else
+            {
+                return shared.Read(projectFilePath, globalProperties, propertyNames);
+            }
         }
 
         using var projectCollection = new ProjectCollection(new Dictionary<string, string>(globalProperties));
         try
         {
-            return ReadProperties(projectCollection, projectFilePath, globalProperties, propertyNames);
+            return ReadProperties(projectCollection, projectFilePath, propertyNames);
         }
         catch (InvalidProjectFileException ex)
         {
@@ -87,16 +94,9 @@ internal static class MsBuildMetadataHelper
     private static string[] ReadProperties(
         ProjectCollection projectCollection,
         string projectFilePath,
-        IReadOnlyDictionary<string, string> globalProperties,
         string[] propertyNames)
     {
-        var loadedBefore = projectCollection.LoadedProjects.Count;
         var evaluated = projectCollection.LoadProject(projectFilePath);
-        if (projectCollection.LoadedProjects.Count > loadedBefore)
-        {
-            RecordIfEnabled(projectFilePath, globalProperties, propertyNames);
-        }
-
         return propertyNames.Select(evaluated.GetPropertyValue).ToArray();
     }
 
@@ -119,6 +119,8 @@ internal static class MsBuildMetadataHelper
     {
         private readonly Dictionary<string, string> _globals;
         private readonly ProjectCollection _collection;
+        private readonly List<EvaluationCall> _loads = new();
+        private int _misses;
         private bool _disposed;
 
         internal SharedEvaluation(IReadOnlyDictionary<string, string> globalProperties)
@@ -129,6 +131,14 @@ internal static class MsBuildMetadataHelper
         }
 
         internal bool IsDisposed => _disposed;
+
+        internal IReadOnlyList<EvaluationCall> Loads => _loads;
+
+        internal int Misses => _misses;
+
+        internal readonly record struct EvaluationCall(string ProjectPath, string Properties, string GlobalProperties);
+
+        internal void RecordMiss() => _misses++;
 
         internal bool Owns(IReadOnlyDictionary<string, string> globalProperties)
         {
@@ -151,9 +161,23 @@ internal static class MsBuildMetadataHelper
 
         internal string[] Read(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
         {
+            var loadedBefore = _collection.LoadedProjects.Count;
             try
             {
-                return ReadProperties(_collection, projectFilePath, globalProperties, propertyNames);
+                var values = ReadProperties(_collection, projectFilePath, propertyNames);
+                if (_collection.LoadedProjects.Count > loadedBefore)
+                {
+                    _loads.Add(new EvaluationCall(
+                        projectFilePath,
+                        string.Join(",", propertyNames),
+                        string.Join(
+                            ";",
+                            globalProperties
+                                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                                .Select(pair => pair.Key + "=" + pair.Value))));
+                }
+
+                return values;
             }
             catch (InvalidProjectFileException ex)
             {
@@ -237,56 +261,6 @@ internal static class MsBuildMetadataHelper
         var element = document.Descendants("PackageVersion").FirstOrDefault(e =>
             string.Equals((string?)e.Attribute("Include"), packageId, StringComparison.OrdinalIgnoreCase));
         return element?.Attribute("Version")?.Value;
-    }
-
-    private static int _recordEvaluations;
-
-    private static readonly List<EvaluationCall> _recordedEvaluations = new();
-
-    internal readonly record struct EvaluationCall(string ProjectPath, string Properties, string GlobalProperties);
-
-    internal static void BeginEvaluationRecording()
-    {
-        lock (_recordedEvaluations)
-        {
-            _recordedEvaluations.Clear();
-            Volatile.Write(ref _recordEvaluations, 1);
-        }
-    }
-
-    internal static EvaluationCall[] EndEvaluationRecording()
-    {
-        lock (_recordedEvaluations)
-        {
-            Volatile.Write(ref _recordEvaluations, 0);
-            var copy = _recordedEvaluations.ToArray();
-            _recordedEvaluations.Clear();
-            return copy;
-        }
-    }
-
-    private static void RecordIfEnabled(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
-    {
-        if (Volatile.Read(ref _recordEvaluations) == 0)
-        {
-            return;
-        }
-
-        var identity = string.Join(
-            ";",
-            globalProperties
-                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                .Select(pair => pair.Key + "=" + pair.Value));
-        var properties = string.Join(",", propertyNames);
-        lock (_recordedEvaluations)
-        {
-            if (Volatile.Read(ref _recordEvaluations) == 0)
-            {
-                return;
-            }
-
-            _recordedEvaluations.Add(new EvaluationCall(projectFilePath, properties, identity));
-        }
     }
 
     private static string? FindNearestFile(string? loadedPath, string fileName)
