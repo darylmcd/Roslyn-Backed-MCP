@@ -180,16 +180,19 @@ internal sealed class ForkAdmissionExecution : IWorkspaceAdmissionLifetime
     internal ForkAdmissionMaterial.Configuration Configuration { get; }
     internal string? CleanupWarning { get; private set; }
 
-    internal static async ValueTask<ForkAdmissionExecution> CreateAsync(ForkAdmissionMaterial.Configuration configuration, DateTimeOffset? deadline, CancellationToken ct)
+    internal static async ValueTask<ForkAdmissionExecution> CreateAsync(
+        ForkAdmissionMaterial.Configuration configuration,
+        DateTimeOffset? deadline,
+        TimeProvider timeProvider,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        using var waiting = deadline is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (deadline is { } waitDeadline)
-        {
-            var remaining = waitDeadline - DateTimeOffset.UtcNow;
-            if (remaining <= TimeSpan.Zero) throw new TimeoutException("Native fork admission exceeded its owning invocation deadline.");
-            waiting!.CancelAfter(remaining);
-        }
+        TimeSpan? remaining = deadline is { } waitDeadline ? waitDeadline - timeProvider.GetUtcNow() : null;
+        if (remaining <= TimeSpan.Zero)
+            throw new TimeoutException("Native fork admission exceeded its owning invocation deadline.");
+
+        using var deadlineTimer = remaining is { } delay ? new CancellationTokenSource(delay, timeProvider) : null;
+        using var waiting = deadlineTimer is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, deadlineTimer.Token);
         var ancestry = ForkAdmissionMaterial.FindContainingOwned(configuration.ForkRoot);
         if (ancestry.LastOrDefault() != configuration)
             throw new PublicInvalidOperationException("The retained fork admission material changed. Recreate the fork before retrying.");
@@ -198,7 +201,7 @@ internal sealed class ForkAdmissionExecution : IWorkspaceAdmissionLifetime
         {
             ownership = await WorkspaceForkApplyService.AcquireForkApplyLocksAsync(ancestry.Select(owner => owner.ForkRoot), waiting?.Token ?? ct).ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && waiting?.IsCancellationRequested == true)
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && deadlineTimer?.IsCancellationRequested == true)
         {
             throw new TimeoutException("Native fork admission exceeded its owning invocation deadline while waiting for fork ownership.", ex);
         }
@@ -207,7 +210,7 @@ internal sealed class ForkAdmissionExecution : IWorkspaceAdmissionLifetime
         try
         {
             ct.ThrowIfCancellationRequested();
-            if (deadline is { } limit && DateTimeOffset.UtcNow >= limit)
+            if (deadline is { } limit && timeProvider.GetUtcNow() >= limit)
                 throw new TimeoutException("Native fork admission exceeded its owning invocation deadline.");
             // Expiry may have won after Find. Validate again while deletion is excluded;
             // never recreate directories from a stale configuration snapshot.

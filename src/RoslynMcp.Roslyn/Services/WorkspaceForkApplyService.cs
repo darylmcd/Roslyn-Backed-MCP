@@ -789,7 +789,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
             timeout.Token.ThrowIfCancellationRequested();
             var remaining = RestoreInvocationPlanner.RemainingBudget(TimeSpan.FromMinutes(timeoutMinutes), elapsed.Elapsed,
                 TimeSpan.Zero, "The workspace fork restore phase exceeded its time budget.");
-            var admissionExecution = await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow + remaining, timeout.Token).ConfigureAwait(false);
+            var admissionExecution = await ForkAdmissionExecution.CreateAsync(config, TimeProvider.System.GetUtcNow() + remaining, TimeProvider.System, timeout.Token).ConfigureAwait(false);
             try
             {
                 execution = await _commandRunner.RunAsync(
