@@ -81,7 +81,7 @@ public sealed class ForkNativeBuildOutputAdmissionTests : ForkNativeAdmissionTes
         File.WriteAllText(fixture.PathInFork("Directory.Build.targets"), new XElement("Project", hook).ToString());
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var config = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token) : null;
-        using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
+        using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), TimeProvider.System, timeout.Token);
         string[] arguments = ["build", project, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false"];
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project, execution?.Arguments(arguments) ?? arguments, timeout.Token);
         execution?.Complete();
@@ -173,7 +173,7 @@ public sealed class ForkNativeBuildOutputAdmissionTests : ForkNativeAdmissionTes
         File.Delete(product);
         File.Delete(Path.Combine(fixture.Evidence, "hooks.txt"));
         var config = ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token);
-        using var execution = await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
+        using var execution = await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), TimeProvider.System, timeout.Token);
         var candidate = await DotnetCommandRunner.RunAsync(fixture.Fork, project, execution.Arguments(arguments), timeout.Token);
         execution.Complete();
         TestContext.WriteLine(candidate.StdOut + candidate.StdErr);

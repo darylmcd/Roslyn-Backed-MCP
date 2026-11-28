@@ -95,7 +95,7 @@ public sealed class ForkNativeCopyAdmissionTests : ForkNativeAdmissionTestBase
         if (guarded) ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token);
         var configuration = guarded ? ForkAdmissionMaterial.Find(project) : null;
         using var execution = configuration is null ? null : await ForkAdmissionExecution.CreateAsync(configuration,
-            DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
+            DateTimeOffset.UtcNow.AddMinutes(1), TimeProvider.System, timeout.Token);
         var arguments = consumer.StartsWith("BuildProduct", StringComparison.Ordinal)
             ? new[] { "build", project, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false" }
             : new[] { "msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;" + target };
@@ -179,7 +179,7 @@ public sealed class ForkNativeCopyAdmissionTests : ForkNativeAdmissionTestBase
         File.WriteAllText(fixture.PathInFork("Directory.Build.targets"), new XElement("Project", hook).ToString());
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var config = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token) : null;
-        using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
+        using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), TimeProvider.System, timeout.Token);
         // SDK 10 touches the CopyUpToDateMarker inside _CopyFilesMarkedCopyLocal; SDK 11 records the
         // copy there and touches the marker later, in CopyFilesToOutputDirectory. Request both targets
         // so the real native consumer runs on either SDK (SkipCopyBuildProduct: nothing is compiled).
@@ -257,7 +257,7 @@ public sealed class ForkNativeCopyAdmissionTests : ForkNativeAdmissionTestBase
         fixture.WriteProject(project, new XElement("ItemGroup", item).ToString());
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var config = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token) : null;
-        using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddSeconds(45), timeout.Token);
+        using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddSeconds(45), TimeProvider.System, timeout.Token);
         var consumer = role == "ReferenceCopyLocalPaths" ? "_CopyFilesMarkedCopyLocal"
             : mode.Equals("PreserveNewest", StringComparison.OrdinalIgnoreCase) ? "_CopyOutOfDateSourceItemsToOutputDirectory"
             : mode.Equals("IfDifferent", StringComparison.OrdinalIgnoreCase) ? "_CopyDifferingSourceItemsToOutputDirectory"
