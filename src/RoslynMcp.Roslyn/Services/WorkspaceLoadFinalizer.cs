@@ -49,11 +49,11 @@ internal class WorkspaceLoadFinalizer(RestoreStalenessDetector restoreStalenessD
         var solution = workspace.CurrentSolution;
         EnsureWorkspacePathsArePhysical(solution);
 
-        using (MsBuildMetadataHelper.BeginSharedEvaluation(workspace.Properties))
+        using (var evaluation = new MsBuildMetadataHelper.SharedEvaluation(workspace.Properties))
         {
-            var projectStatuses = BuildProjectStatuses(solution, logger);
+            var projectStatuses = BuildProjectStatuses(solution, logger, evaluation);
             var documentPaths = BuildDocumentPathIndex(solution);
-            var restoreRequired = restoreStalenessDetector.DetectRestoreRequired(projectStatuses, workspace.Properties, logger) ||
+            var restoreRequired = restoreStalenessDetector.DetectRestoreRequired(projectStatuses, workspace.Properties, logger, evaluation) ||
                                   RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnostics);
             // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
             // BUILD output, distinct from a missing NuGet package. Track it separately so the
@@ -110,7 +110,10 @@ internal class WorkspaceLoadFinalizer(RestoreStalenessDetector restoreStalenessD
         return path.StartsWith(prefix, FileSystemPath.Comparison);
     }
 
-    private static ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution, ILogger logger)
+    private static ImmutableArray<ProjectStatusDto> BuildProjectStatuses(
+        Solution solution,
+        ILogger logger,
+        MsBuildMetadataHelper.SharedEvaluation evaluation)
     {
         return solution.Projects.Select(project =>
         {
@@ -131,10 +134,10 @@ internal class WorkspaceLoadFinalizer(RestoreStalenessDetector restoreStalenessD
                             : ProjectMetadataParser.ResolveProjectName(referenced);
                     })
                     .ToList(),
-                TargetFrameworks: ProjectMetadataParser.GetTargetFrameworks(project, projectDoc, logger),
+                TargetFrameworks: ProjectMetadataParser.GetTargetFrameworks(project, projectDoc, logger, evaluation),
                 IsTestProject: ProjectMetadataParser.IsTestProject(projectDoc),
                 AssemblyName: ProjectMetadataParser.GetAssemblyName(project),
-                OutputType: ProjectMetadataParser.GetOutputType(project, projectDoc, logger));
+                OutputType: ProjectMetadataParser.GetOutputType(project, projectDoc, logger, evaluation));
         }).ToImmutableArray();
     }
 }

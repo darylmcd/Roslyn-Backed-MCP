@@ -194,22 +194,26 @@ public sealed class WorkspaceLoadFinalizerTests
             """);
         File.WriteAllText(badPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType>");
         var properties = MsBuildMetadataHelper.DefaultGlobalProperties;
-        var liveBefore = MsBuildMetadataHelper.LiveSharedEvaluations;
+        var evaluation = new MsBuildMetadataHelper.SharedEvaluation(properties);
         try
         {
             var thrown = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
-                using (MsBuildMetadataHelper.BeginSharedEvaluation(properties))
-                {
-                    var outputType = MsBuildMetadataHelper.EvaluateProperties(goodPath, properties, "OutputType")[0];
-                    Assert.AreEqual("Exe", outputType);
-                    MsBuildMetadataHelper.EvaluateProperties(badPath, properties, "OutputType");
-                }
+                var outputType = MsBuildMetadataHelper.EvaluateProperties(goodPath, properties, evaluation, "OutputType")[0];
+                Assert.AreEqual("Exe", outputType);
+                MsBuildMetadataHelper.EvaluateProperties(badPath, properties, evaluation, "OutputType");
             });
 
             Assert.IsTrue(MsBuildMetadataHelper.IsExpectedEvaluationFailure(thrown));
-            Assert.AreEqual(liveBefore, MsBuildMetadataHelper.LiveSharedEvaluations,
-                "The shared collection must be disposed when evaluation throws out of the scope.");
+        }
+        finally
+        {
+            evaluation.Dispose();
+        }
+
+        try
+        {
+            Assert.IsTrue(evaluation.IsDisposed, "The projection's collection must be disposed when the caller leaves it.");
             Assert.AreEqual("Exe", MsBuildMetadataHelper.EvaluateProperties(goodPath, properties, "OutputType")[0],
                 "A later evaluation must not reuse the disposed collection.");
         }

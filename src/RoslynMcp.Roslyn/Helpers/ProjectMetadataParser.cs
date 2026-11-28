@@ -68,7 +68,10 @@ internal static class ProjectMetadataParser
     }
 
     /// <summary>Returns only an existing evaluated active assets file; stale default files are never fallback authority.</summary>
-    internal static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
+    internal static string? GetExistingAssetsPath(
+        string projectFilePath,
+        IReadOnlyDictionary<string, string> globalProperties,
+        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
     {
         string projectDirectory;
         try
@@ -83,7 +86,7 @@ internal static class ProjectMetadataParser
         string[] values;
         try
         {
-            values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
+            values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, evaluation,
                 "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
         }
         catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
@@ -139,10 +142,14 @@ internal static class ProjectMetadataParser
         return Path.GetFullPath(assetsFile.Trim(), projectDirectory);
     }
 
-    public static IReadOnlyList<string> GetTargetFrameworks(RoslynProject project, XDocument? document, ILogger? logger = null)
+    public static IReadOnlyList<string> GetTargetFrameworks(
+        RoslynProject project,
+        XDocument? document,
+        ILogger? logger = null,
+        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
     {
         var evaluatedFrameworks = GetEvaluatedTargetFrameworks(project.FilePath,
-            MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger);
+            MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger, evaluation);
         return evaluatedFrameworks.Count > 0 ? evaluatedFrameworks : GetTargetFrameworks(document);
     }
 
@@ -161,7 +168,11 @@ internal static class ProjectMetadataParser
         return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
     }
 
-    private static IReadOnlyList<string> GetEvaluatedTargetFrameworks(string? projectFilePath, IReadOnlyDictionary<string, string> globalProperties, ILogger? logger)
+    private static IReadOnlyList<string> GetEvaluatedTargetFrameworks(
+        string? projectFilePath,
+        IReadOnlyDictionary<string, string> globalProperties,
+        ILogger? logger,
+        MsBuildMetadataHelper.SharedEvaluation? evaluation)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -170,7 +181,7 @@ internal static class ProjectMetadataParser
 
         try
         {
-            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "TargetFramework", "TargetFrameworks");
+            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, evaluation, "TargetFramework", "TargetFrameworks");
             return ParseTargetFrameworkValues(values[0], values[1]);
         }
         catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
@@ -293,10 +304,14 @@ internal static class ProjectMetadataParser
     /// <see cref="ProjectCollection"/> evaluation as <see cref="GetEvaluatedTargetFrameworks"/>
     /// and falls back to the XML-only path when MSBuild evaluation is unavailable.
     /// </summary>
-    public static string GetOutputType(RoslynProject project, XDocument? document, ILogger? logger = null)
+    public static string GetOutputType(
+        RoslynProject project,
+        XDocument? document,
+        ILogger? logger = null,
+        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
     {
         var evaluated = GetEvaluatedOutputType(project.FilePath,
-            MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger);
+            MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger, evaluation);
         return !string.IsNullOrWhiteSpace(evaluated) ? evaluated : GetOutputType(document);
     }
 
@@ -305,7 +320,11 @@ internal static class ProjectMetadataParser
         return document?.Descendants("OutputType").FirstOrDefault()?.Value.Trim() ?? "Library";
     }
 
-    internal static string? GetEvaluatedOutputType(string? projectFilePath, IReadOnlyDictionary<string, string> globalProperties, ILogger? logger)
+    internal static string? GetEvaluatedOutputType(
+        string? projectFilePath,
+        IReadOnlyDictionary<string, string> globalProperties,
+        ILogger? logger,
+        MsBuildMetadataHelper.SharedEvaluation? evaluation = null)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -314,7 +333,7 @@ internal static class ProjectMetadataParser
 
         try
         {
-            var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "OutputType")[0];
+            var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, evaluation, "OutputType")[0];
             return string.IsNullOrWhiteSpace(outputType) ? null : outputType.Trim();
         }
         catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))

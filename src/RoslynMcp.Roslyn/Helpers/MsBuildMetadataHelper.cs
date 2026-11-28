@@ -28,13 +28,20 @@ internal static class MsBuildMetadataHelper
     /// failures propagate (an <c>InvalidProjectFileException</c> as <see cref="InvalidOperationException"/>,
     /// I/O as-is) so each caller picks its own degradation policy.
     /// </summary>
-    public static string[] EvaluateProperties(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, params string[] propertyNames)
+    public static string[] EvaluateProperties(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, params string[] propertyNames) =>
+        EvaluateProperties(projectFilePath, globalProperties, shared: null, propertyNames);
+
+    internal static string[] EvaluateProperties(
+        string projectFilePath,
+        IReadOnlyDictionary<string, string> globalProperties,
+        SharedEvaluation? shared,
+        params string[] propertyNames)
     {
         // The MSBuild types live in a separate non-inlined method: the JIT resolves
         // Microsoft.Build when it compiles a method that mentions those types, which must happen
         // only after EnsureInitialized has registered the MSBuild assembly resolver.
         MsBuildInitializer.EnsureInitialized();
-        return EvaluatePropertiesCore(projectFilePath, globalProperties, propertyNames);
+        return EvaluatePropertiesCore(projectFilePath, globalProperties, shared, propertyNames);
     }
 
     internal static bool IsExpectedEvaluationFailure(Exception exception) =>
@@ -47,33 +54,16 @@ internal static class MsBuildMetadataHelper
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool IsInvalidProjectFailure(Exception exception) => exception is InvalidProjectFileException;
 
-    /// <summary>
-    /// One MSBuild project collection for the calling load projection. A second request for the
-    /// same project file and the same global properties reuses the project already loaded into
-    /// that collection. The collection is unloaded and disposed when the scope ends, including
-    /// when the projection fails. Callers outside the scope keep a throwaway collection.
-    /// </summary>
-    internal static IDisposable BeginSharedEvaluation(IReadOnlyDictionary<string, string> globalProperties)
-    {
-        MsBuildInitializer.EnsureInitialized();
-        return EnterSharedEvaluation(globalProperties);
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvaluationScope EnterSharedEvaluation(IReadOnlyDictionary<string, string> globalProperties)
+    private static string[] EvaluatePropertiesCore(
+        string projectFilePath,
+        IReadOnlyDictionary<string, string> globalProperties,
+        SharedEvaluation? shared,
+        string[] propertyNames)
     {
-        var scope = new EvaluationScope(globalProperties, SharedEvaluation.Value);
-        SharedEvaluation.Value = scope;
-        return scope;
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static string[] EvaluatePropertiesCore(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
-    {
-        var shared = SharedEvaluation.Value;
-        if (shared is not null && shared.Matches(globalProperties))
+        if (shared is not null && shared.Owns(globalProperties))
         {
-            return shared.Evaluate(projectFilePath, globalProperties, propertyNames);
+            return shared.Read(projectFilePath, globalProperties, propertyNames);
         }
 
         using var projectCollection = new ProjectCollection(new Dictionary<string, string>(globalProperties));
@@ -119,30 +109,30 @@ internal static class MsBuildMetadataHelper
         }
     }
 
-    private static readonly AsyncLocal<EvaluationScope?> SharedEvaluation = new();
-
-    private static int _liveSharedEvaluations;
-
-    internal static int LiveSharedEvaluations => Volatile.Read(ref _liveSharedEvaluations);
-
-    private sealed class EvaluationScope : IDisposable
+    /// <summary>
+    /// The one MSBuild project collection for a single <c>BuildLoadProjection</c> call.
+    /// The projection creates it and passes it to the reads it makes. Another projection,
+    /// including one running at the same time, creates its own. Disposal unloads every
+    /// project loaded into it.
+    /// </summary>
+    internal sealed class SharedEvaluation : IDisposable
     {
         private readonly Dictionary<string, string> _globals;
-        private readonly EvaluationScope? _previous;
         private readonly ProjectCollection _collection;
         private bool _disposed;
 
-        public EvaluationScope(IReadOnlyDictionary<string, string> globalProperties, EvaluationScope? previous)
+        internal SharedEvaluation(IReadOnlyDictionary<string, string> globalProperties)
         {
+            MsBuildInitializer.EnsureInitialized();
             _globals = new Dictionary<string, string>(globalProperties, StringComparer.Ordinal);
-            _previous = previous;
-            _collection = new ProjectCollection(new Dictionary<string, string>(_globals, StringComparer.Ordinal));
-            Interlocked.Increment(ref _liveSharedEvaluations);
+            _collection = CreateCollection(_globals);
         }
 
-        public bool Matches(IReadOnlyDictionary<string, string> globalProperties)
+        internal bool IsDisposed => _disposed;
+
+        internal bool Owns(IReadOnlyDictionary<string, string> globalProperties)
         {
-            if (globalProperties.Count != _globals.Count)
+            if (_disposed || globalProperties.Count != _globals.Count)
             {
                 return false;
             }
@@ -159,7 +149,7 @@ internal static class MsBuildMetadataHelper
             return true;
         }
 
-        public string[] Evaluate(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
+        internal string[] Read(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
         {
             try
             {
@@ -180,15 +170,13 @@ internal static class MsBuildMetadataHelper
             }
 
             _disposed = true;
-            if (ReferenceEquals(SharedEvaluation.Value, this))
-            {
-                SharedEvaluation.Value = _previous;
-            }
-
             _collection.UnloadAllProjects();
             _collection.Dispose();
-            Interlocked.Decrement(ref _liveSharedEvaluations);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ProjectCollection CreateCollection(Dictionary<string, string> globalProperties) =>
+            new(new Dictionary<string, string>(globalProperties, StringComparer.Ordinal));
     }
 
     /// <summary>
