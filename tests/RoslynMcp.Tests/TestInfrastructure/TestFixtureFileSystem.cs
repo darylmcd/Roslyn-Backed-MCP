@@ -32,7 +32,6 @@ internal static class TestFixtureFileSystem
         try
         {
             // Preserve sources, restored references and repository compiler settings.
-            // The two-project solution retains the common watched root for both projects.
             string[] projects = kind switch
             {
                 SampleCopyKind.Library or SampleCopyKind.LibrarySolution => ["SampleLib"],
