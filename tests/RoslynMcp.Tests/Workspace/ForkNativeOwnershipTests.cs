@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
@@ -60,7 +61,7 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
         var project = Path.Combine(fork, "Entry.csproj");
         fixture.WriteProject(project, string.Empty);
         var config = ForkAdmissionMaterial.Install(fixture.Source, fork, [project], CancellationToken.None);
-        using var execution = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
+        using var execution = await ForkAdmissionExecution.CreateAsync(config, null, TimeProvider.System, CancellationToken.None);
         WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsTrue(Directory.Exists(execution.Root), "TTL cleanup must preserve admission material during an active invocation.");
         execution.Dispose();
@@ -69,7 +70,7 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
         Assert.IsTrue(Directory.Exists(execution.Root), "Uncertain native completion retains its execution and blocks expiry.");
         // This test never starts native work, so it can remove the uncertain residue.
         Directory.Delete(execution.Root, recursive: true);
-        using var completed = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
+        using var completed = await ForkAdmissionExecution.CreateAsync(config, null, TimeProvider.System, CancellationToken.None);
         completed.Complete();
         completed.Dispose();
         WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
@@ -256,7 +257,9 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
         {
             using var blocked = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(fixture.Fork, CancellationToken.None);
             using var cancellation = new CancellationTokenSource();
-            var pending = ForkAdmissionExecution.CreateAsync(config, mode == "deadline" ? DateTimeOffset.UtcNow.AddMilliseconds(100) : null, cancellation.Token).AsTask();
+            var clock = new FakeTimeProvider();
+            var deadline = mode == "deadline" ? clock.GetUtcNow().AddMilliseconds(100) : (DateTimeOffset?)null;
+            var pending = ForkAdmissionExecution.CreateAsync(config, deadline, clock, cancellation.Token).AsTask();
             Assert.IsFalse(pending.IsCompleted, "The same existing per-fork critical section must serialize invocation start and deletion.");
             Assert.IsNull(WorkspaceForkApplyService.TryAcquireForkApplyLock(fixture.Fork));
             if (mode == "cancel")
@@ -264,25 +267,29 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
                 cancellation.Cancel();
                 await Assert.ThrowsAsync<OperationCanceledException>(() => pending);
             }
-            else await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+            else
+            {
+                clock.Advance(TimeSpan.FromMilliseconds(100));
+                await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+            }
         }
         else if (mode == "pre-cancel")
         {
             using var cancellation = new CancellationTokenSource();
             cancellation.Cancel();
-            await Assert.ThrowsAsync<OperationCanceledException>(() => ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(-1), cancellation.Token).AsTask());
+            await Assert.ThrowsAsync<OperationCanceledException>(() => ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(-1), TimeProvider.System, cancellation.Token).AsTask());
         }
         else if (mode == "stale")
         {
             TestFixtureFileSystem.DeleteDirectoryIfExists(fixture.Fork);
-            await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None).AsTask());
+            await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ForkAdmissionExecution.CreateAsync(config, null, TimeProvider.System, CancellationToken.None).AsTask());
             Assert.IsFalse(Directory.Exists(fixture.Fork), "A Find snapshot must not resurrect material deleted before ownership acquisition.");
         }
         else
         {
             var executions = Path.Combine(fixture.Fork, ForkAdmissionMaterial.DirectoryName, "executions");
             File.WriteAllText(executions, "Block directory creation before any native work starts.");
-            await Assert.ThrowsAsync<IOException>(() => ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None).AsTask());
+            await Assert.ThrowsAsync<IOException>(() => ForkAdmissionExecution.CreateAsync(config, null, TimeProvider.System, CancellationToken.None).AsTask());
             Assert.IsFalse(Directory.Exists(executions));
         }
         Assert.IsFalse(WorkspaceForkApplyService.HasForkApplyLock(fixture.Fork), "All failed/wait-cancelled construction paths must release their ownership reference.");
@@ -331,7 +338,7 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
         try
         {
             var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
-            using var execution = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
+            using var execution = await ForkAdmissionExecution.CreateAsync(config, null, TimeProvider.System, CancellationToken.None);
             await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
                 null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
             var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
@@ -360,7 +367,7 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
         fixture.WriteProject(project, string.Empty);
         var config = ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], CancellationToken.None);
         using var cancellation = new CancellationTokenSource();
-        using var execution = await ForkAdmissionExecution.CreateAsync(config, null, cancellation.Token);
+        using var execution = await ForkAdmissionExecution.CreateAsync(config, null, TimeProvider.System, cancellation.Token);
         FileStream? held = null;
         try
         {
@@ -645,11 +652,17 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
         var config = ForkAdmissionMaterial.Install(outer, inner, [project], CancellationToken.None);
         using var blocked = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(inner, CancellationToken.None);
         using var cancellation = new CancellationTokenSource();
-        var pending = ForkAdmissionExecution.CreateAsync(config, deadline ? DateTimeOffset.UtcNow.AddSeconds(1) : null, cancellation.Token).AsTask();
+        var clock = new FakeTimeProvider();
+        var waitDeadline = deadline ? clock.GetUtcNow().AddSeconds(1) : (DateTimeOffset?)null;
+        var pending = ForkAdmissionExecution.CreateAsync(config, waitDeadline, clock, cancellation.Token).AsTask();
         Assert.IsFalse(pending.IsCompleted);
         Assert.IsTrue(WorkspaceForkApplyService.HasForkApplyLock(outer), "The outer owner must be acquired before waiting for the inner owner.");
         Assert.IsNull(WorkspaceForkApplyService.TryAcquireForkApplyLock(outer));
-        if (deadline) await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+        if (deadline)
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+        }
         else
         {
             cancellation.Cancel();
@@ -672,7 +685,7 @@ public sealed class ForkNativeOwnershipTests : ForkNativeAdmissionTestBase
         ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], CancellationToken.None);
         fixture.WriteProject(project, string.Empty);
         var config = ForkAdmissionMaterial.Install(outer, inner, [project], CancellationToken.None);
-        using var uncertain = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
+        using var uncertain = await ForkAdmissionExecution.CreateAsync(config, null, TimeProvider.System, CancellationToken.None);
         uncertain.Dispose();
         Assert.IsNotNull(uncertain.CleanupWarning);
         Assert.IsFalse(WorkspaceForkApplyService.HasForkApplyLock(outer));
