@@ -92,7 +92,7 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor, IAsyncDisposab
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
         CancellationToken ct)
     {
-        var deadline = DateTimeOffset.UtcNow + timeout;
+        var deadline = TimeProvider.System.GetUtcNow() + timeout;
         SemaphoreSlim workspaceGate;
         lock (_lifecycleLock)
         {
@@ -150,7 +150,7 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor, IAsyncDisposab
 
             var workingDirectory = GetWorkingDirectory(targetPath);
             var config = ForkAdmissionMaterial.Find(targetPath);
-            var admissionExecution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, deadline, timeoutCts.Token).ConfigureAwait(false);
+            var admissionExecution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, deadline, TimeProvider.System, timeoutCts.Token).ConfigureAwait(false);
             CommandExecutionDto execution;
             var completedCommand = false;
             try

@@ -51,7 +51,7 @@ internal class WorkspaceSessionLoader
         var forkConfig = ForkAdmissionMaterial.Find(path);
         IWorkspaceAdmissionLifetime? admissionExecution = AdmissionFactoryForTesting is { } admissionFactory
             ? await admissionFactory(ct).ConfigureAwait(false)
-            : forkConfig is null ? null : await ForkAdmissionExecution.CreateAsync(forkConfig, null, ct).ConfigureAwait(false);
+            : forkConfig is null ? null : await ForkAdmissionExecution.CreateAsync(forkConfig, null, TimeProvider.System, ct).ConfigureAwait(false);
         MSBuildWorkspace? workspace = null;
         AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? analyzerLease = null;
         var returningWorkspace = false;

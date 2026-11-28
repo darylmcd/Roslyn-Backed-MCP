@@ -134,7 +134,7 @@ public sealed class ForkNativeAdmissionTests : ForkNativeAdmissionTestBase
         foreach (var parent in parents) await fixture.RestoreAsync(parent, DotnetCommandRunner, timeout.Token);
         var configuration = ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, parents, timeout.Token);
         Assert.IsFalse(File.ReadAllText(child).Contains(ForkProjectImports.Label, StringComparison.Ordinal));
-        using var execution = await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
+        using var execution = await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(1), TimeProvider.System, timeout.Token);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, root,
             execution.Arguments(["msbuild", root, "-t:Query", "-m:2", "-nr:false", "-nologo", "-p:ProofEvidence=" + fixture.Evidence]), timeout.Token);
         execution.Complete();
@@ -163,7 +163,7 @@ public sealed class ForkNativeAdmissionTests : ForkNativeAdmissionTestBase
             """);
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var configuration = ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token);
-        using var execution = await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
+        using var execution = await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(1), TimeProvider.System, timeout.Token);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project,
             execution.Arguments(["msbuild", project, "-t:GetTargetFrameworksWithPlatformFromInnerBuilds;DispatchToInnerBuilds",
                 "-p:InnerTargets=InnerConsumer", "-p:ProofEvidence=" + fixture.Evidence, "-m:2", "-nr:false", "-nologo"]), timeout.Token);
@@ -242,7 +242,7 @@ public sealed class ForkNativeAdmissionTests : ForkNativeAdmissionTestBase
         File.WriteAllText(fixture.PathInFork("Directory.Build.targets"), targets.ToString());
         await fixture.RestoreAsync(parent, DotnetCommandRunner, timeout.Token);
         var configuration = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [parent, bridge, child, leaf], timeout.Token) : null;
-        using var execution = configuration is null ? null : await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(2), timeout.Token);
+        using var execution = configuration is null ? null : await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(2), TimeProvider.System, timeout.Token);
         var arguments = new List<string> { "build", parent, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false" };
         if (mode == "nontransitive") arguments.Add("-p:MSBuildCopyContentTransitively=false");
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, parent, execution?.Arguments(arguments) ?? arguments.ToArray(), timeout.Token);
