@@ -49,17 +49,20 @@ internal class WorkspaceLoadFinalizer(RestoreStalenessDetector restoreStalenessD
         var solution = workspace.CurrentSolution;
         EnsureWorkspacePathsArePhysical(solution);
 
-        var projectStatuses = BuildProjectStatuses(solution, logger);
-        var documentPaths = BuildDocumentPathIndex(solution);
-        var restoreRequired = restoreStalenessDetector.DetectRestoreRequired(projectStatuses, workspace.Properties, logger) ||
-                              RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnostics);
-        // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
-        // BUILD output, distinct from a missing NuGet package. Track it separately so the
-        // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
-        // rather than a no-op `dotnet restore`.
-        var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics);
+        using (MsBuildMetadataHelper.BeginSharedEvaluation(workspace.Properties))
+        {
+            var projectStatuses = BuildProjectStatuses(solution, logger);
+            var documentPaths = BuildDocumentPathIndex(solution);
+            var restoreRequired = restoreStalenessDetector.DetectRestoreRequired(projectStatuses, workspace.Properties, logger) ||
+                                  RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnostics);
+            // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
+            // BUILD output, distinct from a missing NuGet package. Track it separately so the
+            // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
+            // rather than a no-op `dotnet restore`.
+            var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics);
 
-        return new WorkspaceLoadProjection(projectStatuses, documentPaths, restoreRequired, buildRequired);
+            return new WorkspaceLoadProjection(projectStatuses, documentPaths, restoreRequired, buildRequired);
+        }
     }
 
     /// <summary>
