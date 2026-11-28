@@ -7,7 +7,7 @@ internal static class TestFixtureFileSystem
     private static readonly StringComparer PathComponentComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly string[] IgnoredDirectoryNames = ["bin"];
 
-    private enum SampleCopyKind { Solution, Library, LibraryTests }
+    private enum SampleCopyKind { Solution, Library, LibrarySolution, LibraryTests }
 
     public static string CreateSampleSolutionCopy(string repositoryRootPath, string sampleSolutionPath) =>
         CreateSampleCopy(repositoryRootPath, sampleSolutionPath, SampleCopyKind.Solution).EntryPath;
@@ -15,6 +15,9 @@ internal static class TestFixtureFileSystem
     public static (string RootPath, string EntryPath) CreateSampleLibraryCopy(
         string repositoryRootPath, string sampleSolutionPath) =>
         CreateSampleCopy(repositoryRootPath, sampleSolutionPath, SampleCopyKind.Library);
+
+    public static (string RootPath, string EntryPath) CreateSampleLibrarySolutionCopy(string repositoryRootPath, string sampleSolutionPath) =>
+        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, SampleCopyKind.LibrarySolution);
 
     public static (string RootPath, string EntryPath) CreateSampleLibraryTestsCopy(
         string repositoryRootPath, string sampleSolutionPath) =>
@@ -29,10 +32,9 @@ internal static class TestFixtureFileSystem
         try
         {
             // Preserve sources, restored references and repository compiler settings.
-            // The two-project solution retains the common watched root for both projects.
             string[] projects = kind switch
             {
-                SampleCopyKind.Library => ["SampleLib"],
+                SampleCopyKind.Library or SampleCopyKind.LibrarySolution => ["SampleLib"],
                 SampleCopyKind.LibraryTests => ["SampleLib", "SampleLib.Tests"],
                 _ => [],
             };
@@ -43,20 +45,27 @@ internal static class TestFixtureFileSystem
                     CopyDirectory(Path.Combine(sampleRoot, project), Path.Combine(tempRoot, project));
             CopyRepositorySupportFiles(repositoryRootPath, tempRoot);
 
-            if (kind == SampleCopyKind.LibraryTests)
+            var generatedSolutionName = kind switch
+            {
+                SampleCopyKind.LibrarySolution => "SampleSolution.slnx",
+                SampleCopyKind.LibraryTests => "LibraryTests.slnx",
+                _ => null,
+            };
+            if (generatedSolutionName is not null)
             {
                 foreach (var project in projects)
                     if (!File.Exists(Path.Combine(tempRoot, project, project + ".csproj")))
                         throw new InvalidOperationException("Copied sample fixture is missing a required project file.");
+                var solutionPath = Path.Combine(tempRoot, generatedSolutionName);
                 new XElement("Solution", projects.Select(project =>
                     new XElement("Project", new XAttribute("Path", $"{project}/{project}.csproj"))))
-                    .Save(Path.Combine(tempRoot, "LibraryTests.slnx"));
+                    .Save(solutionPath);
+                return (tempRoot, solutionPath);
             }
 
             string[] candidates = kind switch
             {
                 SampleCopyKind.Library => [Path.Combine("SampleLib", "SampleLib.csproj")],
-                SampleCopyKind.LibraryTests => ["LibraryTests.slnx"],
                 _ => ["SampleSolution.slnx", "SampleSolution.sln"],
             };
             foreach (var candidate in candidates)
