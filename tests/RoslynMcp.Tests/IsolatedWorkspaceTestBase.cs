@@ -16,6 +16,12 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         return new IsolatedWorkspaceScope(rootPath, solutionPath, WorkspaceManager);
     }
 
+    protected static IsolatedWorkspaceScope CreateIsolatedSampleLibrarySolutionCopy()
+    {
+        var (rootPath, solutionPath) = TestFixtureFileSystem.CreateSampleLibrarySolutionCopy(RepositoryRootPath, SampleSolutionPath);
+        return new IsolatedWorkspaceScope(rootPath, solutionPath, WorkspaceManager);
+    }
+
     protected static void AddDependencyInjectionReferences(IsolatedWorkspaceScope workspace, string projectName)
     {
         var projectPath = workspace.GetPath(projectName, projectName + ".csproj");
